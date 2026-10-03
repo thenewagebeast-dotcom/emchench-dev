@@ -1,0 +1,9 @@
+# Private working files - this repo is public, keep these out
+apps-script/
+backups/
+AUDIT-*.md
+FIX-PLAN-*.md
+CLAUDE.md
+emchench-project-reference.md
+*.docx
+.claude/

@@ -951,7 +951,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
           <div class="pill" onclick="selSingle(this,'ob-budget')">No limit - best ingredients, don't hold back</div>
         </div>
       </div>
-      <div class="frow"><label class="flbl">Underlying Health Conditions</label><textarea class="ftarea" id="ob-health" placeholder="e.g. Type 2 diabetes, high blood pressure... or leave blank"></textarea></div>
+      <div class="frow"><label class="flbl">Health Conditions and the Swaps You Use</label><textarea class="ftarea" id="ob-health" placeholder="e.g. Type 2 diabetes - no added sugar, I use sweetener and wholegrain rice. High blood pressure - low salt. Or leave blank"></textarea><div class="alert alert-warn" style="margin-top:8px;margin-bottom:0;font-size:12px">Be honest and specific here. Your plan is built around what you tell us - if a condition is left out, we cannot leave out the foods or exercises that conflict with it, and the plan will not be right for you. This is not medical advice - check with your GP if you are unsure.</div></div>
       <div class="frow"><label class="flbl">Injuries</label><div class="pills" id="ob-injuries"><div class="pill" onclick="tpill(this)">Knee pain</div><div class="pill" onclick="tpill(this)">Lower back pain</div><div class="pill" onclick="tpill(this)">Shoulder issues</div><div class="pill" onclick="tpill(this)">Wrist issues</div><div class="pill" onclick="tpill(this)">Hip problems</div><div class="pill" onclick="tpill(this)">Ankle issues</div><div class="pill" onclick="tpill(this)">Neck pain</div><div class="pill" onclick="tpill(this)">None</div></div><textarea class="ftarea" id="ob-inj-detail" placeholder="Any extra detail on injuries..." style="margin-top:8px"></textarea></div>
       <div class="frow"><label class="flbl">Exercises to Avoid</label><textarea class="ftarea" id="ob-avoid" placeholder="e.g. No overhead pressing, no deep squats, hate burpees..."></textarea></div>
       <div style="display:flex;gap:10px"><button class="btn btn-ghost" onclick="obBack(3)">← Back</button><button class="btn" style="flex:1" onclick="obNext(3)">Continue →</button></div>
@@ -1290,6 +1290,11 @@ let socialEvents=[];
 let activeEvent=null;
 let syncPartner=null;
 let syncRequest=null;
+// Snapshot of each tab's empty state, taken before anyone logs in. signOut()
+// restores these so one user's rendered plan can never stay on screen for the next.
+const EMPTY_TAB_IDS=['meals-content','training-content','tracker-content','meallog-content','supps-content','howto-content','progress-content','profile-content'];
+const emptyTabHtml={};
+EMPTY_TAB_IDS.forEach(id=>{const el=document.getElementById(id);if(el)emptyTabHtml[id]=el.innerHTML;});
 
 // ============================================================
 // DB
@@ -1487,18 +1492,14 @@ const INJURY_LIBRARY={
       {movement:'Cable face pulls',sets:'3-4',reps:'15-20',notes:'Keep elbows high, light weight, focus on rear delt contraction'},
       {movement:'Dumbbell lateral raises',sets:'3',reps:'15-20',notes:'Partial range only, stop at shoulder height, no swinging'},
       {movement:'Seated row',sets:'3-4',reps:'10-12',notes:'Neutral grip preferred, drive elbows back not out'},
-      {movement:'Landmine press',sets:'3',reps:'8-10',notes:'Shoulder-friendly pressing pattern, keep core tight'},
       {movement:'Dead hang',sets:'3',reps:'20-30 seconds',notes:'Decompress the shoulder joint, builds passive stability'},
       {movement:'Band pull-aparts',sets:'3-4',reps:'20',notes:'Excellent pre-workout warm-up for shoulder health'},
       {movement:'Chest-supported row',sets:'3-4',reps:'10-12',notes:'Removes lower back from the equation, isolates upper back'}
     ],
     modify:[
-      {movement:'Bench press',modification:'Use dumbbells instead of barbell - allows natural wrist rotation. Keep elbows at 45 degrees not flared. Stop 1 inch above chest.'},
-      {movement:'Overhead press',modification:'Replace with landmine press or Arnold press with dumbbells at reduced range. Never lock out at top.'},
-      {movement:'Pull-ups',modification:'Use assisted machine or resistance band. Neutral grip only. Stop before full hang if painful.'},
-      {movement:'Dips',modification:'Reduce range of motion significantly. Lean slightly forward. Use assisted machine if needed. Skip if any pain.'}
+      {movement:'Pull-ups',modification:'Use assisted machine or resistance band. Neutral grip only. Stop before full hang if painful.'}
     ],
-    avoid:['Behind the neck press','Upright rows','Wide grip bench press','Overhead tricep extensions with barbell','Snatch or clean and jerk'],
+    avoid:['All pressing movements - bench press, overhead press, landmine press, Arnold press, incline press, machine chest press, push-ups, dips','Behind the neck press','Upright rows','Overhead tricep extensions with barbell','Snatch or clean and jerk'],
     warmup:[
       'Band pull-aparts - 2 sets of 20 before any upper body work',
       'Arm circles forward and backward - 10 each direction',
@@ -1686,30 +1687,60 @@ const INJURY_LIBRARY={
   }
 };
 
+// Keyword-based injury matching, shared by the training prompt and the injury
+// guide modal. Returns every INJURY_LIBRARY key whose keywords appear in the
+// injury text, so one piece of free text can match more than one protocol and
+// can never match an unrelated one by accident.
+const INJURY_KEYWORDS={
+  'Bad shoulder':['shoulder','rotator cuff'],
+  'Bad knee':['knee'],
+  'Lower back':['lower back','back pain','lumbar','sciatic'],
+  'Bad hip':['hip'],
+  'Elbow / tennis elbow':['elbow'],
+  'Wrist':['wrist'],
+  'Neck':['neck'],
+  'Ankle / foot':['ankle','foot']
+};
+function matchInjuryKeys(text){
+  const low=String(text||'').toLowerCase();
+  return Object.keys(INJURY_KEYWORDS).filter(k=>INJURY_KEYWORDS[k].some(w=>new RegExp('\\b'+w+'s?\\b').test(low)));
+}
+// Upper-body pressing movements. A shoulder injury means zero pressing, so when
+// one is present these are stripped out of every other protocol's safe and
+// modify lists too. Does not match leg press or Pallof press.
+const UPPER_PRESS_RE=/bench press|overhead press|landmine press|arnold press|push-up|\bdips?\b|pressing/i;
+
 function getInjuryPromptBlock(){
   if(!CU.injuries||!CU.injuries.trim())return'';
-  const injuries=CU.injuries.split(',').map(s=>s.trim()).filter(Boolean);
+  const keys=matchInjuryKeys(CU.injuries);
+  const hasShoulder=keys.includes('Bad shoulder');
   const blocks=[];
-  for(const inj of injuries){
-    const key=Object.keys(INJURY_LIBRARY).find(k=>
-      k.toLowerCase()===inj.toLowerCase()||
-      inj.toLowerCase().includes(k.toLowerCase().split('/')[0].trim())||
-      k.toLowerCase().includes(inj.toLowerCase().split(' ')[0])
-    );
-    if(!key)continue;
+  for(const key of keys){
     const lib=INJURY_LIBRARY[key];
-    const safeMoves=lib.safe.map(s=>`${s.movement} (${s.sets} sets x ${s.reps} - ${s.notes})`).join(', ');
-    const modMoves=lib.modify.map(m=>`${m.movement}: ${m.modification}`).join(' | ');
+    const safeList=hasShoulder?lib.safe.filter(s=>!UPPER_PRESS_RE.test(s.movement)):lib.safe;
+    const modList=hasShoulder?lib.modify.filter(m=>!UPPER_PRESS_RE.test(m.movement)):lib.modify;
+    const safeMoves=safeList.map(s=>`${s.movement} (${s.sets} sets x ${s.reps} - ${s.notes})`).join(', ');
+    const modMoves=modList.map(m=>`${m.movement}: ${m.modification}`).join(' | ');
     const avoidMoves=lib.avoid.join(', ');
     blocks.push(`
 INJURY PROTOCOL - ${lib.label}:
-ACTIVELY INCLUDE these movements - they are safe and beneficial for this injury: ${safeMoves}.
-MODIFY these movements as specified: ${modMoves}.
+ACTIVELY INCLUDE these movements - they are safe and beneficial for this injury: ${safeMoves}.${modMoves?`
+MODIFY these movements as specified: ${modMoves}.`:''}
 AVOID completely: ${avoidMoves}.
 WARM-UP REQUIREMENT: Always include in session notes: ${lib.warmup.join('; ')}.
 PROGRESSION RULE: ${lib.progression}`);
   }
-  return blocks.length?`\n\nINJURY LIBRARY PROTOCOLS - FOLLOW EXACTLY:\n${blocks.join('\n')}`:'';
+  if(!blocks.length)return'';
+  const shoulderRule=hasShoulder?`\nSHOULDER RULE - ABSOLUTE, OVERRIDES EVERYTHING ELSE IN THIS PROMPT: zero pressing movements of any kind in any session. No bench press, overhead press, landmine press, Arnold press, incline press, machine press, push-ups or dips, and no modified or lighter versions of them. Train chest and triceps only through non-pressing movements.`:'';
+  return `\n\nINJURY LIBRARY PROTOCOLS - FOLLOW EXACTLY:\n${blocks.join('\n')}${shoulderRule}`;
+}
+
+// One line for the meal prompts built from the user's health conditions box -
+// food rules and their own stated substitutes, not medical advice.
+function getHealthDietLine(){
+  const h=(CU?.health_conditions||'').trim();
+  if(!h)return'';
+  return `\nDIETARY RESTRICTIONS FROM HEALTH CONDITIONS - leave out foods that conflict with these, and use the user's own stated substitutes where given: ${h}`;
 }
 
 function getMotMessage(){
@@ -2195,6 +2226,12 @@ function signOut(){
   pendingEventBank=null;
   syncPartner=null;
   syncRequest=null;
+  selLoginUser=null;pinBuf='';updatePinDots();
+  swapEquipmentPhoto=null;
+  // Clear every tab back to its empty state so nothing rendered for this user is left on screen
+  EMPTY_TAB_IDS.forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=emptyTabHtml[id]||'';});
+  const injBtn=document.getElementById('injury-guide-btn-wrap');
+  if(injBtn)injBtn.style.display='none';
   document.getElementById('app-screen').classList.remove('active');
   document.getElementById('login-screen').classList.add('active');
   document.getElementById('pin-wrap').classList.remove('show');
@@ -3653,7 +3690,7 @@ Dietary:${u.dietary_type}, Allergies:${u.allergies?.join(',')||'none'}
 Cuisines:${u.flavour_prefs?.join(',')||'varied'}, Spice level:${u.spice_level||'Medium'}
 Snack style:${snackStyle}, Meals/day:${mt.mpd} (${mt.snackCount} snack slot${mt.snackCount!==1?'s':''}), Batch pref:${batchPref}
 INGREDIENT DISLIKES - NEVER use these: ${u.ingredient_dislikes||'none'}
-FOOD LOVES - incorporate these where possible: ${u.food_loves||'varied'}
+FOOD LOVES - incorporate these where possible: ${u.food_loves||'varied'}${getHealthDietLine()}
 COOKING TIME PER SLOT - strictly enforce these limits in every recipe:
 ${u.cook_time||'Breakfast:Under 5 mins, Lunch:5 to 15 mins, Dinner:15 to 30 mins, Snacks:Grab and go - no prep'}
 Breakfast and snack times are hard limits. If a slot says 'Batch cook it' generate recipes designed to be made in bulk and portioned.
@@ -3693,7 +3730,7 @@ function buildExtraNamesPrompt(){
 USER: ${u.username}, goal:${goal}, dietary:${u.dietary_type}, allergies:${u.allergies?.join(',')||'none'}
 Cuisines:${u.flavour_prefs?.join(',')||'varied'}, Spice level:${u.spice_level||'Medium'}
 INGREDIENT DISLIKES - NEVER use these: ${u.ingredient_dislikes||'none'}
-FOOD LOVES - incorporate these where possible: ${u.food_loves||''}
+FOOD LOVES - incorporate these where possible: ${u.food_loves||''}${getHealthDietLine()}
 COOKING TIME PER SLOT: ${u.cook_time||'Breakfast:Under 5 mins, Lunch:5 to 15 mins, Dinner:15 to 30 mins, Snacks:Grab and go - no prep'}. All recipes must fit within their slot's time limit.
 BUDGET: ${u.weekly_budget||'Mid-range'}. Budget = cheap staples only. No limit = premium fine.
 Daily totals: ${mt.daily.calories}kcal P:${mt.daily.protein}g C:${mt.daily.carbs}g F:${mt.daily.fats}g
@@ -3739,7 +3776,7 @@ USER: ${u.username}, dietary:${u.dietary_type}, allergies:${u.allergies?.join(',
 Kitchen:${u.kitchen||'standard'}, Air fryer:${hasAirFryer}, Batch pref:${batchPref}
 Spice level: ${u.spice_level||'Medium'} - calibrate all heat/spice to this level
 INGREDIENT DISLIKES - NEVER use these ingredients: ${u.ingredient_dislikes||'none'}
-FOOD LOVES - include these where it makes sense: ${u.food_loves||''}
+FOOD LOVES - include these where it makes sense: ${u.food_loves||''}${getHealthDietLine()}
 COOKING TIME PER SLOT - hard limits per slot: ${u.cook_time||'Breakfast:Under 5 mins, Lunch:5 to 15 mins, Dinner:15 to 30 mins, Snacks:Grab and go - no prep'}. Match each recipe to its slot's limit. 'Batch cook it' means write a bulk recipe - see BATCH PORTION SIZING below for how many portions.
 LUNCH SITUATION: ${u.lunch_situation||'fridge and microwave at work'}. Lunches must work for this - if no fridge, all lunch recipes must be safe unrefrigerated for 4+ hours and clearly portable.
 BUDGET: ${u.weekly_budget||'Mid-range'}. Match ingredient quality and variety to this - budget means cheap staples, no limit means premium ingredients are fine.
@@ -3939,12 +3976,13 @@ Session B (Saturday or a weekend rest day): Lower abs and anti-rotation stabilit
 Each ab session: 3-4 exercises, 3 sets each, 12-20 reps, 30 second rest. progression_note field must describe exactly how to progress.`;
 
   const injuryBlock=getInjuryPromptBlock();
+  const healthLine=(u.health_conditions||'').trim()?`\nHEALTH CONDITIONS - account for these and keep intensity and exercise selection conservative: ${u.health_conditions.trim()}`:'';
 
   return`Generate 1-month training plan. JSON only. No meals.
 
 USER: ${u.username}, ${u.age}yrs, ${u.sex}, ${u.weight_kg}kg, goal:${u.goal}, experience:${exp}, ${days} days/week${dayConstraint}
 Equipment:${u.equipment?.join(',')||'gym'}, Cardio:${u.cardio_options?.join(',')||'running'}
-INJURIES STRICT:${u.injuries||'none'}, AVOID STRICT:${u.avoided_exercises||'none'}${injuryBlock}
+INJURIES STRICT:${u.injuries||'none'}, AVOID STRICT:${u.avoided_exercises||'none'}${injuryBlock}${healthLine}
 Training time: ${trainTime}. Occupation: ${occupation}.${monthContext}${rapportContext}
 
 ${baselineBlock}
@@ -4160,7 +4198,7 @@ async function openMealSwap(btn){
     const slotCook=(CU.cook_time||'').match(new RegExp(slotKey+':[^,]+'))?.[0]?.split(':')[1]?.trim()||'20 mins';
     const prompt=`You are E=MC-HENCH. The user wants to swap "${mealName}" (a ${cat.replace(/_/g,' ')} - ${targetCals} kcal, ${targetProtein}g protein).
 Find 2 completely different alternatives in the same category that hit similar macros (within 10% of ${targetCals} kcal and ${targetProtein}g protein).
-User dietary: ${dietary}. Allergies: ${allergies}. Ingredient dislikes - NEVER use these: ${dislikes}.
+User dietary: ${dietary}. Allergies: ${allergies}. Ingredient dislikes - NEVER use these: ${dislikes}.${getHealthDietLine()}
 Cook time: ${slotCook}. Budget: ${CU.weekly_budget||'mid-range'}.
 Reply ONLY with valid JSON: {"alternatives":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy"},{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy"}]}`;
 
@@ -4222,7 +4260,7 @@ async function confirmMealSwap(oldName,newName,cat){
 
     const prompt=`You are E=MC-HENCH. Generate a full recipe for "${newName}" as a ${cat.replace(/_/g,' ')} meal.
 Macro targets: ${target.calories}kcal, ${target.protein}g protein, ${target.carbs}g carbs, ${target.fats}g fats (within 5%).
-Dietary: ${CU.dietary_type||'any'}. Allergies: ${CU.allergies?.join(',')||'none'}. Dislikes: ${CU.ingredient_dislikes||'none'}.
+Dietary: ${CU.dietary_type||'any'}. Allergies: ${CU.allergies?.join(',')||'none'}. Dislikes: ${CU.ingredient_dislikes||'none'}.${getHealthDietLine()}
 Kitchen: ${CU.kitchen||'standard'}. Cook time max: ${CU.cook_time||'20 mins'}. Budget: ${CU.weekly_budget||'mid-range'}. Spice: ${CU.spice_level||'Medium'}.
 INGREDIENT QUANTITY RULE - required: every ingredient, including every spice and seasoning, must have a specific measured quantity (tsp, tbsp, g, ml, or a count) - never list a spice by name alone with no amount. This applies even when several vegetables get blended or cooked together - give each one its own quantity, not one shared total for the group.
 INGREDIENT STATE RULE - required: list every ingredient in its raw, as-purchased state, and make sure the method actually cooks or prepares every ingredient listed - never list something as an ingredient without a step that uses it.
@@ -4841,26 +4879,23 @@ function renderInjuryModal(){
     openModal('injury-modal');
     return;
   }
-  const injuries=CU.injuries.split(',').map(s=>s.trim()).filter(Boolean);
+  const keys=matchInjuryKeys(CU.injuries);
+  const hasShoulder=keys.includes('Bad shoulder');
   let html='';
-  for(const inj of injuries){
-    const key=Object.keys(INJURY_LIBRARY).find(k=>
-      k.toLowerCase()===inj.toLowerCase()||
-      inj.toLowerCase().includes(k.toLowerCase().split('/')[0].trim())||
-      k.toLowerCase().includes(inj.toLowerCase().split(' ')[0])
-    );
-    if(!key){
-      html+=`<div style="padding:12px;background:var(--s2);border-radius:8px;margin-bottom:12px;font-size:13px;color:var(--tx2)">${inj} - no specific protocol in library. Your avoided exercises are still enforced in all training plans.</div>`;
-      continue;
-    }
+  if(!keys.length){
+    html+=`<div style="padding:12px;background:var(--s2);border-radius:8px;margin-bottom:12px;font-size:13px;color:var(--tx2)">${escapeHtml(CU.injuries)} - no specific protocol in library. Your injuries and avoided exercises are still enforced in all training plans.</div>`;
+  }
+  for(const key of keys){
     const lib=INJURY_LIBRARY[key];
+    const safeList=hasShoulder?lib.safe.filter(s=>!UPPER_PRESS_RE.test(s.movement)):lib.safe;
+    const modList=hasShoulder?lib.modify.filter(m=>!UPPER_PRESS_RE.test(m.movement)):lib.modify;
     html+=`
     <div style="margin-bottom:20px">
       <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:900;color:var(--ac);margin-bottom:10px">${lib.icon} ${lib.label}</div>
 
       <div style="margin-bottom:12px">
         <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--tx3);margin-bottom:6px">SAFE AND BENEFICIAL MOVEMENTS</div>
-        ${lib.safe.map(s=>`
+        ${safeList.map(s=>`
           <div style="background:var(--s2);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:6px">
             <div style="font-weight:600;font-size:13px;color:var(--tx)">${s.movement}</div>
             <div style="font-size:12px;color:var(--ac);margin:2px 0">${s.sets} sets x ${s.reps}</div>
@@ -4870,7 +4905,7 @@ function renderInjuryModal(){
 
       <div style="margin-bottom:12px">
         <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--tx3);margin-bottom:6px">MODIFY THESE MOVEMENTS</div>
-        ${lib.modify.map(m=>`
+        ${modList.map(m=>`
           <div style="background:var(--s2);border:1px solid rgba(255,200,0,0.2);border-radius:8px;padding:10px;margin-bottom:6px">
             <div style="font-weight:600;font-size:13px;color:var(--tx)">${m.movement}</div>
             <div style="font-size:12px;color:var(--tx2);margin-top:2px">${m.modification}</div>
@@ -5230,11 +5265,12 @@ async function logWorkout(sidx){
 
     // Fix 2 - Assessment Phase 2: after all assessment sessions logged, extract Set 5 weights and save as known_numbers
     const isAssessmentSession=s.name?.toLowerCase().includes('assessment');
-    if(isAssessmentSession&&CU.is_new_user==='true'){
-      const assessmentSessions=(userTrainingPlan.sessions||[]).filter(ss=>ss.name?.toLowerCase().includes('assessment'));
-      const allAssessmentIndices=assessmentSessions.map((_,i)=>String(i));
+    if(isAssessmentSession){
+      // Real positions of the assessment sessions in this plan. Compared as strings
+      // throughout, since the sheet returns a stored "0" back as the number 0.
+      const allAssessmentIndices=(userTrainingPlan.sessions||[]).map((ss,i)=>ss.name?.toLowerCase().includes('assessment')?String(i):null).filter(x=>x!==null);
       const logsData=await dbGet('workout_logs');
-      const myLogs=(logsData.values||[]).filter(r=>r[1]===CU.user_id);
+      const myLogs=(logsData.values||[]).filter(r=>r[1]===CU.user_id&&r[4]===userTrainingPlan.plan_id);
       // Only count a log as an assessment completion if the session at that index is actually an assessment session
       const loggedAssessmentIndices=myLogs
         .filter(r=>{
@@ -5242,13 +5278,13 @@ async function logWorkout(sidx){
           const sess=userTrainingPlan.sessions[sessIdx];
           return sess&&sess.name?.toLowerCase().includes('assessment');
         })
-        .map(r=>r[5]);
+        .map(r=>String(r[5]));
       const allDone=allAssessmentIndices.every(idx=>loggedAssessmentIndices.includes(idx));
       if(allDone){
         // Extract Set 5 (index 4) weights from all assessment session logs
         const knownNums=[];
         for(const log of myLogs){
-          const sessIdx=log[5];
+          const sessIdx=String(log[5]);
           if(!allAssessmentIndices.includes(sessIdx))continue;
           try{
             const exData=JSON.parse(log[6]||'[]');
@@ -5663,7 +5699,7 @@ function renderSupps(){
   supps.push({name:'Creatine Monohydrate',reason:'Increases phosphocreatine stores, improving strength output and power. One of the most extensively researched performance supplements available.',when:'5g daily. Timing relative to your session does not significantly affect results - consistency matters far more than timing. Take it at the same time each day to build the habit. Post-workout with your protein is a convenient default.',note:lowMeat?'Your diet is lower in red meat which is the main dietary source of creatine. Supplementing is particularly valuable for you - full saturation unlikely from food alone.':'Most people get some from red meat. Supplementing ensures full saturation regardless of diet.'});
 
   // Whey protein - check if they dislike dairy before recommending
-  const dairyFree=dislikes.includes('dairy')||CU.allergies?.includes('dairy');
+  const dairyFree=dislikes.includes('dairy')||(CU.allergies||[]).some(a=>String(a).toLowerCase().includes('dairy'));
   if(goal==='cut'||goal==='maintain'){
     if(dairyFree){
       supps.push({name:'Plant-Based Protein Powder',reason:'Convenient protein source to reliably hit daily targets. Pea and rice blends match whey in muscle-building research when leucine content is sufficient.',when:'20-40g within 2 hours post-workout for maximum muscle protein synthesis benefit. Also effective any time of day as a top-up when meals are falling short of your protein target. Do not rely on it as a meal replacement.',note:'You have a dairy preference or allergy noted - plant-based blends (pea + rice) are the best alternative.'});
@@ -5959,6 +5995,7 @@ function renderProfile(){
       </div>
       <div class="frow"><label class="flbl">Injuries (update if changed)</label><textarea class="ftarea" id="prof-injuries" style="min-height:60px">${CU.injuries||''}</textarea></div>
       <div class="frow"><label class="flbl">Exercises to Avoid</label><textarea class="ftarea" id="prof-avoid" style="min-height:60px">${CU.avoided_exercises||''}</textarea></div>
+      <div class="frow"><label class="flbl">Health Conditions and the Swaps You Use</label><textarea class="ftarea" id="prof-health" style="min-height:60px" placeholder="e.g. Type 2 diabetes - no added sugar, I use sweetener and wholegrain rice">${escapeHtml(CU.health_conditions||'')}</textarea><div class="alert alert-warn" style="margin-top:8px;margin-bottom:0;font-size:12px">Be honest and specific here. Your plan is built around what you tell us - if a condition is left out, we cannot leave out the foods or exercises that conflict with it, and the plan will not be right for you. This is not medical advice - check with your GP if you are unsure. Changes apply on your next plan generation.</div></div>
       <button class="btn btn-ghost btn-sm" onclick="saveStats()">Save Stats</button>
     </div>
 
@@ -6234,17 +6271,20 @@ async function saveStats(){
   const days=document.getElementById('prof-days')?.value;
   const injuries=document.getElementById('prof-injuries')?.value;
   const avoid=document.getElementById('prof-avoid')?.value;
+  const health=document.getElementById('prof-health')?.value;
   showLoad('Saving','Updating your stats...');
   const waterTarget=Math.min(Math.max(Math.round((parseFloat(weight)||parseFloat(CU.weight_kg)||75)*30),1500),2500);
   const patch={24:waterTarget};
   if(weight)patch[5]=weight;if(height)patch[6]=height;if(age)patch[3]=age;
   if(days)patch[9]=days;if(injuries!==undefined)patch[18]=injuries;if(avoid!==undefined)patch[19]=avoid;
+  if(health!==undefined)patch[17]=health.trim();
   try{
     const patched=await patchUserRow(CU.user_id,patch,CU);
     if(patched){
       CU.weight_kg=weight||CU.weight_kg;CU.height_cm=height||CU.height_cm;
       CU.age=age||CU.age;CU.training_days=days||CU.training_days;
       CU.injuries=injuries;CU.avoided_exercises=avoid;CU.water_target_ml=waterTarget;
+      if(health!==undefined)CU.health_conditions=health.trim();
     }
     hideLoad();celebrateMsg('statsUpdated','✅','Stats Updated!');
   }catch(e){hideLoad();alert('Error: '+e.message);}

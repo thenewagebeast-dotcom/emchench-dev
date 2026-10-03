@@ -1,6 +1,6 @@
 // E=MC-HENCH Service Worker
 // Cache version - increment this when you deploy a new version of index.html
-const CACHE_VERSION = 'hench-v1';
+const CACHE_VERSION = 'hench-v2';
 
 // Files to cache for offline use
 const APP_SHELL = [
