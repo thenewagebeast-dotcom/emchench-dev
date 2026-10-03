@@ -1272,7 +1272,136 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 // ============================================================
 // CONFIG
 // ============================================================
-const API_URL='https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec';
+// The live database is used ONLY when the page is served from the live site
+// address. Everywhere else (the dev site, a local preview) uses the dev copy of
+// the sheet, so testing can never touch live data. If the live site ever moves
+// to a custom domain, IS_LIVE must be updated to match it first.
+const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
+const IS_DEV=!IS_LIVE;
+const API_URL=IS_LIVE
+  ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
+  :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
+
+// ============================================================
+// DEV TOOLS - only runs when IS_DEV. Does nothing on the live site.
+// Shows a DEV badge and an AI mode switch:
+//   Real   - AI calls go to Anthropic as normal (costs as normal)
+//   Record - AI calls go to Anthropic and each response is saved in this browser
+//   Replay - no call is made, the saved response for that call type is returned
+// It works by wrapping fetch for api.anthropic.com only, so none of the AI call
+// sites, their timeouts or the dash strip are changed.
+// ============================================================
+if(IS_DEV){(function(){
+  const MODE_KEY='dev_ai_mode',REC_PREFIX='dev_ai_rec_',TOTAL_KEY='dev_ai_totals';
+  // Price per million tokens for claude-sonnet-5, used for the running estimate only
+  const PRICE_IN=2,PRICE_OUT=10;
+  const store={
+    get(k){try{return localStorage.getItem(k);}catch(e){return null;}},
+    set(k,v){try{localStorage.setItem(k,v);return true;}catch(e){console.warn('Dev store write failed:',e);return false;}},
+    del(k){try{localStorage.removeItem(k);}catch(e){}},
+    keys(){try{return Object.keys(localStorage);}catch(e){return [];}}
+  };
+  let mode=store.get(MODE_KEY)||'real';
+  let totals=null;
+  try{totals=JSON.parse(store.get(TOTAL_KEY)||'null');}catch(e){}
+  if(!totals)totals={inTok:0,outTok:0,calls:0};
+
+  // Works out which kind of AI call this is from the start of its prompt
+  function callType(body){
+    let text='';
+    try{
+      const c=body.messages?.[0]?.content;
+      text=typeof c==='string'?c:(c||[]).filter(b=>b.type==='text').map(b=>b.text).join(' ');
+    }catch(e){}
+    if(text.startsWith('Generate full recipes for ONLY')){
+      const end=text.indexOf('\nUSER:');
+      const head=text.slice(0,end>0?end:400);
+      return /\n(dinners|evening_snacks|protein_desserts|low_calorie_meals|bulking_meals):/.test(head)?'recipes_extras':'recipes_core';
+    }
+    const types=[
+      ['meal_names','Generate 10 meal name options per core category'],
+      ['extra_names','Generate 10 extra meal name options'],
+      ['rotation','-week meal rotation using ONLY'],
+      ['training','Generate 1-month training plan'],
+      ['pattern_analysis','reviewing 3 weeks of data'],
+      ['meal_swap_names','The user wants to swap'],
+      ['meal_swap_recipe','Generate a full recipe for'],
+      ['exercise_swap','The user cannot do'],
+      ['progress_report','Write a progress report'],
+      ['howto_guide','Write a personalised how-to guide'],
+      ['event_guide','has planned a social event']
+    ];
+    for(const [k,s] of types)if(text.includes(s))return k;
+    return 'other';
+  }
+
+  function recordedTypes(){return store.keys().filter(k=>k.startsWith(REC_PREFIX)).map(k=>k.slice(REC_PREFIX.length)).sort();}
+
+  function renderPanel(){
+    const t=document.getElementById('dev-ai-totals');
+    const r=document.getElementById('dev-ai-recs');
+    if(t){
+      const cost=(totals.inTok*PRICE_IN+totals.outTok*PRICE_OUT)/1000000;
+      t.textContent=totals.calls+' real calls, '+Math.round(totals.inTok)+' in / '+totals.outTok+' out, approx $'+cost.toFixed(3);
+    }
+    if(r){
+      const recs=recordedTypes();
+      r.textContent='Recorded: '+(recs.length?recs.join(', '):'nothing yet');
+    }
+  }
+
+  const realFetch=window.fetch.bind(window);
+  window.fetch=async function(input,init){
+    const url=typeof input==='string'?input:(input&&input.url)||'';
+    if(!url.startsWith('https://api.anthropic.com/'))return realFetch(input,init);
+    let body={};
+    try{body=JSON.parse(init?.body||'{}');}catch(e){}
+    const type=callType(body);
+    if(mode==='replay'){
+      const rec=store.get(REC_PREFIX+type);
+      console.log('DEV AI replay:',type,rec?'- returning recording':'- nothing recorded');
+      await new Promise(r=>setTimeout(r,400));
+      const payload=rec||JSON.stringify({type:'error',error:{type:'dev_replay',message:'DEV REPLAY: nothing recorded for "'+type+'". Switch the AI mode to Record and run this once.'}});
+      return new Response(payload,{status:rec?200:400,headers:{'Content-Type':'application/json'}});
+    }
+    const res=await realFetch(input,init);
+    try{
+      const text=await res.clone().text();
+      const data=JSON.parse(text);
+      if(data.usage){
+        // Cache writes bill at 1.25x input, cache reads at 0.1x
+        totals.inTok+=(data.usage.input_tokens||0)+(data.usage.cache_creation_input_tokens||0)*1.25+(data.usage.cache_read_input_tokens||0)*0.1;
+        totals.outTok+=data.usage.output_tokens||0;
+        totals.calls++;
+        store.set(TOTAL_KEY,JSON.stringify(totals));
+      }
+      if(mode==='record'&&res.ok&&!data.error){
+        const saved=store.set(REC_PREFIX+type,text);
+        console.log('DEV AI record:',type,saved?'- saved':'- COULD NOT SAVE (browser storage full or blocked)');
+      }
+      renderPanel();
+    }catch(e){console.warn('Dev AI capture:',e);}
+    return res;
+  };
+
+  const panel=document.createElement('div');
+  panel.id='dev-panel';
+  panel.style.cssText='position:fixed;left:8px;bottom:8px;z-index:9000;background:#1a0f00;border:1px solid #ffaa00;border-radius:8px;padding:6px 8px;font:11px/1.4 monospace;color:#ffaa00;max-width:230px';
+  panel.innerHTML='<div style="font-weight:700;margin-bottom:4px">DEV - test database</div>'
+    +'<label>AI: <select id="dev-ai-mode" style="background:#000;color:#ffaa00;border:1px solid #ffaa00;border-radius:4px;font:11px monospace;padding:2px">'
+    +'<option value="real">Real (costs)</option><option value="record">Record (costs, saves)</option><option value="replay">Replay (free)</option></select></label>'
+    +'<div id="dev-ai-totals" style="margin-top:4px;color:#cc8800"></div>'
+    +'<div id="dev-ai-recs" style="margin-top:2px;color:#cc8800"></div>'
+    +'<div style="margin-top:4px"><button id="dev-ai-reset" style="background:none;border:1px solid #664400;color:#cc8800;border-radius:4px;font:10px monospace;cursor:pointer;padding:1px 5px">reset totals</button> '
+    +'<button id="dev-ai-clear" style="background:none;border:1px solid #664400;color:#cc8800;border-radius:4px;font:10px monospace;cursor:pointer;padding:1px 5px">clear recordings</button></div>';
+  document.body.appendChild(panel);
+  const sel=document.getElementById('dev-ai-mode');
+  sel.value=mode;
+  sel.addEventListener('change',()=>{mode=sel.value;store.set(MODE_KEY,mode);});
+  document.getElementById('dev-ai-reset').addEventListener('click',()=>{totals={inTok:0,outTok:0,calls:0};store.set(TOTAL_KEY,JSON.stringify(totals));renderPanel();});
+  document.getElementById('dev-ai-clear').addEventListener('click',()=>{if(!confirm('Delete all recorded AI responses in this browser?'))return;recordedTypes().forEach(t=>store.del(REC_PREFIX+t));renderPanel();});
+  renderPanel();
+})();}
 
 // ============================================================
 // STATE
