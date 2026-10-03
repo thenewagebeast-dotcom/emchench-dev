@@ -1282,6 +1282,16 @@ const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
 
+// AI models. Sonnet runs everything except the training plan, which runs on
+// Opus because that is where injury rules matter most. Both models think before
+// answering and that thinking counts toward max_tokens, so every call sets an
+// explicit effort level and the small calls have generous max_tokens caps.
+const AI_MODEL='claude-sonnet-5-5';
+const AI_MODEL_TRAINING='claude-opus-5-5';
+// Beta header that lets the API retry a wrongly declined request on another
+// model automatically (sent with fallbacks:'default' in every request body)
+const AI_BETA='server-side-fallback-2026-07-01';
+
 // ============================================================
 // DEV TOOLS - only runs when IS_DEV. Does nothing on the live site.
 // Shows a DEV badge and an AI mode switch:
@@ -1293,8 +1303,8 @@ const API_URL=IS_LIVE
 // ============================================================
 if(IS_DEV){(function(){
   const MODE_KEY='dev_ai_mode',REC_PREFIX='dev_ai_rec_',TOTAL_KEY='dev_ai_totals';
-  // Price per million tokens for claude-sonnet-5, used for the running estimate only
-  const PRICE_IN=2,PRICE_OUT=10;
+  // Price per million tokens [input, output], used for the running estimate only
+  const priceFor=m=>String(m||'').startsWith('claude-opus')?[4,20]:[2,10];
   const store={
     get(k){try{return localStorage.getItem(k);}catch(e){return null;}},
     set(k,v){try{localStorage.setItem(k,v);return true;}catch(e){console.warn('Dev store write failed:',e);return false;}},
@@ -1304,7 +1314,8 @@ if(IS_DEV){(function(){
   let mode=store.get(MODE_KEY)||'real';
   let totals=null;
   try{totals=JSON.parse(store.get(TOTAL_KEY)||'null');}catch(e){}
-  if(!totals)totals={inTok:0,outTok:0,calls:0};
+  if(!totals)totals={inTok:0,outTok:0,calls:0,cost:0};
+  if(typeof totals.cost!=='number')totals.cost=0;
 
   // Works out which kind of AI call this is from the start of its prompt
   function callType(body){
@@ -1341,8 +1352,7 @@ if(IS_DEV){(function(){
     const t=document.getElementById('dev-ai-totals');
     const r=document.getElementById('dev-ai-recs');
     if(t){
-      const cost=(totals.inTok*PRICE_IN+totals.outTok*PRICE_OUT)/1000000;
-      t.textContent=totals.calls+' real calls, '+Math.round(totals.inTok)+' in / '+totals.outTok+' out, approx $'+cost.toFixed(3);
+      t.textContent=totals.calls+' real calls, '+Math.round(totals.inTok)+' in / '+totals.outTok+' out, approx $'+totals.cost.toFixed(3);
     }
     if(r){
       const recs=recordedTypes();
@@ -1370,8 +1380,12 @@ if(IS_DEV){(function(){
       const data=JSON.parse(text);
       if(data.usage){
         // Cache writes bill at 1.25x input, cache reads at 0.1x
-        totals.inTok+=(data.usage.input_tokens||0)+(data.usage.cache_creation_input_tokens||0)*1.25+(data.usage.cache_read_input_tokens||0)*0.1;
-        totals.outTok+=data.usage.output_tokens||0;
+        const inTok=(data.usage.input_tokens||0)+(data.usage.cache_creation_input_tokens||0)*1.25+(data.usage.cache_read_input_tokens||0)*0.1;
+        const outTok=data.usage.output_tokens||0;
+        const [pIn,pOut]=priceFor(data.model||body.model);
+        totals.inTok+=inTok;totals.outTok+=outTok;
+        totals.cost+=(inTok*pIn+outTok*pOut)/1000000;
+        console.log('DEV AI call:',type,'| model:',data.model||body.model,'| in:',Math.round(inTok),'out:',outTok,'| stop:',data.stop_reason);
         totals.calls++;
         store.set(TOTAL_KEY,JSON.stringify(totals));
       }
@@ -1398,7 +1412,7 @@ if(IS_DEV){(function(){
   const sel=document.getElementById('dev-ai-mode');
   sel.value=mode;
   sel.addEventListener('change',()=>{mode=sel.value;store.set(MODE_KEY,mode);});
-  document.getElementById('dev-ai-reset').addEventListener('click',()=>{totals={inTok:0,outTok:0,calls:0};store.set(TOTAL_KEY,JSON.stringify(totals));renderPanel();});
+  document.getElementById('dev-ai-reset').addEventListener('click',()=>{totals={inTok:0,outTok:0,calls:0,cost:0};store.set(TOTAL_KEY,JSON.stringify(totals));renderPanel();});
   document.getElementById('dev-ai-clear').addEventListener('click',()=>{if(!confirm('Delete all recorded AI responses in this browser?'))return;recordedTypes().forEach(t=>store.del(REC_PREFIX+t));renderPanel();});
   renderPanel();
 })();}
@@ -1512,6 +1526,9 @@ function escapeUrl(str){
 // isn't guaranteed to be in the first one - never assume content[0] has it.
 // Concatenate every text-type block instead of blindly reading content[0].text.
 function extractAiText(data){
+  // Both models can decline a request instead of answering (HTTP 200 with
+  // stop_reason 'refusal'). Surface that clearly rather than as a parse error.
+  if(data?.stop_reason==='refusal')throw new Error('The AI declined this request'+(data.stop_details?.category?' (category: '+data.stop_details.category+')':'')+'. Nothing was generated. Please try again - if it keeps happening, check the free-text answers in your profile.');
   if(!data?.content||!Array.isArray(data.content))return '';
   return data.content.filter(b=>b.type==='text').map(b=>b.text||'').join('');
 }
@@ -3278,7 +3295,7 @@ async function generatePlan(){
     // CALL 6 - TRAINING PLAN
     showLoad('Building Training Plan (6 of 6)','Designing your sessions...');
     startLoadFun(76,94,35000);
-    trainingPlan=await callAI(apiKey, buildTrainingPrompt(useAssessment, monthNumber, isMonth2OrLater, rapportContext), getTrainingSysPrompt(), 64000);
+    trainingPlan=await callAI(apiKey, buildTrainingPrompt(useAssessment, monthNumber, isMonth2OrLater, rapportContext), getTrainingSysPrompt(), 64000, AI_MODEL_TRAINING);
 
     const mpId='mp_'+Date.now();
     const tpId='tp_'+Date.now();
@@ -3633,8 +3650,8 @@ Return ONLY valid JSON in this exact format:
     const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-5',max_tokens:1200,messages:[{role:'user',content:prompt}]})
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
+      body:JSON.stringify({model:AI_MODEL,max_tokens:4000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:prompt}]})
     });
     clearTimeout(timeout);
     const data=await res.json();
@@ -4336,8 +4353,8 @@ Reply ONLY with valid JSON: {"alternatives":[{"name":"","calories":0,"protein":0
     const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-5',max_tokens:450,messages:[{role:'user',content:prompt}]})
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
+      body:JSON.stringify({model:AI_MODEL,max_tokens:2000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:prompt}]})
     });
     clearTimeout(timeout);
     const data=await res.json();
@@ -4402,8 +4419,8 @@ Reply ONLY with valid JSON: {"name":"","calories":0,"protein":0,"carbs":0,"fats"
     const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-5',max_tokens:1200,messages:[{role:'user',content:prompt}]})
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
+      body:JSON.stringify({model:AI_MODEL,max_tokens:4000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:prompt}]})
     });
     clearTimeout(timeout);
     const data=await res.json();
@@ -5196,8 +5213,8 @@ async function getSwap(){
     const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-5',max_tokens:600,messages:[{role:'user',content:messageContent}]})
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
+      body:JSON.stringify({model:AI_MODEL,max_tokens:2000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:messageContent}]})
     });
     clearTimeout(timeout);
     const data=await res.json();
@@ -5692,8 +5709,8 @@ async function genProgressReport(){
     const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-5',max_tokens:1800,messages:[{role:'user',content:`You are E=MC-HENCH. Write a progress report for ${CU.username} in ${style} motivational style.
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
+      body:JSON.stringify({model:AI_MODEL,max_tokens:5000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:`You are E=MC-HENCH. Write a progress report for ${CU.username} in ${style} motivational style.
 Stats: ${userPoints.sessions_logged} sessions, ${userPoints.current_streak} day streak, ${userPoints.pbs_logged} PBs, ${userPoints.season_points} season pts.
 Goal: ${CU.goal}, Experience: ${CU.experience}, Weight: ${CU.weight_kg}kg.
 ${recompSummary?recompSummary+' If this shows body recomposition (e.g. waist down while other measurements hold or rise) even though bodyweight has barely moved, explicitly call this out as real progress the scale alone would not show.':''}
@@ -5742,8 +5759,8 @@ async function genHowToGuide(){
     const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':CU.api_key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-5',max_tokens:1800,messages:[{role:'user',content:`You are E=MC-HENCH. Write a personalised how-to guide for ${CU.username} in ${style} motivational style.
+      headers:{'Content-Type':'application/json','x-api-key':CU.api_key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
+      body:JSON.stringify({model:AI_MODEL,max_tokens:5000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:`You are E=MC-HENCH. Write a personalised how-to guide for ${CU.username} in ${style} motivational style.
 Goal: ${CU.goal}, experience: ${CU.experience}, training ${CU.training_days} days/week.
 
 CRITICAL FORMAT RULES - follow exactly:
@@ -7134,15 +7151,15 @@ function stopLoadFun(){
   document.getElementById('load-bar-fill').style.width='0%';
 }
 
-async function callAI(apiKey, prompt, systemPrompt, maxTokens=30000){
+async function callAI(apiKey, prompt, systemPrompt, maxTokens=30000, model=AI_MODEL){
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),420000);
   try{
     const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-5',max_tokens:maxTokens,system:[{type:'text',text:systemPrompt,cache_control:{type:'ephemeral'}}],messages:[{role:'user',content:prompt}]})
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
+      body:JSON.stringify({model,max_tokens:maxTokens,fallbacks:'default',output_config:{effort:model===AI_MODEL_TRAINING?'medium':'low'},system:[{type:'text',text:systemPrompt,cache_control:{type:'ephemeral'}}],messages:[{role:'user',content:prompt}]})
     });
     clearTimeout(timeout);
     const data=await res.json();
@@ -7262,8 +7279,8 @@ Reply ONLY with valid JSON: {"guide":"...","day_total":${ev.currentCals+ev.total
     const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-5',max_tokens:600,messages:[{role:'user',content:prompt}]})
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
+      body:JSON.stringify({model:AI_MODEL,max_tokens:2000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:prompt}]})
     });
     clearTimeout(timeout);
     const data=await res.json();
