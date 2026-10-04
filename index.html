@@ -1261,10 +1261,10 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 
 <div class="modal-bg" id="meal-picker-modal" style="pointer-events:none">
   <div class="modal" style="max-width:520px;max-height:85vh;overflow-y:auto;pointer-events:all">
-    <div class="modal-title">Pick Your Favourite Meals</div>
-    <div style="font-size:13px;color:var(--tx2);margin-bottom:16px">Tick the meals you want to include. You must keep at least one per section - leave a section untouched and we'll include all of its options. Meals are shown with calorie and macro info to help you choose.</div>
+    <div class="modal-title">Your Meal Options</div>
+    <div style="font-size:13px;color:var(--tx2);margin-bottom:16px">We've built these around your answers. Tick anything you can't resist and we'll choose the rest for you. Too many choices, can't decide? Don't worry - you don't have to pick anything.</div>
     <div id="meal-picker-content"></div>
-    <button class="btn" style="width:100%;margin-top:16px" onclick="confirmMealPicks()">Build My Plan with These Meals →</button>
+    <div style="display:flex;gap:10px;margin-top:16px"><button class="btn btn-ghost" style="flex:1" onclick="confirmMealPicks(true)">Choose for me</button><button class="btn" style="flex:2" onclick="confirmMealPicks()">Build My Plan →</button></div>
   </div>
 </div>
 
@@ -2368,6 +2368,7 @@ function signOut(){
   sessionCount=0;
   weighInRatings={energy:0,hunger:0,training:0};
   _mealPickerResolve=null;
+  _mealPickerOptions=null;
   isGenerating=false;
   pendingEventBank=null;
   syncPartner=null;
@@ -3014,6 +3015,9 @@ async function confirmCalAdj(){
 // MEAL PICKER
 // ============================================================
 let _mealPickerResolve=null;
+let _mealPickerOptions=null;
+// Most recipes one plan may contain - keeps meals_json inside the 50,000 character sheet cell limit
+const MAX_PLAN_RECIPES=36;
 let isGenerating=false;
 let swapEquipmentPhoto=null;
 function handleSwapPhoto(input){
@@ -3051,9 +3055,56 @@ function clearSwapPhoto(){
   if(input)input.value='';
 }
 
+// How many meals each section of a plan should contain. A batch-cooked slot only
+// needs one option per week, so it gets 4; a slot cooked fresh gets more variety.
+function getPickTargets(){
+  const bc=(CU.batch_cooking||'').toLowerCase();
+  const ct=CU.cook_time||'';
+  const everything=bc.includes('batch cook everything');
+  const isBatch=(detail,slot)=>everything||bc.includes(detail)||new RegExp(slot+':\\s*Batch','i').test(ct);
+  const snacksBatch=isBatch('batch snacks','Snacks');
+  return{
+    breakfasts:4,
+    snacks:snacksBatch?4:5,
+    lunches:isBatch('batch lunches','Lunch')?4:5,
+    dinners:isBatch('batch dinners','Dinner')?4:7,
+    evening_snacks:snacksBatch?4:5,
+    protein_desserts:2,
+    // Goal-specific extras are not used in the weekly rotation, so only what the user ticks is included
+    low_calorie_meals:0,bulking_meals:0
+  };
+}
+
+// The options actually offered for a section - shared by the picker render and
+// the confirm step so tick indexes always refer to the same list.
+function pickerOptions(cat){
+  return(_mealPickerOptions?.[cat]||[]).filter(m=>m&&m.name);
+}
+
+// Builds the final list for one section: everything the user ticked, then topped
+// up to the target with the options whose cuisine and main protein are least
+// represented so far (ties keep the AI's own order). Disliked meals are never
+// added automatically.
+function topUpWithVariety(options,tickedIdx,target){
+  const chosen=tickedIdx.map(i=>options[i]).filter(Boolean);
+  const rest=options.filter((o,i)=>!tickedIdx.includes(i)&&!dislikedMeals.some(d=>d.name===o.name));
+  const seen=(key,val)=>chosen.filter(c=>String(c[key]||'').toLowerCase()===val).length;
+  while(chosen.length<target&&rest.length){
+    let best=0,bestScore=Infinity;
+    rest.forEach((o,i)=>{
+      const score=seen('cuisine',String(o.cuisine||'').toLowerCase())*2+seen('main_protein',String(o.main_protein||'').toLowerCase());
+      if(score<bestScore){bestScore=score;best=i;}
+    });
+    chosen.push(rest.splice(best,1)[0]);
+  }
+  return chosen.map(m=>({name:m.name}));
+}
+
 function showMealPicker(meals){
   return new Promise(resolve=>{
     _mealPickerResolve=resolve;
+    _mealPickerOptions=meals;
+    const targets=getPickTargets();
     const cats=[
       {k:'breakfasts',l:'Breakfasts',icon:'🌅'},
       {k:'snacks',l:'Mid-Day Snacks',icon:'🍎'},
@@ -3066,20 +3117,21 @@ function showMealPicker(meals){
     ];
     let html='';
     for(const cat of cats){
-      const items=meals[cat.k]||[];
+      const items=pickerOptions(cat.k);
       if(!items.length)continue;
+      const willInclude=Math.min(targets[cat.k]||0,items.length);
       html+=`<div style="margin-bottom:16px">
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;color:var(--ac);margin-bottom:8px">${cat.icon} ${cat.l}</div>`;
-      for(const m of items){
-        const id=`pick-${cat.k}-${m.name.replace(/\s+/g,'_')}`;
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;color:var(--ac)">${cat.icon} ${cat.l}</div>
+        <div style="font-size:11px;color:var(--tx3);margin-bottom:8px">${willInclude?`We'll include ${willInclude} - anything you tick goes in first`:'Optional extras - only what you tick is included'}</div>`;
+      items.forEach((m,i)=>{
         html+=`<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;margin-bottom:6px;cursor:pointer">
-          <input type="checkbox" id="${id}" data-cat="${cat.k}" data-name="${m.name}" style="width:18px;height:18px;accent-color:var(--ac)">
+          <input type="checkbox" data-cat="${cat.k}" data-idx="${i}" style="width:18px;height:18px;accent-color:var(--ac);flex-shrink:0">
           <div>
-            <div style="font-size:14px;font-weight:600">${m.name}</div>
-            <div style="font-size:12px;color:var(--tx2)">${m.calories}kcal - P:${m.protein}g C:${m.carbs}g F:${m.fats}g - ${m.difficulty||'easy'}</div>
+            <div style="font-size:14px;font-weight:600">${escapeHtml(m.name)}</div>
+            <div style="font-size:12px;color:var(--tx2)">${m.cuisine?escapeHtml(m.cuisine)+' - ':''}${parseInt(m.calories)||0}kcal - P:${parseInt(m.protein)||0}g C:${parseInt(m.carbs)||0}g F:${parseInt(m.fats)||0}g - ${escapeHtml(m.difficulty||'easy')}</div>
           </div>
         </label>`;
-      }
+      });
       html+='</div>';
     }
     document.getElementById('meal-picker-content').innerHTML=html;
@@ -3087,25 +3139,31 @@ function showMealPicker(meals){
   });
 }
 
-function confirmMealPicks(){
-  const picked={breakfasts:[],snacks:[],lunches:[],dinners:[],evening_snacks:[],protein_desserts:[],low_calorie_meals:[],bulking_meals:[]};
-  document.querySelectorAll('#meal-picker-content input[type=checkbox]:checked').forEach(cb=>{
-    const cat=cb.dataset.cat;
-    const name=cb.dataset.name;
-    if(picked[cat]!==undefined)picked[cat].push({name});
-  });
-  // Ensure at least 1 per core category - if all unticked, use all
-  ['breakfasts','snacks','lunches','dinners'].forEach(k=>{
-    if(!picked[k].length){
-      document.querySelectorAll(`#meal-picker-content input[data-cat="${k}"]`).forEach(cb=>picked[k].push({name:cb.dataset.name}));
-    }
-  });
-  // Ensure at least 1 evening option if any were shown
-  if(!picked.evening_snacks.length){
-    document.querySelectorAll('#meal-picker-content input[data-cat="evening_snacks"]').forEach(cb=>picked.evening_snacks.push({name:cb.dataset.name}));
+// chooseForMe=true ignores any ticks and lets the app pick every section.
+function confirmMealPicks(chooseForMe=false){
+  const targets=getPickTargets();
+  const picked={};
+  for(const cat of Object.keys(targets)){
+    const options=pickerOptions(cat);
+    const ticked=chooseForMe?[]:Array.from(document.querySelectorAll(`#meal-picker-content input[data-cat="${cat}"]:checked`)).map(cb=>parseInt(cb.dataset.idx));
+    picked[cat]=options.length?topUpWithVariety(options,ticked,targets[cat]):[];
+  }
+  // A plan is saved into one spreadsheet cell, which holds about 39 recipes.
+  // Stop here rather than fail at the save step after a full generation.
+  const total=Object.values(picked).reduce((n,list)=>n+list.length,0);
+  if(total>MAX_PLAN_RECIPES){
+    alert(`That is ${total} meals - a plan can hold ${MAX_PLAN_RECIPES} at most. Please untick ${total-MAX_PLAN_RECIPES} or more, then try again.`);
+    return;
   }
   closeModal('meal-picker-modal');
+  _mealPickerOptions=null;
   if(_mealPickerResolve){_mealPickerResolve(picked);_mealPickerResolve=null;}
+}
+
+// One line for the meal name prompts listing meals this user has disliked
+function getDislikedMealsLine(){
+  const names=[...new Set(dislikedMeals.map(d=>d.name).filter(Boolean))];
+  return names.length?`\nDISLIKED MEALS - the user has rejected these, NEVER suggest them or a close variation of them: ${names.join(', ')}.`:'';
 }
 
 // ============================================================
@@ -3856,13 +3914,14 @@ SLOT RULES:
 - Mid-day snacks (${mt.midSnacks} slot${mt.midSnacks!==1?'s':''}): quick, portable, minimal prep. Examples: mixed nuts, protein bar, Greek yogurt, cottage cheese with rice cakes, tuna and crackers, hard boiled eggs, quick wrap, sandwich, lettuce wrap. NO cooked meals. Match snack style: ${snackStyle}.
 - Evening/Dessert slot: protein-rich dessert or light evening snack. Examples: chocolate protein mousse, Greek yogurt bark, protein rice pudding, cottage cheese with fruit, protein shake with banana. Sweet preferred, under ${mt.evening.calories+20}kcal.
 
-${changeInstruction}
+${changeInstruction}${getDislikedMealsLine()}
 
 Return ONLY this JSON:
 \`\`\`json
-{"daily_targets":{"calories":${mt.daily.calories},"protein":${mt.daily.protein},"carbs":${mt.daily.carbs},"fats":${mt.daily.fats},"water_ml":${mt.daily.water_ml}},"meals":{"breakfasts":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false}],"snacks":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false}],"lunches":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false}],"dinners":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false}],"evening_snacks":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false}]}}
+{"daily_targets":{"calories":${mt.daily.calories},"protein":${mt.daily.protein},"carbs":${mt.daily.carbs},"fats":${mt.daily.fats},"water_ml":${mt.daily.water_ml}},"meals":{"breakfasts":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":""}],"snacks":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":""}],"lunches":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":""}],"dinners":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":""}],"evening_snacks":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":""}]}}
 \`\`\`
-Exactly 10 per category including evening_snacks. Macros per meal must match per-meal targets above. Varied, creative, matched to user preferences. Names only - no ingredients, no method.`;}
+Exactly 10 per category including evening_snacks. Macros per meal must match per-meal targets above. Varied, creative, matched to user preferences. Names only - no ingredients, no method.
+VARIETY - required: within each category spread the 10 options evenly across the user's chosen cuisines, use at least 4 different main proteins, and never offer two options that are basically the same dish. Fill in cuisine (one of the user's cuisines) and main_protein (the single main protein source) for every option.`;}
 
 function buildExtraNamesPrompt(){
   const u=CU;
@@ -3870,7 +3929,7 @@ function buildExtraNamesPrompt(){
   const goal=u.goal||'maintain';
   const wantsBulking=goal==='bulk'||goal==='strength';
   const wantsLowCal=goal==='cut'||goal==='endurance';
-  const ns=`{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false}`;
+  const ns=`{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":""}`;
   return`Generate 10 extra meal name options per category. Names, macros, difficulty and prep time ONLY - no recipes.
 
 USER: ${u.username}, goal:${goal}, dietary:${u.dietary_type}, allergies:${u.allergies?.join(',')||'none'}
@@ -3888,7 +3947,8 @@ Return ONLY this JSON:
 \`\`\`json
 {"protein_desserts":[${ns}]${wantsLowCal?`,"low_calorie_meals":[${ns}]`:''}${wantsBulking?`,"bulking_meals":[${ns}]`:''}}
 \`\`\`
-Exactly 10 per category. Macros must match targets above. Names only - no ingredients, no method.`;}
+Exactly 10 per category. Macros must match targets above. Names only - no ingredients, no method.
+VARIETY - required: within each category spread the 10 options evenly across the user's chosen cuisines, use at least 4 different main proteins, and never offer two options that are basically the same dish. Fill in cuisine (one of the user's cuisines) and main_protein (the single main protein source) for every option.${getDislikedMealsLine()}`;}
 
 function buildChosenRecipesPrompt(chosenMeals, batch){
   const u=CU;
@@ -4001,6 +4061,7 @@ RULES:
 - ${hasSnack2?`snack2 must be filled every day.`:'No snack2 slot.'}
 - Evening slot: use ONLY names from the Evening/Dessert list above.
 - Do NOT repeat the same meal two days in a row UNLESS batch cooking rules require it.
+- VARIETY: unless batch cooking rules require repeats, do not repeat a dinner within the same week when there are enough dinners listed to avoid it, do not use any other meal more than twice in one week, and across the full rotation use every listed meal at least once.
 - Use ONLY exact meal names provided. Do not invent new names.
 
 Return ONLY this JSON:
