@@ -1278,6 +1278,8 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 // to a custom domain, IS_LIVE must be updated to match it first.
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
+// Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
+const APP_BUILD='04 Oct 19:03';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -1401,7 +1403,7 @@ if(IS_DEV){(function(){
   const panel=document.createElement('div');
   panel.id='dev-panel';
   panel.style.cssText='position:fixed;left:8px;bottom:8px;z-index:9000;background:#1a0f00;border:1px solid #ffaa00;border-radius:8px;padding:6px 8px;font:11px/1.4 monospace;color:#ffaa00;max-width:230px';
-  panel.innerHTML='<div style="font-weight:700;margin-bottom:4px">DEV - test database</div>'
+  panel.innerHTML='<div style="font-weight:700">DEV - test database</div><div style="margin-bottom:4px;color:#cc8800">build '+APP_BUILD+'</div>'
     +'<label>AI: <select id="dev-ai-mode" style="background:#000;color:#ffaa00;border:1px solid #ffaa00;border-radius:4px;font:11px monospace;padding:2px">'
     +'<option value="real">Real (costs)</option><option value="record">Record (costs, saves)</option><option value="replay">Replay (free)</option></select></label>'
     +'<div id="dev-ai-totals" style="margin-top:4px;color:#cc8800"></div>'
@@ -6793,7 +6795,7 @@ function saveOnboardingProgress(){
     const modal=document.getElementById('new-user-modal');
     if(!modal)return;
     const fields={};
-    modal.querySelectorAll('input[id], textarea[id]').forEach(el=>{
+    modal.querySelectorAll('input[id], textarea[id], select[id]').forEach(el=>{
       if(el.id==='ob-pin'||el.id==='ob-apikey')return;
       fields[el.id]=el.value;
     });
@@ -6823,16 +6825,32 @@ function checkOnboardingProgress(){
   }catch(e){console.error('Check onboarding progress:',e);}
 }
 
+// Moves the onboarding form to a given step
+function goObStep(n){
+  obStep=n;
+  document.querySelectorAll('.ob-step').forEach(s=>s.classList.remove('active'));
+  document.getElementById('ob'+n)?.classList.add('active');
+  document.getElementById('ob-modal-title').textContent=n===0?'Before You Begin':'Create Profile';
+  document.getElementById('ob-prog').style.display=n===0?'none':'flex';
+  updateObProg();
+  document.querySelector('#new-user-modal .modal').scrollTop=0;
+}
+
 function resumeOnboarding(){
   try{
     const raw=localStorage.getItem('ob_progress');
     if(!raw)return;
     const data=JSON.parse(raw);
     openNewUser();
+    // Text boxes and dropdowns
     for(const[id,val] of Object.entries(data.fields||{})){
       const el=document.getElementById(id);
       if(el)el.value=val;
     }
+    // Pills: clear the form's default selections first, then switch on exactly
+    // what was saved - otherwise a default and a saved choice can both end up on
+    const modal=document.getElementById('new-user-modal');
+    modal.querySelectorAll('.pill.on').forEach(p=>p.classList.remove('on'));
     (data.pills||[]).forEach(key=>{
       const sep=key.indexOf('::');
       const containerId=key.slice(0,sep), text=key.slice(sep+2);
@@ -6843,13 +6861,20 @@ function resumeOnboarding(){
       });
     });
     if(data.obAvatar)obAvatar=data.obAvatar;
-    obStep=data.obStep;
-    document.querySelectorAll('.ob-step').forEach(s=>s.classList.remove('active'));
-    document.getElementById('ob'+obStep)?.classList.add('active');
-    document.getElementById('ob-modal-title').textContent=obStep===0?'Before You Begin':'Create Profile';
-    document.getElementById('ob-prog').style.display=obStep===0?'none':'flex';
-    updateObProg();
-    document.querySelector('#new-user-modal .modal').scrollTop=0;
+    // Parts of the form that only show for certain choices
+    const pillOn=(cid,match)=>Array.from(document.querySelectorAll('#'+cid+' .pill.on')).some(p=>p.textContent.includes(match));
+    document.getElementById('ob-known-numbers').style.display=pillOn('ob-baseline-type','Know')?'block':'none';
+    document.getElementById('ob-equip-other').style.display=pillOn('ob-equip','Other')?'block':'none';
+    document.getElementById('ob-cardio-other').style.display=pillOn('ob-cardio','Other')?'block':'none';
+    const batchRow=document.getElementById('ob-batch-detail-row');
+    if(batchRow)batchRow.style.display=pillOn('ob-batch','Fresh meals every day')?'none':'block';
+    updateObTrainDaysHint();
+    updateObAbDaysHint();
+    // The PIN and API key are never saved, and the PIN box is on step 1 - so
+    // resume from step 1 with everything else already filled in.
+    const pinEl=document.getElementById('ob-pin');
+    if(pinEl){pinEl.value='';pinEl.placeholder='Re-enter your PIN - it is never saved';}
+    goObStep(1);
     document.getElementById('ob-resume-banner').style.display='none';
   }catch(e){console.error('Resume onboarding:',e);}
 }
@@ -7166,6 +7191,13 @@ async function createUser(){
   const waterTarget=Math.min(Math.max(Math.round((parseFloat(weight)||75)*30),1500),2500);
   const injFull=[injuries,injDetail].filter(Boolean).join(' - ');
   const uid='user_'+Date.now();
+
+  if(!/^[1-9]\d{5}$/.test(pin)){
+    alert('Please enter your 6 digit PIN on the first step. For safety it is never saved between visits.');
+    goObStep(1);
+    document.getElementById('ob-pin')?.focus();
+    return;
+  }
 
   if(!apiKey||!apiKey.startsWith('sk-ant-')){alert('Please enter a valid Anthropic API key (starts with sk-ant-)');return;}
 
