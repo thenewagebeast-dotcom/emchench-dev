@@ -1279,7 +1279,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='04 Oct 19:03';
+const APP_BUILD='04 Oct 19:06';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -2994,6 +2994,12 @@ async function checkWeighInDay(){
   const today=dayNames[new Date().getDay()];
   const preferredDay=CU.weigh_in_day||'Sunday';
   if(today!==preferredDay)return;
+  // No check-in until there is something to check in on: the user needs a plan,
+  // and at least 6 days must have passed since they signed up (their sign-up
+  // weight is the starting point, so asking again on day one is pointless).
+  if(!userMealPlan&&!userTrainingPlan)return;
+  const joined=new Date(CU.created_at);
+  if(!isNaN(joined.getTime())&&Date.now()-joined.getTime()<6*24*60*60*1000)return;
   // Use a session variable instead of localStorage to track if already prompted today
   const key='wi_prompted_'+CU.user_id+'_'+new Date().toDateString();
   if(sessionStorage.getItem(key))return;
