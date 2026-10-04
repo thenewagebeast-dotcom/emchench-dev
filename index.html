@@ -1279,7 +1279,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='04 Oct 19:31';
+const APP_BUILD='04 Oct 20:00';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -1358,7 +1358,8 @@ if(IS_DEV){(function(){
     }
     if(r){
       const recs=recordedTypes();
-      r.textContent='Recorded: '+(recs.length?recs.join(', '):'nothing yet');
+      // Type names are fixed strings from callType(), safe to place in HTML. Click one to delete it.
+      r.innerHTML='Recorded (click one to delete): '+(recs.length?recs.map(t=>'<span data-rec="'+t+'" style="cursor:pointer;text-decoration:underline">'+t+'</span>').join(', '):'nothing yet');
     }
   }
 
@@ -1369,7 +1370,7 @@ if(IS_DEV){(function(){
     let body={};
     try{body=JSON.parse(init?.body||'{}');}catch(e){}
     const type=callType(body);
-    if(mode==='replay'){
+    if(mode==='replay'||(mode==='fill'&&store.get(REC_PREFIX+type))){
       const rec=store.get(REC_PREFIX+type);
       console.log('DEV AI replay:',type,rec?'- returning recording':'- nothing recorded');
       await new Promise(r=>setTimeout(r,400));
@@ -1391,7 +1392,7 @@ if(IS_DEV){(function(){
         totals.calls++;
         store.set(TOTAL_KEY,JSON.stringify(totals));
       }
-      if(mode==='record'&&res.ok&&!data.error){
+      if((mode==='record'||mode==='fill')&&res.ok&&!data.error){
         const saved=store.set(REC_PREFIX+type,text);
         console.log('DEV AI record:',type,saved?'- saved':'- COULD NOT SAVE (browser storage full or blocked)');
       }
@@ -1405,7 +1406,7 @@ if(IS_DEV){(function(){
   panel.style.cssText='position:fixed;left:8px;bottom:8px;z-index:9000;background:#1a0f00;border:1px solid #ffaa00;border-radius:8px;padding:6px 8px;font:11px/1.4 monospace;color:#ffaa00;max-width:230px';
   panel.innerHTML='<div style="font-weight:700">DEV - test database</div><div style="margin-bottom:4px;color:#cc8800">build '+APP_BUILD+'</div>'
     +'<label>AI: <select id="dev-ai-mode" style="background:#000;color:#ffaa00;border:1px solid #ffaa00;border-radius:4px;font:11px monospace;padding:2px">'
-    +'<option value="real">Real (costs)</option><option value="record">Record (costs, saves)</option><option value="replay">Replay (free)</option></select></label>'
+    +'<option value="real">Real (costs)</option><option value="record">Record (costs, saves)</option><option value="replay">Replay (free)</option><option value="fill">Replay saved, record the rest</option></select></label>'
     +'<div id="dev-ai-totals" style="margin-top:4px;color:#cc8800"></div>'
     +'<div id="dev-ai-recs" style="margin-top:2px;color:#cc8800"></div>'
     +'<div style="margin-top:4px"><button id="dev-ai-reset" style="background:none;border:1px solid #664400;color:#cc8800;border-radius:4px;font:10px monospace;cursor:pointer;padding:1px 5px">reset totals</button> '
@@ -1414,6 +1415,7 @@ if(IS_DEV){(function(){
   const sel=document.getElementById('dev-ai-mode');
   sel.value=mode;
   sel.addEventListener('change',()=>{mode=sel.value;store.set(MODE_KEY,mode);});
+  document.getElementById('dev-ai-recs').addEventListener('click',e=>{const t=e.target&&e.target.dataset&&e.target.dataset.rec;if(!t)return;if(!confirm('Delete the recording for "'+t+'"?'))return;store.del(REC_PREFIX+t);renderPanel();});
   document.getElementById('dev-ai-reset').addEventListener('click',()=>{totals={inTok:0,outTok:0,calls:0,cost:0};store.set(TOTAL_KEY,JSON.stringify(totals));renderPanel();});
   document.getElementById('dev-ai-clear').addEventListener('click',()=>{if(!confirm('Delete all recorded AI responses in this browser?'))return;recordedTypes().forEach(t=>store.del(REC_PREFIX+t));renderPanel();});
   renderPanel();
@@ -7415,6 +7417,21 @@ function stopLoadFun(){
   document.getElementById('load-bar-fill').style.width='0%';
 }
 
+// Finds the JSON in an AI reply. A fenced ```json block wins. Otherwise the reply
+// is taken from whichever opens first - an object or an array - through to its
+// matching last bracket. (The old version always tried an array first, so an
+// unfenced object that contained arrays was cut at the wrong place and failed.)
+function extractJsonText(text){
+  const fenced=text.match(/```json\n?([\s\S]*?)\n?```/)||text.match(/```\n?([\s\S]*?)\n?```/);
+  if(fenced)return fenced[1];
+  const o=text.indexOf('{'),a=text.indexOf('[');
+  if(o<0&&a<0)return null;
+  const objectFirst=o>=0&&(a<0||o<a);
+  const start=objectFirst?o:a;
+  const end=text.lastIndexOf(objectFirst?'}':']');
+  return end>start?text.slice(start,end+1):null;
+}
+
 async function callAI(apiKey, prompt, systemPrompt, maxTokens=30000, model=AI_MODEL){
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),420000);
@@ -7430,7 +7447,8 @@ async function callAI(apiKey, prompt, systemPrompt, maxTokens=30000, model=AI_MO
     if(data.error)throw new Error(data.error.message);
     if(data.usage)console.log('AI call cache stats - read:',data.usage.cache_read_input_tokens||0,'written:',data.usage.cache_creation_input_tokens||0,'fresh:',data.usage.input_tokens||0);
     const text=(extractAiText(data)||'').replace(/[—–]/g,'-');
-    const jm=text.match(/```json\n?([\s\S]*?)\n?```/)||text.match(/(\[[\s\S]*\])/)||text.match(/({[\s\S]*})/);
+    const jsonText=extractJsonText(text);
+    const jm=jsonText==null?null:[null,jsonText];
     if(!jm){
       const diag='stop_reason: '+(data.stop_reason||'unknown')+' | blocks: '+(data.content?.length||0)+' | text length: '+text.length+' | preview: "'+text.slice(0,150)+'"';
       throw new Error('No valid JSON returned from AI. '+diag);
