@@ -1279,7 +1279,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='04 Oct 20:00';
+const APP_BUILD='04 Oct 20:16';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -1634,6 +1634,39 @@ async function dbUpdate(sheet,rowIndex,values){
       return j.data;
     }catch(e){clearTimeout(timeout);throw e;}
   });
+}
+// A sheet cell holds at most 50,000 characters, and a full meal plan can be
+// bigger than that. meals_json therefore lives in column 9 of meal_plans and,
+// when it does not fit, continues in columns 13, 14 and 15. ALWAYS read it with
+// readMealsJson(row) and write it with writeMealsJson(row,json) - never touch
+// row[9] directly.
+const MEALS_CHUNK=45000;
+const MEALS_OVERFLOW_COLS=[13,14,15];
+function readMealsJson(row){
+  let out=String(row[9]||'');
+  for(const c of MEALS_OVERFLOW_COLS){
+    const part=String(row[c]==null?'':row[c]);
+    // Overflow cells start with a ~ marker so the sheet can never read one as a formula or a number
+    out+=part.charAt(0)==='~'?part.slice(1):part;
+  }
+  return out;
+}
+function writeMealsJson(row,json){
+  const text=String(json);
+  const parts=[];
+  let pos=0;
+  while(pos<text.length){
+    let end=Math.min(pos+MEALS_CHUNK,text.length);
+    // Never cut next to a space, so nothing is lost if the sheet trims a cell
+    while(end<text.length&&end>pos+1&&(/\s/.test(text[end-1])||/\s/.test(text[end])))end--;
+    parts.push(text.slice(pos,end));
+    pos=end;
+  }
+  if(parts.length>1+MEALS_OVERFLOW_COLS.length)throw new Error('This plan is too large to save ('+text.length+' characters). Please pick fewer meals and try again.');
+  while(row.length<=MEALS_OVERFLOW_COLS[MEALS_OVERFLOW_COLS.length-1])row.push('');
+  row[9]=parts[0]||'';
+  MEALS_OVERFLOW_COLS.forEach((c,i)=>{row[c]=parts[i+1]?'~'+parts[i+1]:'';});
+  return row;
 }
 // Reads several sheets in ONE request instead of one request each. Returns
 // {sheetName:{values}}; a sheet that could not be read comes back as {error} so
@@ -2567,7 +2600,7 @@ async function loadUserData(){
     userMealPlan=null;
     if(mp.values){
       const mine=mp.values.filter(r=>r[1]===CU.user_id&&r[0]!=='plan_id');
-      if(mine.length>0){const l=mine[mine.length-1];try{userMealPlan={plan_id:l[0],month:l[3],created_at:l[2]||null,meals:JSON.parse(l[9]||'{}'),how_to_guide:l[10]||''};}catch(e){}}
+      if(mine.length>0){const l=mine[mine.length-1];try{userMealPlan={plan_id:l[0],month:l[3],created_at:l[2]||null,meals:JSON.parse(readMealsJson(l)||'{}'),how_to_guide:l[10]||''};}catch(e){}}
     }
   }catch(e){console.error('Load data - meal plan:',e);}
 
@@ -3162,7 +3195,7 @@ async function confirmCalAdj(){
       if(ri>=0){
         const row=[...mp.values[ri]];
         row[5]=userMealPlan.meals.daily_targets.calories; // daily_calories column
-        row[9]=JSON.stringify(userMealPlan.meals); // full meals JSON with updated targets
+        writeMealsJson(row,JSON.stringify(userMealPlan.meals)); // full meals JSON with updated targets
         await dbUpdate('meal_plans',ri+1,row);
       }
     }
@@ -3176,7 +3209,8 @@ async function confirmCalAdj(){
 // ============================================================
 let _mealPickerResolve=null;
 let _mealPickerOptions=null;
-// Most recipes one plan may contain - keeps meals_json inside the 50,000 character sheet cell limit
+// Most recipes one plan may contain. Storage is no longer the limit (see
+// writeMealsJson) - this keeps generation time and cost sensible.
 const MAX_PLAN_RECIPES=36;
 let isGenerating=false;
 let swapEquipmentPhoto=null;
@@ -3308,8 +3342,7 @@ function confirmMealPicks(chooseForMe=false){
     const ticked=chooseForMe?[]:Array.from(document.querySelectorAll(`#meal-picker-content input[data-cat="${cat}"]:checked`)).map(cb=>parseInt(cb.dataset.idx));
     picked[cat]=options.length?topUpWithVariety(options,ticked,targets[cat]):[];
   }
-  // A plan is saved into one spreadsheet cell, which holds about 39 recipes.
-  // Stop here rather than fail at the save step after a full generation.
+  // Keep the plan to a sensible size - every extra recipe adds generation time and cost
   const total=Object.values(picked).reduce((n,list)=>n+list.length,0);
   if(total>MAX_PLAN_RECIPES){
     alert(`That is ${total} meals - a plan can hold ${MAX_PLAN_RECIPES} at most. Please untick ${total-MAX_PLAN_RECIPES} or more, then try again.`);
@@ -3405,7 +3438,7 @@ async function generatePlan(){
             const partnerPlan=mpd.values.filter(r=>r[1]===partner.user_id&&r[0]!=='plan_id')
               .sort((a,b)=>new Date(b[2]||0)-new Date(a[2]||0))[0];
             if(partnerPlan){
-              const partnerMeals=JSON.parse(partnerPlan[9]||'{}');
+              const partnerMeals=JSON.parse(readMealsJson(partnerPlan)||'{}');
               const meals=partnerMeals.meals||partnerMeals;
               syncedMealNames={};
               const cats=['breakfasts','lunches','dinners','snacks','evening_snacks'];
@@ -3521,7 +3554,7 @@ async function generatePlan(){
 
     showLoad('Saving Your Plan','Almost done...');
     setLoadBar(97);
-    await dbAppend('meal_plans',[mpId,CU.user_id,new Date().toISOString(),monthNumber,CU.goal,t.calories||0,t.protein||0,t.carbs||0,t.fats||0,JSON.stringify(fullRecipes||{}),'',CU.plan_length,CU.plan_type]);
+    await dbAppend('meal_plans',writeMealsJson([mpId,CU.user_id,new Date().toISOString(),monthNumber,CU.goal,t.calories||0,t.protein||0,t.carbs||0,t.fats||0,'','',CU.plan_length,CU.plan_type],JSON.stringify(fullRecipes||{})));
     await dbAppend('training_plans',[tpId,CU.user_id,new Date().toISOString(),monthNumber,CU.goal,CU.experience,CU.equipment?.join(',')||'',CU.training_days,JSON.stringify(trainingPlan?.sessions||[]),JSON.stringify(trainingPlan?.cardio_sessions||[]),trainingPlan?.notes||'',JSON.stringify(trainingPlan?.ab_sessions||[]),CU.plan_length,CU.plan_type,CU.injuries||'',CU.avoided_exercises||'']);
 
     userMealPlan={plan_id:mpId,month:monthNumber,created_at:new Date().toISOString(),meals:fullRecipes};
@@ -3988,7 +4021,7 @@ async function confirmPatternAdj(){
       if(ri>=0){
         const row=[...mp.values[ri]];
         row[5]=pendingPatternAdj.new_target;
-        row[9]=JSON.stringify(userMealPlan.meals);
+        writeMealsJson(row,JSON.stringify(userMealPlan.meals));
         await dbUpdate('meal_plans',ri+1,row);
       }
     }
@@ -4686,7 +4719,7 @@ Reply ONLY with valid JSON: {"name":"","calories":0,"protein":0,"carbs":0,"fats"
       const mp=await dbGet('meal_plans');
       if(mp.values){
         const ri=mp.values.findIndex(r=>r[0]===userMealPlan.plan_id);
-        if(ri>=0){const row=[...mp.values[ri]];row[9]=JSON.stringify(userMealPlan.meals);await dbUpdate('meal_plans',ri+1,row);}
+        if(ri>=0){const row=[...mp.values[ri]];writeMealsJson(row,JSON.stringify(userMealPlan.meals));await dbUpdate('meal_plans',ri+1,row);}
       }
     }catch(e){console.error('Meal swap save:',e);persistFailed=true;}
 
@@ -4813,7 +4846,7 @@ async function genShoppingList(){
           const partnerRow=mpd.values.filter(r=>r[1]===shopPartner.user_id&&r[0]!=='plan_id')
             .sort((a,b)=>new Date(b[2]||0)-new Date(a[2]||0))[0];
           if(partnerRow){
-            const partnerMeals=JSON.parse(partnerRow[9]||'{}');
+            const partnerMeals=JSON.parse(readMealsJson(partnerRow)||'{}');
             const pRotation=partnerMeals.weekly_rotation||[];
             // Add partner meal counts to mealCounts
             for(let wi=0;wi<weekCount&&wi<pRotation.length;wi++){
