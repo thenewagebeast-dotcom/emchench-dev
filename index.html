@@ -1630,6 +1630,12 @@ async function dbUpdate(sheet,rowIndex,values){
     }catch(e){clearTimeout(timeout);throw e;}
   });
 }
+// Reads several sheets in ONE request instead of one request each. Returns
+// {sheetName:{values}}; a sheet that could not be read comes back as {error} so
+// one missing tab never blocks the rest. Same retry as the other DB reads.
+async function dbGetMany(sheets){
+  return dbFetchWithRetry(async()=>(await apiCall({action:'getSheets',sheets},30000)).sheets);
+}
 // Shared users-row patch helper. The change is applied on the server: it finds
 // the row by user_id, pads it to 47 columns, backfills occupation[42] /
 // train_time[43] / meal_sync_with[44] / preferred_days[45] / preferred_ab_days[46]
@@ -2380,9 +2386,8 @@ async function loginUser(u){
     document.getElementById('app-screen').classList.add('active');
     document.getElementById('app-av').textContent=u.avatar||'💪';
     waterMl=0;
-    await loadUsers();
+    await Promise.all([loadUsers(),loadUserData()]);
     if(!allUsers.includes(CU))allUsers.push(CU);
-    await loadUserData();
     renderDashboard();
     renderBody();
     renderProfile();
@@ -2459,9 +2464,21 @@ function signOut(){
 // LOAD DATA
 // ============================================================
 async function loadUserData(){
+  // Everything below used to be nine separate requests, one after another, which
+  // is what made logging in slow. They now arrive together in one request. If
+  // the batch itself fails, each section falls back to its own single read.
+  let batch=null;
+  try{batch=await dbGetMany(['points','meal_plans','training_plans','wall_posts','competitions','measurements','disliked_meals','social_events','water_log']);}
+  catch(e){console.error('Load data - batch read failed, falling back to single reads:',e);}
+  const sheetData=async name=>{
+    const s=batch&&batch[name];
+    if(!s)return dbGet(name);
+    if(s.error)throw new Error(s.error);
+    return s;
+  };
   try{
     // Points
-    const pd=await dbGet('points');
+    const pd=await sheetData('points');
     allPoints=[];
     if(pd.values){
       for(const r of pd.values){
@@ -2477,7 +2494,7 @@ async function loadUserData(){
 
   try{
     // Meal plan
-    const mp=await dbGet('meal_plans');
+    const mp=await sheetData('meal_plans');
     userMealPlan=null;
     if(mp.values){
       const mine=mp.values.filter(r=>r[1]===CU.user_id&&r[0]!=='plan_id');
@@ -2487,7 +2504,7 @@ async function loadUserData(){
 
   try{
     // Training plan
-    const tp=await dbGet('training_plans');
+    const tp=await sheetData('training_plans');
     userTrainingPlan=null;
     if(tp.values){
       const mine=tp.values.filter(r=>r[1]===CU.user_id&&r[0]!=='plan_id');
@@ -2497,35 +2514,35 @@ async function loadUserData(){
 
   try{
     // Wall
-    const wd=await dbGet('wall_posts');
+    const wd=await sheetData('wall_posts');
     wallPosts=[];
     if(wd.values){for(const r of wd.values){if(!r[0]||r[0]==='post_id'||r[5]==='deleted'||r[4]==='[deleted]')continue;wallPosts.push({post_id:r[0],user_id:r[1],username:r[2],posted_at:r[3],message:r[4],post_type:r[5]});}}
   }catch(e){console.error('Load data - wall posts:',e);}
 
   try{
     // Competitions
-    const cd=await dbGet('competitions');
+    const cd=await sheetData('competitions');
     competitions=[];
     if(cd.values){for(const r of cd.values){if(!r[0]||r[0]==='competition_id')continue;competitions.push({competition_id:r[0],created_by:r[1],created_at:r[2],type:r[3],challenge:r[4],difficulty:r[7],points_value:r[8],participant_1:r[9],participant_2:r[10],status:r[11],winner:r[12]});}}
   }catch(e){console.error('Load data - competitions:',e);}
 
   try{
     // Measurements
-    const md=await dbGet('measurements');
+    const md=await sheetData('measurements');
     measurements=[];
     if(md.values){for(const r of md.values){if(!r[0]||r[0]==='measurement_id'||r[1]!==CU.user_id)continue;measurements.push({logged_at:r[2],weight:r[3],waist:r[4],chest:r[5],biceps:r[6],shoulders:r[7],quads:r[8],calves:r[9],forearms:r[10]});}}
   }catch(e){console.error('Load data - measurements:',e);}
 
   try{
     // Disliked meals
-    const dm=await dbGet('disliked_meals');
+    const dm=await sheetData('disliked_meals');
     dislikedMeals=[];
     if(dm.values){for(const r of dm.values){if(!r[0]||r[0]==='record_id'||r[1]!==CU.user_id)continue;dislikedMeals.push({name:r[2],category:r[3]});}}
   }catch(e){console.error('Load data - disliked meals:',e);}
 
   try{
     // Social events
-    const sed=await dbGet('social_events');
+    const sed=await sheetData('social_events');
     socialEvents=[];
     if(sed.values){
       for(const r of sed.values){
@@ -2550,7 +2567,7 @@ async function loadUserData(){
 
   try{
     // Water log - restore today's running total if one exists
-    const wld=await dbGet('water_log');
+    const wld=await sheetData('water_log');
     if(wld.values){
       const mineToday=wld.values.filter(r=>r[1]===CU.user_id&&isSameCalendarDay(r[2]));
       if(mineToday.length){
@@ -6268,6 +6285,7 @@ function renderProfile(){
 
     <div class="card">
       <div class="card-lbl">Change PIN</div>
+      <div class="frow"><label class="flbl">Current PIN</label><div style="position:relative"><input class="finput" id="prof-pin-current" type="password" placeholder="Your current PIN" maxlength="6" inputmode="numeric" style="padding-right:44px"><button onclick="togglePinVis('prof-pin-current',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--tx3);cursor:pointer;font-size:14px">Show</button></div></div>
       <div class="frow"><label class="flbl">New PIN (6 digits)</label><div style="position:relative"><input class="finput" id="prof-pin" type="password" placeholder="6 digit PIN" maxlength="6" inputmode="numeric" style="padding-right:44px"><button onclick="togglePinVis('prof-pin',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--tx3);cursor:pointer;font-size:14px">Show</button></div></div>
       <button class="btn btn-ghost btn-sm" onclick="changePin()">Update PIN</button>
     </div>
@@ -6544,11 +6562,25 @@ async function updateAvatar(av){
 }
 
 async function changePin(){
+  const cur=document.getElementById('prof-pin-current')?.value||'';
   const np=document.getElementById('prof-pin')?.value;
+  if(!/^\d{6}$/.test(cur)){alert('Please enter your current 6 digit PIN first.');return;}
   if(!np||np.length!==6||!/^\d{6}$/.test(np)){alert('PIN must be exactly 6 digits');return;}
   if(np[0]==='0'){alert('PIN cannot start with 0 - this would cause login to fail. Please choose a PIN between 100000 and 999999.');return;}
-  await updateUserField(2,np);
-  celebrateMsg('pinUpdated','🔐','PIN Updated!');
+  if(np===cur){alert('Your new PIN is the same as your current one.');return;}
+  showLoad('Saving','Updating your PIN...');
+  try{
+    // The server checks the current PIN before changing anything. Single attempt -
+    // a wrong current PIN counts toward the lockout, so it must never be retried.
+    await apiCall({action:'changePin',current_pin:cur,new_pin:np},30000);
+    hideLoad();
+    document.getElementById('prof-pin-current').value='';
+    document.getElementById('prof-pin').value='';
+    celebrateMsg('pinUpdated','🔐','PIN Updated!');
+  }catch(e){
+    hideLoad();
+    alert(e.code==='BAD_PIN'?'Your current PIN is incorrect. Your PIN has not been changed.':e.code==='LOCKED'?e.message:'Could not change your PIN: '+e.message);
+  }
 }
 
 async function saveStats(){
