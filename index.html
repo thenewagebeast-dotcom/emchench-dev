@@ -1433,6 +1433,9 @@ let socialEvents=[];
 let activeEvent=null;
 let syncPartner=null;
 let syncRequest=null;
+// Session token issued by the server at login. Held in memory only, sent with
+// every database call, and cleared on sign-out.
+let SESSION_TOKEN=null;
 // Snapshot of each tab's empty state, taken before anyone logs in. signOut()
 // restores these so one user's rendered plan can never stay on screen for the next.
 const EMPTY_TAB_IDS=['meals-content','training-content','tracker-content','meallog-content','supps-content','howto-content','progress-content','profile-content'];
@@ -1532,11 +1535,45 @@ function extractAiText(data){
   if(!data?.content||!Array.isArray(data.content))return '';
   return data.content.filter(b=>b.type==='text').map(b=>b.text||'').join('');
 }
+// Turns a failed server answer into an Error. Answers that carry a code (auth,
+// wrong PIN, lockout) are final, so they are marked not to be retried.
+function apiError(j,fallback){
+  const err=new Error(j.error||fallback||'Request failed');
+  err.code=j.code||'';
+  if(err.code)err.noRetry=true;
+  if(err.code==='AUTH')handleSessionExpired();
+  return err;
+}
+// The server no longer recognises our token (6 hours unused, or signed out
+// elsewhere). Send the user back to the login screen once, with a clear message.
+function handleSessionExpired(){
+  if(!SESSION_TOKEN)return;
+  SESSION_TOKEN=null;
+  if(CU){
+    hideLoad();
+    alert('Your session has expired. Please log in again.');
+    signOut();
+  }
+}
+// Single-attempt call for server actions that must not be repeated blindly
+// (login, create profile, delete account) and for the profile actions. The
+// session token is added automatically.
+async function apiCall(payload,timeoutMs=20000){
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),timeoutMs);
+  try{
+    const r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({token:SESSION_TOKEN,...payload}),signal:controller.signal});
+    clearTimeout(timeout);
+    const j=await r.json();
+    if(!j.success)throw apiError(j);
+    return j.data;
+  }catch(e){clearTimeout(timeout);throw e;}
+}
 async function dbFetchWithRetry(fn, retries=3){
   for(let i=0;i<retries;i++){
     try{return await fn();}
     catch(e){
-      if(i===retries-1)throw e;
+      if(e.noRetry||i===retries-1)throw e;
       await new Promise(r=>setTimeout(r,1500*(i+1)));
     }
   }
@@ -1546,10 +1583,10 @@ async function dbGet(sheet){
     const controller=new AbortController();
     const timeout=setTimeout(()=>controller.abort(),20000);
     try{
-      const r=await fetch(`${API_URL}?action=getSheet&sheet=${encodeURIComponent(sheet)}`,{signal:controller.signal});
+      const r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'getSheet',sheet,token:SESSION_TOKEN}),signal:controller.signal});
       clearTimeout(timeout);
       const j=await r.json();
-      if(!j.success)throw new Error(j.error);
+      if(!j.success)throw apiError(j);
       return j.data;
     }catch(e){clearTimeout(timeout);throw e;}
   });
@@ -1559,10 +1596,10 @@ async function dbAppend(sheet,values){
     const controller=new AbortController();
     const timeout=setTimeout(()=>controller.abort(),20000);
     try{
-      const r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'appendRow',sheet,values}),signal:controller.signal});
+      const r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'appendRow',sheet,values,token:SESSION_TOKEN}),signal:controller.signal});
       clearTimeout(timeout);
       const j=await r.json();
-      if(!j.success)throw new Error(j.error);
+      if(!j.success)throw apiError(j);
       return j.data;
     }catch(e){clearTimeout(timeout);throw e;}
   });
@@ -1572,10 +1609,10 @@ async function dbDelete(sheet,rowIndex){
     const controller=new AbortController();
     const timeout=setTimeout(()=>controller.abort(),20000);
     try{
-      const r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'deleteRow',sheet,rowIndex}),signal:controller.signal});
+      const r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'deleteRow',sheet,rowIndex,token:SESSION_TOKEN}),signal:controller.signal});
       clearTimeout(timeout);
       const j=await r.json();
-      if(!j.success)throw new Error(j.error||'Delete failed');
+      if(!j.success)throw apiError(j,'Delete failed');
       return j.data;
     }catch(e){clearTimeout(timeout);throw e;}
   });
@@ -1585,37 +1622,32 @@ async function dbUpdate(sheet,rowIndex,values){
     const controller=new AbortController();
     const timeout=setTimeout(()=>controller.abort(),20000);
     try{
-      const r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'updateRow',sheet,rowIndex,values}),signal:controller.signal});
+      const r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'updateRow',sheet,rowIndex,values,token:SESSION_TOKEN}),signal:controller.signal});
       clearTimeout(timeout);
       const j=await r.json();
-      if(!j.success)throw new Error(j.error||'Update failed');
+      if(!j.success)throw apiError(j,'Update failed');
       return j.data;
     }catch(e){clearTimeout(timeout);throw e;}
   });
 }
-// Shared users-row patch helper - fetches the sheet, finds the row by user_id,
-// pads to 45 columns, backfills occupation[42]/train_time[43]/meal_sync_with[44]
-// from the given in-memory user object if they were blank (legacy short rows),
-// applies patchFields (an object of {colIndex:value}), then writes the row back.
-// Returns the written row on success, or null if the sheet/row was not found
-// (callers preserve their own existing behaviour for that case, unchanged).
+// Shared users-row patch helper. The change is applied on the server: it finds
+// the row by user_id, pads it to 47 columns, backfills occupation[42] /
+// train_time[43] / meal_sync_with[44] / preferred_days[45] / preferred_ab_days[46]
+// from the given in-memory user where the row has them blank (legacy short rows),
+// applies patchFields (an object of {colIndex:value}) and writes the row back.
+// A user can change any field on their own row; on another user's row only the
+// meal sync column [44]. Returns the written row (PIN removed) on success, or
+// null if the row was not found.
 async function patchUserRow(userId,patchFields,inMemUser){
-  const ud=await dbGet('users');
-  if(!ud.values)return null;
-  const ri=ud.values.findIndex(r=>r[0]===userId);
-  if(ri<0)return null;
-  const row=[...ud.values[ri]];
-  while(row.length<47)row.push('');
+  const backfill={};
   if(inMemUser){
-    if(!row[42]&&inMemUser.occupation)row[42]=inMemUser.occupation;
-    if(!row[43]&&inMemUser.train_time)row[43]=inMemUser.train_time;
-    if(!row[44]&&inMemUser.meal_sync_with)row[44]=inMemUser.meal_sync_with;
-    if(!row[45]&&inMemUser.preferred_days)row[45]=inMemUser.preferred_days;
-    if(!row[46]&&inMemUser.preferred_ab_days)row[46]=inMemUser.preferred_ab_days;
+    if(inMemUser.occupation)backfill[42]=inMemUser.occupation;
+    if(inMemUser.train_time)backfill[43]=inMemUser.train_time;
+    if(inMemUser.meal_sync_with)backfill[44]=inMemUser.meal_sync_with;
+    if(inMemUser.preferred_days)backfill[45]=inMemUser.preferred_days;
+    if(inMemUser.preferred_ab_days)backfill[46]=inMemUser.preferred_ab_days;
   }
-  for(const idx in patchFields)row[idx]=patchFields[idx];
-  await dbUpdate('users',ri+1,row);
-  return row;
+  return dbFetchWithRetry(()=>apiCall({action:'patchUser',user_id:userId,fields:patchFields,backfill}));
 }
 
 
@@ -2229,42 +2261,57 @@ async function init(){
   }catch(e){hideLoad();console.error('Init error:',e);}
 }
 
+// Builds the in-memory user object from a users sheet row. The PIN is never
+// sent to the browser, so it is always blank here.
+function userFromRow(r){
+  return{
+    user_id:r[0],username:r[1],pin:'',age:r[3],sex:r[4],
+    weight_kg:r[5],height_cm:r[6],goal:r[7],experience:r[8],
+    training_days:r[9],equipment:r[10]?String(r[10]).split(','):[],
+    cardio_options:r[11]?String(r[11]).split(','):[],dietary_type:r[12],
+    allergies:r[13]?String(r[13]).split(','):[],flavour_prefs:r[14]?String(r[14]).split(','):[],
+    ingredient_region:r[15],created_at:r[16],
+    health_conditions:r[17]||'',injuries:r[18]||'',
+    avoided_exercises:r[19]||'',api_key:r[20]||'',
+    plan_length:r[21]||'3month',plan_type:r[22]||'progressive',
+    avatar:r[23]||'💪',water_target_ml:parseInt(r[24])||2000,
+    goal_updated:(r[25]===''||r[25]==null)?'':(String(r[25]).toLowerCase()==='true'?'true':''),kitchen:r[26]||'',
+    meals_per_day:r[27]||'5',snack_style:r[28]||'Both',
+    mot_style:r[29]||'Mix of Everything',
+    baseline_type:r[30]||'Assessment Week (Recommended)',
+    known_numbers:r[31]||'',is_new_user:(r[32]===''||r[32]==null)?'true':(String(r[32]).toLowerCase()==='true'?'true':'false'),
+    weigh_in_day:r[33]||'Sunday',batch_cooking:r[34]||'Mix - I decide per meal',
+    ingredient_dislikes:r[35]||'',food_loves:r[36]||'',
+    spice_level:r[37]||'Medium',batch_days:r[38]||'All week - cook once eat all week',
+    cook_time:r[39]||'Breakfast:Under 5 mins, Lunch:5 to 15 mins, Dinner:15 to 30 mins, Snacks:Grab and go - no prep',
+    lunch_situation:r[40]||'I have a fridge and microwave at work',
+    weekly_budget:r[41]||'Mid-range - good ingredients, sensible spend',
+    occupation:r[42]||'Light activity - some walking',
+    train_time:r[43]||'Morning',
+    meal_sync_with:r[44]||'',
+    preferred_days:r[45]||'',
+    preferred_ab_days:r[46]||''
+  };
+}
+
+// Before login this loads only what the login screen needs (name and avatar per
+// profile). After login it loads the full profiles - the server never includes
+// PINs, and includes an API key only on the logged-in user's own row.
 async function loadUsers(){
   try{
-    const d=await dbGet('users');
-    allUsers=[];
-    if(!d.values)return;
-    for(const r of d.values){
-      if(!r[0]||r[0]==='user_id'||r[0].startsWith('deleted_')||r[1]==='[DELETED]')continue;
-      allUsers.push({
-        user_id:r[0],username:r[1],pin:String(r[2]||''),age:r[3],sex:r[4],
-        weight_kg:r[5],height_cm:r[6],goal:r[7],experience:r[8],
-        training_days:r[9],equipment:r[10]?r[10].split(','):[],
-        cardio_options:r[11]?r[11].split(','):[],dietary_type:r[12],
-        allergies:r[13]?r[13].split(','):[],flavour_prefs:r[14]?r[14].split(','):[],
-        ingredient_region:r[15],created_at:r[16],
-        health_conditions:r[17]||'',injuries:r[18]||'',
-        avoided_exercises:r[19]||'',api_key:r[20]||'',
-        plan_length:r[21]||'3month',plan_type:r[22]||'progressive',
-        avatar:r[23]||'💪',water_target_ml:parseInt(r[24])||2000,
-        goal_updated:(r[25]===''||r[25]==null)?'':(String(r[25]).toLowerCase()==='true'?'true':''),kitchen:r[26]||'',
-        meals_per_day:r[27]||'5',snack_style:r[28]||'Both',
-        mot_style:r[29]||'Mix of Everything',
-        baseline_type:r[30]||'Assessment Week (Recommended)',
-        known_numbers:r[31]||'',is_new_user:(r[32]===''||r[32]==null)?'true':(String(r[32]).toLowerCase()==='true'?'true':'false'),
-        weigh_in_day:r[33]||'Sunday',batch_cooking:r[34]||'Mix - I decide per meal',
-        ingredient_dislikes:r[35]||'',food_loves:r[36]||'',
-        spice_level:r[37]||'Medium',batch_days:r[38]||'All week - cook once eat all week',
-        cook_time:r[39]||'Breakfast:Under 5 mins, Lunch:5 to 15 mins, Dinner:15 to 30 mins, Snacks:Grab and go - no prep',
-        lunch_situation:r[40]||'I have a fridge and microwave at work',
-        weekly_budget:r[41]||'Mid-range - good ingredients, sensible spend',
-        occupation:r[42]||'Light activity - some walking',
-        train_time:r[43]||'Morning',
-        meal_sync_with:r[44]||'',
-        preferred_days:r[45]||'',
-        preferred_ab_days:r[46]||''
-      });
+    if(!SESSION_TOKEN){
+      const list=await dbFetchWithRetry(()=>apiCall({action:'listProfiles'}));
+      allUsers=(list||[]).map(p=>({user_id:p.user_id,username:p.username,avatar:p.avatar||'💪',meal_sync_with:p.meal_sync_with||''}));
+      return;
     }
+    const d=await dbGet('users');
+    const loaded=[];
+    for(const r of(d.values||[])){
+      if(!r[0]||r[0]==='user_id'||String(r[0]).startsWith('deleted_')||r[1]==='[DELETED]')continue;
+      // Keep the logged-in user's own object so CU and allUsers stay the same record
+      loaded.push(CU&&r[0]===CU.user_id?CU:userFromRow(r));
+    }
+    allUsers=loaded;
   }catch(e){console.error('Load users:',e);}
 }
 
@@ -2306,8 +2353,23 @@ function cancelPin(){selLoginUser=null;pinBuf='';updatePinDots();document.getEle
 function updatePinDots(){for(let i=0;i<6;i++)document.getElementById('pd'+i).classList.toggle('on',i<pinBuf.length);}
 
 async function checkPin(){
-  if(pinBuf===String(selLoginUser.pin))await loginUser(selLoginUser);
-  else{document.getElementById('pin-err').style.display='block';pinBuf='';updatePinDots();}
+  if(!selLoginUser)return;
+  const entered=pinBuf;
+  pinBuf='';updatePinDots();
+  const errEl=document.getElementById('pin-err');
+  errEl.style.display='none';
+  showLoad('Checking PIN','One moment...');
+  try{
+    // The PIN is checked on the server and never compared in the browser.
+    // Single attempt, so one wrong PIN is only ever counted once.
+    const res=await apiCall({action:'login',user_id:selLoginUser.user_id,pin:entered},30000);
+    SESSION_TOKEN=res.token;
+    await loginUser(userFromRow(res.user));
+  }catch(e){
+    hideLoad();
+    errEl.textContent=(e.code==='BAD_PIN'||e.code==='LOCKED')?e.message:'Could not log in ('+e.message+') - please try again';
+    errEl.style.display='block';
+  }
 }
 
 async function loginUser(u){
@@ -2318,6 +2380,8 @@ async function loginUser(u){
     document.getElementById('app-screen').classList.add('active');
     document.getElementById('app-av').textContent=u.avatar||'💪';
     waterMl=0;
+    await loadUsers();
+    if(!allUsers.includes(CU))allUsers.push(CU);
     await loadUserData();
     renderDashboard();
     renderBody();
@@ -2353,6 +2417,10 @@ function showFirstTimeWelcome(){
 }
 
 function signOut(){
+  // End the server session and drop the token. Not awaited - signing out must never wait on the network.
+  if(SESSION_TOKEN){const t=SESSION_TOKEN;SESSION_TOKEN=null;apiCall({action:'logout',token:t}).catch(()=>{});}
+  // Keep only what the login screen needs
+  allUsers=allUsers.map(u=>({user_id:u.user_id,username:u.username,avatar:u.avatar,meal_sync_with:u.meal_sync_with||''}));
   CU=null;
   // Reset all user state so nothing leaks between accounts
   userMealPlan=null;userTrainingPlan=null;
@@ -6479,7 +6547,7 @@ async function changePin(){
   const np=document.getElementById('prof-pin')?.value;
   if(!np||np.length!==6||!/^\d{6}$/.test(np)){alert('PIN must be exactly 6 digits');return;}
   if(np[0]==='0'){alert('PIN cannot start with 0 - this would cause login to fail. Please choose a PIN between 100000 and 999999.');return;}
-  await updateUserField(2,np);CU.pin=np;
+  await updateUserField(2,np);
   celebrateMsg('pinUpdated','🔐','PIN Updated!');
 }
 
@@ -6551,60 +6619,30 @@ function deleteAccount(){
 
 async function executeAccountDeletion(){
   const confirmPin=document.getElementById('delete-pin-input').value;
-  if(confirmPin!==String(CU.pin)){document.getElementById('delete-pin-err').style.display='block';return;}
+  const errEl=document.getElementById('delete-pin-err');
+  if(!/^\d{6}$/.test(confirmPin)){errEl.textContent='Incorrect PIN. Account not deleted.';errEl.style.display='block';return;}
   closeModal('delete-pin-modal');
   showLoad('Deleting','Permanently removing all your data...');
-  const uid=CU.user_id;
-  let profileDeleted=false;
-  let profileError='';
   try{
-    const sheets=['users','points','meal_plans','training_plans','workout_logs','meal_logs',
-                  'measurements','wall_posts','competitions','disliked_meals',
-                  'session_ratings','weigh_in_log','holiday_log','social_events','water_log'];
-    for(const sheet of sheets){
-      try{
-        const sd=await dbGet(sheet);
-        if(!sd.values){
-          if(sheet==='users')profileError='Could not read the users sheet at all (empty response).';
-          continue;
-        }
-        // Collect row indices to delete (descending so indices stay valid as we delete)
-        const toDelete=[];
-        for(let i=0;i<sd.values.length;i++){
-          const row=sd.values[i];
-          // Skip header row (row[0] is literally the column name)
-          if(row[0]==='user_id'||row[0]==='record_id'||row[0]==='log_id'||
-             row[0]==='plan_id'||row[0]==='post_id'||row[0]==='competition_id'||
-             row[0]==='measurement_id'||row[0]==='shop_id')continue;
-          // Match on user_id - col 1 for most sheets, col 0 for users
-          const matchCol=sheet==='users'?0:1;
-          if(row[matchCol]===uid)toDelete.push(i+1); // +1 for 1-indexed sheet rows
-        }
-        if(sheet==='users'&&toDelete.length===0){
-          profileError='No row in the users sheet matched user_id "'+uid+'".';
-        }
-        // Delete in reverse order so row numbers stay valid
-        for(const rowIndex of toDelete.reverse()){
-          await dbDelete(sheet,rowIndex);
-          // Small delay to avoid hammering the Apps Script
-          await new Promise(r=>setTimeout(r,150));
-        }
-        if(sheet==='users'&&toDelete.length>0)profileDeleted=true;
-      }catch(e){
-        console.error('Delete from '+sheet+':',e);
-        if(sheet==='users')profileError=e.message||'Unknown error deleting from the users sheet.';
-      }
-    }
+    // The server checks the PIN, then removes this user's rows from every sheet
+    // (bottom-up, never a header row) in one request. Single attempt with a long
+    // timeout - a deletion is never retried blindly.
+    const res=await apiCall({action:'deleteAccount',pin:confirmPin},120000);
     hideLoad();
-    if(profileDeleted){
-      alert('Account permanently deleted. All data has been removed from every record.');
-    }else{
-      alert('Your activity data was removed, but your profile row could not be deleted.\n\nReason: '+(profileError||'Unknown - check the browser console for details.')+'\n\nUser ID: '+uid+'\n\nCheck this exact user_id against the users sheet directly.');
-    }
+    SESSION_TOKEN=null;
+    alert(res.deleted?'Account permanently deleted. All data has been removed from every record.':'Your activity data was removed, but your profile row could not be found.');
     signOut();
     await loadUsers();
     renderUserGrid();
-  }catch(e){hideLoad();alert('Error during deletion: '+e.message);console.error(e);}
+  }catch(e){
+    hideLoad();
+    if(e.code==='BAD_PIN'||e.code==='LOCKED'){
+      errEl.textContent=e.code==='LOCKED'?e.message:'Incorrect PIN. Account not deleted.';
+      errEl.style.display='block';
+      document.getElementById('delete-pin-input').value='';
+      openModal('delete-pin-modal');
+    }else{alert('Error during deletion: '+e.message);console.error(e);}
+  }
 }
 
 // ============================================================
@@ -7101,14 +7139,16 @@ async function createUser(){
 
   showLoad('Creating Profile','Setting up your account...');
   try{
-    await dbAppend('users',[uid,username,pin,age,sex,weight,height,goal,exp,days,equipment,cardio,dietary,allergies,flavours,region,new Date().toISOString(),health,injFull,avoid,apiKey,planLen,planType,obAvatar,waterTarget,'',kitchen,mealsPerDay,snackStyle,motStyle,baselineType,knownNums,'true',weighInDay,batchCooking,ingredientDislikes,foodLoves,spiceLevel,batchDays,cookTime,lunchSituation,weeklyBudget,occupation,trainTime,'',preferredDays,preferredAbDays]);
-    const newUser={user_id:uid,username,pin,age,sex,weight_kg:weight,height_cm:height,goal,experience:exp,training_days:days,equipment:equipment.split(','),cardio_options:cardio.split(','),dietary_type:dietary,allergies:allergies.split(','),flavour_prefs:flavours.split(','),ingredient_region:region,created_at:new Date().toISOString(),health_conditions:health,injuries:injFull,avoided_exercises:avoid,api_key:apiKey,plan_length:planLen,plan_type:planType,avatar:obAvatar,water_target_ml:waterTarget,goal_updated:'',kitchen,meals_per_day:mealsPerDay,snack_style:snackStyle,mot_style:motStyle,baseline_type:baselineType,known_numbers:knownNums,is_new_user:'true',weigh_in_day:weighInDay,batch_cooking:batchCooking,ingredient_dislikes:ingredientDislikes,food_loves:foodLoves,spice_level:spiceLevel,batch_days:batchDays,cook_time:cookTime,lunch_situation:lunchSituation,weekly_budget:weeklyBudget,occupation,train_time:trainTime,meal_sync_with:'',preferred_days:preferredDays,preferred_ab_days:preferredAbDays};
+    // The server creates the profile (and its user_id), stores the PIN hashed, and logs the new user in
+    const created=await apiCall({action:'createUser',values:[uid,username,pin,age,sex,weight,height,goal,exp,days,equipment,cardio,dietary,allergies,flavours,region,new Date().toISOString(),health,injFull,avoid,apiKey,planLen,planType,obAvatar,waterTarget,'',kitchen,mealsPerDay,snackStyle,motStyle,baselineType,knownNums,'true',weighInDay,batchCooking,ingredientDislikes,foodLoves,spiceLevel,batchDays,cookTime,lunchSituation,weeklyBudget,occupation,trainTime,'',preferredDays,preferredAbDays]},45000);
+    SESSION_TOKEN=created.token;
+    const newUser=userFromRow(created.user);
     clearOnboardingProgress();
     allUsers.push(newUser);
     closeModal('new-user-modal');
     hideLoad();
     renderUserGrid();
-    saveRapportAnswers(uid,1,{
+    saveRapportAnswers(newUser.user_id,1,{
       driving_goal:document.getElementById('ob-rap-1')?.value.trim()||'',
       past_obstacles:getPillsWithOther('ob-rap2-pills','ob-rap2-other'),
       bad_week_looks_like:getPillsWithOther('ob-rap3-pills','ob-rap3-other'),
