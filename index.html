@@ -4183,12 +4183,16 @@ Session B (Saturday or a weekend rest day): Lower abs and anti-rotation stabilit
 Each ab session: 3-4 exercises, 3 sets each, 12-20 reps, 30 second rest. progression_note field must describe exactly how to progress.`;
 
   const injuryBlock=getInjuryPromptBlock();
+  // Only when the user actually has a cable machine: a full commercial gym, or cables named in their equipment
+  const equipText=(u.equipment||[]).join(',');
+  const hasCables=equipText.includes('Full Commercial Gym')||/cable/i.test(equipText);
+  const cableLine=hasCables?`\nCABLE PREFERENCE: this user has a cable machine. For isolation work (tricep kickbacks and pushdowns, flys, lateral raises, rear delt work, curls) prefer the cable version over dumbbells - it keeps constant tension and allows finer weight control. Injury and avoided-exercise rules always take priority over this preference.`:'';
   const healthLine=(u.health_conditions||'').trim()?`\nHEALTH CONDITIONS - account for these and keep intensity and exercise selection conservative: ${u.health_conditions.trim()}`:'';
 
   return`Generate 1-month training plan. JSON only. No meals.
 
 USER: ${u.username}, ${u.age}yrs, ${u.sex}, ${u.weight_kg}kg, goal:${u.goal}, experience:${exp}, ${days} days/week${dayConstraint}
-Equipment:${u.equipment?.join(',')||'gym'}, Cardio:${u.cardio_options?.join(',')||'running'}
+Equipment:${u.equipment?.join(',')||'gym'}, Cardio:${u.cardio_options?.join(',')||'running'}${cableLine}
 INJURIES STRICT:${u.injuries||'none'}, AVOID STRICT:${u.avoided_exercises||'none'}${injuryBlock}${healthLine}
 Training time: ${trainTime}. Occupation: ${occupation}.${monthContext}${rapportContext}
 
@@ -5883,10 +5887,18 @@ Write the ENTIRE guide in this voice, not just the closing section. Make it feel
     return false;
   }
 }
+// Try Again on the error screen: show the "Generating Your Guide..." placeholder
+// straight away so the button visibly does something while the request runs.
+// With no API key there is nothing to wait for, so the error is simply shown again.
+function retryHowToGuide(){
+  const el=document.getElementById('howto-content');
+  if(el&&CU?.api_key)el.innerHTML=emptyTabHtml['howto-content']||'';
+  genHowToGuide();
+}
 function showHowToError(detail){
   const el=document.getElementById('howto-content');
   if(!el)return;
-  el.innerHTML=`<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Could Not Generate Your Guide</div><div class="empty-text">${detail}<br><br>Check your API key in Profile if this keeps happening.</div><button class="btn btn-sm" style="margin-top:12px" onclick="genHowToGuide()">Try Again</button></div>`;
+  el.innerHTML=`<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Could Not Generate Your Guide</div><div class="empty-text">${detail}<br><br>Check your API key in Profile if this keeps happening.</div><button class="btn btn-sm" style="margin-top:12px" onclick="retryHowToGuide()">Try Again</button></div>`;
 }
 
 // ============================================================
