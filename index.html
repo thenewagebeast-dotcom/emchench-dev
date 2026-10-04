@@ -1279,7 +1279,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='04 Oct 19:06';
+const APP_BUILD='04 Oct 19:19';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -2399,11 +2399,14 @@ async function loginUser(u){
     if(userMealPlan?.how_to_guide){
       renderHowToGuideText(userMealPlan.how_to_guide);
     }
+    // No guide saved with a plan: use the copy remembered on this device if it still fits
+    const cachedGuide=userMealPlan?.how_to_guide?'':getCachedHowTo();
+    if(cachedGuide)renderHowToGuideText(cachedGuide);
     if(u.is_new_user==='true'){
       setTimeout(()=>showFirstTimeWelcome(),1500);
-      if(!userMealPlan?.how_to_guide)genHowToGuide();
+      if(!userMealPlan?.how_to_guide&&!cachedGuide)genHowToGuide();
       setTimeout(()=>goTab('howto'),2000);
-    }else if(!userMealPlan?.how_to_guide&&(userMealPlan||userTrainingPlan)){
+    }else if(!userMealPlan?.how_to_guide&&!cachedGuide&&(userMealPlan||userTrainingPlan)){
       // Plan predates guide persistence - backfill once so it saves for next time
       genHowToGuide();
     }
@@ -5961,6 +5964,7 @@ Write the ENTIRE guide in this voice, not just the closing section. Make it feel
       return false;
     }
     renderHowToGuideText(guide);
+    cacheHowTo(guide);
     // Persist so it survives a refresh or re-login instead of only living in this session's DOM
     if(userMealPlan?.plan_id){
       userMealPlan.how_to_guide=guide;
@@ -5987,6 +5991,19 @@ function retryHowToGuide(){
   const el=document.getElementById('howto-content');
   if(el&&CU?.api_key)el.innerHTML=emptyTabHtml['howto-content']||'';
   genHowToGuide();
+}
+// The guide is saved with the meal plan, but a profile with no plan yet has
+// nowhere to keep it. Remember it on this device, tied to the motivational
+// style and goal it was written for, so logging in again does not regenerate it.
+function getCachedHowTo(){
+  try{
+    const c=JSON.parse(localStorage.getItem('howto_guide_'+CU.user_id)||'null');
+    if(c&&c.guide&&c.style===(CU.mot_style||'Mix of Everything')&&c.goal===CU.goal)return c.guide;
+  }catch(e){}
+  return '';
+}
+function cacheHowTo(guide){
+  try{localStorage.setItem('howto_guide_'+CU.user_id,JSON.stringify({guide,style:CU.mot_style||'Mix of Everything',goal:CU.goal}));}catch(e){}
 }
 function showHowToError(detail){
   const el=document.getElementById('howto-content');
@@ -7632,6 +7649,7 @@ async function declineMealSync(){
       if(au)au.meal_sync_with='declined_by_'+CU.user_id;
     }
     hideLoad();
+    renderDashboard();
     renderProfile();
     celebrateMsg('syncDeclined','✓','Request Declined');
   }catch(e){hideLoad();alert('Error declining sync: '+e.message);}
@@ -7652,6 +7670,7 @@ async function cancelMealSync(){
       }
     }
     hideLoad();
+    renderDashboard();
     renderProfile();
     celebrateMsg('syncCancelled','✓','Sync Cancelled');
   }catch(e){hideLoad();alert('Error cancelling sync: '+e.message);}
@@ -7662,6 +7681,7 @@ async function clearDeclinedSync(){
     await updateUserField(44,'');
     CU.meal_sync_with='';
     renderDashboard();
+    renderProfile();
   }catch(e){console.error('Clear declined sync:',e);alert('Error clearing notification: '+e.message);}
 }
 
@@ -7717,6 +7737,7 @@ function renderMealSyncSection(){
     html+=`
       <div class="sync-card">
         <div style="font-size:13px;color:var(--tx2);margin-bottom:10px">${decliner?escapeHtml(decliner.username):'The other user'} declined your sync request. You can send a new request below.</div>
+        <button class="btn btn-ghost" style="width:100%;font-size:12px" onclick="clearDeclinedSync()">Dismiss</button>
       </div>`;
   }
 
