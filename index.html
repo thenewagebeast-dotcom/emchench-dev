@@ -1279,7 +1279,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='04 Oct 19:19';
+const APP_BUILD='04 Oct 19:31';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -1551,6 +1551,7 @@ function apiError(j,fallback){
 function handleSessionExpired(){
   if(!SESSION_TOKEN)return;
   SESSION_TOKEN=null;
+  clearSavedSession();
   if(CU){
     hideLoad();
     alert('Your session has expired. Please log in again.');
@@ -2255,6 +2256,13 @@ function showCelebration(icon,title,msg){
 async function init(){
   showLoad('Loading E=MC-HENCH','Connecting to your data...');
   try{
+    // A refresh in a tab that was logged in goes straight back in
+    if(await tryResumeSession()){
+      initPwaBanner();
+      const resumeHash=window.location.hash.replace('#','');
+      if(resumeHash&&document.getElementById('tab-'+resumeHash))goTab(resumeHash);
+      return;
+    }
     await loadUsers();
     renderUserGrid();
     hideLoad();
@@ -2302,6 +2310,55 @@ function userFromRow(r){
   };
 }
 
+// Remembers the session for this browser tab only, so refreshing the page does
+// not log you out. Closing the tab forgets it. This key cannot be namespaced by
+// user_id because it is what tells us who the user is.
+function saveSession(userId){
+  try{sessionStorage.setItem('hench_session',JSON.stringify({token:SESSION_TOKEN,user_id:userId}));}catch(e){}
+}
+function clearSavedSession(){
+  try{sessionStorage.removeItem('hench_session');}catch(e){}
+}
+// On page load: if this tab was logged in and the server still accepts the
+// token, go straight back in. Returns true if it did.
+async function tryResumeSession(){
+  let saved=null;
+  try{saved=JSON.parse(sessionStorage.getItem('hench_session')||'null');}catch(e){}
+  if(!saved||!saved.token||!saved.user_id)return false;
+  SESSION_TOKEN=saved.token;
+  try{
+    const d=await dbGet('users');
+    const row=(d.values||[]).find(r=>r[0]===saved.user_id);
+    if(!row)throw new Error('profile not found');
+    await loginUser(userFromRow(row));
+    return true;
+  }catch(e){
+    SESSION_TOKEN=null;
+    clearSavedSession();
+    return false;
+  }
+}
+
+// Meal sync requests, accepts and declines are made by the OTHER person, so they
+// only show up when the profile list is re-read. This re-reads it (at most once
+// every 20 seconds) and redraws the sync parts of the screen if anything changed.
+let _lastSyncRefresh=0;
+function syncFingerprint(){
+  return (CU?.meal_sync_with||'')+'|'+allUsers.map(u=>u.user_id+':'+(u.meal_sync_with||'')).join(',');
+}
+async function refreshSyncState(){
+  if(!CU||!SESSION_TOKEN||isGenerating)return;
+  if(Date.now()-_lastSyncRefresh<20000)return;
+  _lastSyncRefresh=Date.now();
+  const before=syncFingerprint();
+  await loadUsers();
+  if(!CU||syncFingerprint()===before)return;
+  renderDashboard();
+  // Only the sync card is redrawn on the profile, so nothing being typed there is lost
+  const syncSection=document.getElementById('prof-sync-section');
+  if(syncSection)syncSection.innerHTML=renderMealSyncSection();
+}
+
 // Before login this loads only what the login screen needs (name and avatar per
 // profile). After login it loads the full profiles - the server never includes
 // PINs, and includes an API key only on the logged-in user's own row.
@@ -2317,7 +2374,8 @@ async function loadUsers(){
     for(const r of(d.values||[])){
       if(!r[0]||r[0]==='user_id'||String(r[0]).startsWith('deleted_')||r[1]==='[DELETED]')continue;
       // Keep the logged-in user's own object so CU and allUsers stay the same record
-      loaded.push(CU&&r[0]===CU.user_id?CU:userFromRow(r));
+      if(CU&&r[0]===CU.user_id){CU.meal_sync_with=r[44]||'';loaded.push(CU);}
+      else loaded.push(userFromRow(r));
     }
     allUsers=loaded;
   }catch(e){console.error('Load users:',e);}
@@ -2372,6 +2430,7 @@ async function checkPin(){
     // Single attempt, so one wrong PIN is only ever counted once.
     const res=await apiCall({action:'login',user_id:selLoginUser.user_id,pin:entered},30000);
     SESSION_TOKEN=res.token;
+    saveSession(res.user[0]);
     await loginUser(userFromRow(res.user));
   }catch(e){
     hideLoad();
@@ -2427,6 +2486,8 @@ function showFirstTimeWelcome(){
 }
 
 function signOut(){
+  clearSavedSession();
+  _lastSyncRefresh=0;
   // End the server session and drop the token. Not awaited - signing out must never wait on the network.
   if(SESSION_TOKEN){const t=SESSION_TOKEN;SESSION_TOKEN=null;apiCall({action:'logout',token:t}).catch(()=>{});}
   // Keep only what the login screen needs
@@ -2462,6 +2523,7 @@ function signOut(){
   document.getElementById('pin-wrap').classList.remove('show');
   document.getElementById('pin-keyboard').value='';
   document.getElementById('user-sel').style.display='block';
+  renderUserGrid();
   goTab('dashboard');
 }
 
@@ -7230,6 +7292,7 @@ async function createUser(){
     const created=await apiCall({action:'createUser',values:[uid,username,pin,age,sex,weight,height,goal,exp,days,equipment,cardio,dietary,allergies,flavours,region,new Date().toISOString(),health,injFull,avoid,apiKey,planLen,planType,obAvatar,waterTarget,'',kitchen,mealsPerDay,snackStyle,motStyle,baselineType,knownNums,'true',weighInDay,batchCooking,ingredientDislikes,foodLoves,spiceLevel,batchDays,cookTime,lunchSituation,weeklyBudget,occupation,trainTime,'',preferredDays,preferredAbDays]},45000);
     SESSION_TOKEN=created.token;
     const newUser=userFromRow(created.user);
+    saveSession(newUser.user_id);
     clearOnboardingProgress();
     allUsers.push(newUser);
     closeModal('new-user-modal');
@@ -7268,6 +7331,7 @@ function goTab(tab){
   if(tab==='wall')renderWall();
   if(tab==='supps')renderSupps();
   if(tab==='profile')renderProfile();
+  if(tab==='dashboard'||tab==='profile')refreshSyncState().catch(e=>console.error('Sync refresh:',e));
 }
 
 function openModal(id){document.getElementById(id)?.classList.add('open');}
@@ -7811,6 +7875,16 @@ function dismissPwaBanner(){
 // BOOT
 // ============================================================
 init();
+
+// Keep meal sync status current without a page refresh
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible')refreshSyncState().catch(e=>console.error('Sync refresh:',e));
+});
+setInterval(()=>{
+  if(document.visibilityState!=='visible')return;
+  const onSyncTab=document.getElementById('tab-dashboard')?.classList.contains('active')||document.getElementById('tab-profile')?.classList.contains('active');
+  if(onSyncTab)refreshSyncState().catch(e=>console.error('Sync refresh:',e));
+},60000);
 
 // PWA - register service worker
 if('serviceWorker' in navigator && location.hostname !== 'www.claudeusercontent.com'){
