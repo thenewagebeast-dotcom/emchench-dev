@@ -8,3 +8,4 @@ emchench-project-reference.md
 *.docx
 .claude/
 dev-seed/
+SECURITY-SPEC-*.md
