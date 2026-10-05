@@ -1279,7 +1279,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='04 Oct 20:16';
+const APP_BUILD='05 Oct 17:22';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -1433,6 +1433,8 @@ let pendingPatternAdj=null;
 let pendingEventBank=null;
 let weighInRatings={energy:0,hunger:0,training:0};
 let dislikedMeals=[];
+// Food logged outside the plan today, not yet saved. Cleared when the meal log is saved and on sign out.
+let extraFoods=[];
 let socialEvents=[];
 let activeEvent=null;
 let syncPartner=null;
@@ -2398,6 +2400,7 @@ async function refreshSyncState(){
 // profile). After login it loads the full profiles - the server never includes
 // PINs, and includes an API key only on the logged-in user's own row.
 async function loadUsers(){
+  usersLoadError=false;
   try{
     if(!SESSION_TOKEN){
       const list=await dbFetchWithRetry(()=>apiCall({action:'listProfiles'}));
@@ -2413,12 +2416,26 @@ async function loadUsers(){
       else loaded.push(userFromRow(r));
     }
     allUsers=loaded;
-  }catch(e){console.error('Load users:',e);}
+  }catch(e){console.error('Load users:',e);usersLoadError=true;}
+}
+
+async function retryLoadUsers(){
+  showLoad('Loading E=MC-HENCH','Connecting to your data...');
+  try{
+    await loadUsers();
+    renderUserGrid();
+    hideLoad();
+  }catch(e){hideLoad();console.error('Retry load users:',e);}
 }
 
 function renderUserGrid(){
   const g=document.getElementById('user-grid');
   g.innerHTML='';
+  // Never show an empty grid with "New Profile" when the real cause is a failed load
+  if(usersLoadError&&!allUsers.length){
+    g.innerHTML=`<div class="alert alert-warn" style="grid-column:1/-1">Could not load profiles. Check your connection and try again.<br><button class="btn btn-sm" style="margin-top:10px" onclick="retryLoadUsers()">Try Again</button></div>`;
+    return;
+  }
   for(const u of allUsers){
     const pts=(allPoints.find(p=>p.user_id===u.user_id)||{}).season_points||0;
     g.innerHTML+=`<div class="ucard" onclick="selUser('${u.user_id}')">
@@ -2549,6 +2566,7 @@ function signOut(){
   syncRequest=null;
   selLoginUser=null;pinBuf='';updatePinDots();
   swapEquipmentPhoto=null;
+  extraFoods=[];pendingSwap=null;usersLoadError=false;
   // Clear every tab back to its empty state so nothing rendered for this user is left on screen
   EMPTY_TAB_IDS.forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=emptyTabHtml[id]||'';});
   const injBtn=document.getElementById('injury-guide-btn-wrap');
@@ -3213,7 +3231,11 @@ let _mealPickerOptions=null;
 // writeMealsJson) - this keeps generation time and cost sensible.
 const MAX_PLAN_RECIPES=36;
 let isGenerating=false;
+// True when the last attempt to load the profile list failed
+let usersLoadError=false;
 let swapEquipmentPhoto=null;
+// The alternative exercise the AI last suggested, waiting for the user to accept it
+let pendingSwap=null;
 function handleSwapPhoto(input){
   const file=input.files?.[0];
   if(!file)return;
@@ -3259,7 +3281,7 @@ function getPickTargets(){
   const snacksBatch=isBatch('batch snacks','Snacks');
   return{
     breakfasts:4,
-    snacks:snacksBatch?4:5,
+    snacks:snacksBatch?4:(getMidSnackCount()>=3?6:5),
     lunches:isBatch('batch lunches','Lunch')?4:5,
     dinners:isBatch('batch dinners','Dinner')?4:7,
     evening_snacks:snacksBatch?4:5,
@@ -3705,6 +3727,16 @@ function getUserMacros(){
   return{tdee,tc,protein,fats,carbs,waterTarget:Math.min(Math.max(Math.round(w*30),1500),2500)};
 }
 
+// How many mid-day snack slots a day has. Meals per day counts breakfast, lunch
+// and dinner plus mid-day snacks (the evening slot is always on top). The weekly
+// rotation has MAX_SNACK_SLOTS snack slots: snack1, snack2 and snack3. 6 meals a
+// day fills all three; 7 meals a day shares its calories across the same three.
+// The targets and the rotation MUST both use this, or a day comes up short.
+const MAX_SNACK_SLOTS=3;
+function getMidSnackCount(){
+  return Math.min(MAX_SNACK_SLOTS,Math.max(0,(parseInt(CU.meals_per_day)||5)-3));
+}
+
 function getMealTargets(){
   // Calculate per-meal macro targets that EXACTLY sum to daily total.
   // Uses fixed percentage splits per slot type, then normalises so they always add up.
@@ -3712,7 +3744,7 @@ function getMealTargets(){
   const {tc,protein,fats,carbs,waterTarget}=getUserMacros();
   const u=CU;
   const mpd=parseInt(u.meals_per_day)||5;
-  const snackCount=Math.max(0,mpd-3); // always have breakfast, lunch, dinner
+  const snackCount=getMidSnackCount(); // always have breakfast, lunch, dinner
 
   // Fixed calorie split percentages by slot type (before normalisation)
   // Breakfast=22%, each regular snack=10%, lunch=28%, dinner=32%, evening snack=8%
@@ -4201,10 +4233,10 @@ Generate recipes ONLY for the meal names listed. Return object directly (no dail
 
 function buildRotationPrompt(mealNames, monthNumber=1, progressionContext='', useAssessment=false){
   const u=CU;
-  const mealsPerDay=parseInt(u.meals_per_day)||5;
-  const midSnacks=Math.max(0,mealsPerDay-3);
+  const midSnacks=getMidSnackCount();
   const hasSnack1=midSnacks>=1;
   const hasSnack2=midSnacks>=2;
+  const hasSnack3=midSnacks>=3;
   const eveningNames=(mealNames.evening_snacks||[]).concat(mealNames.protein_desserts||[]);
   const monthNote=monthNumber>1
     ?`This is Month ${monthNumber} of the programme. The user has been following this plan for ${monthNumber-1} month${monthNumber-1>1?'s':''} already. Increase meal variety compared to Month 1 - introduce different flavour profiles and cooking methods where possible while still using only the exact meal names listed above. Do not repeat the same weekly pattern from Month 1.`
@@ -4228,7 +4260,7 @@ function buildRotationPrompt(mealNames, monthNumber=1, progressionContext='', us
     }
   }
 
-  const daySchema=`{"breakfast":"","snack1":${hasSnack1?'""':'null'},"lunch":"","snack2":${hasSnack2?'""':'null'},"dinner":"","evening":""}`;
+  const daySchema=`{"breakfast":"","snack1":${hasSnack1?'""':'null'},"lunch":"","snack2":${hasSnack2?'""':'null'},"snack3":${hasSnack3?'""':'null'},"dinner":"","evening":""}`;
   // Assessment week users get 5 weeks total (1 assessment + 4 programme), matching
   // the training plan's structure - not a fixed 4 weeks regardless of assessment status.
   const weekCount=useAssessment?5:4;
@@ -4252,9 +4284,10 @@ RULES:
 - Every day MUST have breakfast, lunch, dinner, and evening slot filled.
 - ${hasSnack1?`snack1 must be filled every day.`:'No snack1 slot.'}
 - ${hasSnack2?`snack2 must be filled every day.`:'No snack2 slot.'}
+- ${hasSnack3?`snack3 must be filled every day. It is a mid-day snack eaten between snack2 and dinner - use ONLY names from the Mid-day Snacks list.`:'No snack3 slot.'}
 - Evening slot: use ONLY names from the Evening/Dessert list above.
 - Do NOT repeat the same meal two days in a row UNLESS batch cooking rules require it.
-- VARIETY: unless batch cooking rules require repeats, do not repeat a dinner within the same week when there are enough dinners listed to avoid it, do not use any other meal more than twice in one week, and across the full rotation use every listed meal at least once.
+- VARIETY: unless batch cooking rules require repeats, do not repeat a dinner within the same week when there are enough dinners listed to avoid it, do not use any other meal more than twice in one week, and across the full rotation use every listed meal at least once.${midSnacks>=2?` Mid-day snacks are the one exception to the twice-a-week limit, because there are ${midSnacks} snack slots a day: spread the listed snacks as evenly as possible across the week, and NEVER use the same snack twice on the same day.`:''}
 - Use ONLY exact meal names provided. Do not invent new names.
 
 Return ONLY this JSON:
@@ -4488,10 +4521,10 @@ function renderMealPlan(){
 function renderWeekDaysInline(wk,recipeMap){
   const days=['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
   const dayEmoji={'monday':'Mon','tuesday':'Tue','wednesday':'Wed','thursday':'Thu','friday':'Fri','saturday':'Sat','sunday':'Sun'};
-  const slotEmoji={breakfast:'🌅',snack1:'🍎',lunch:'🥗',snack2:'🍎',dinner:'🍽️',evening:'🍮'};
-  const slotLabel={breakfast:'Breakfast',snack1:'Snack 1',lunch:'Lunch',snack2:'Snack 2',dinner:'Dinner',evening:'Evening'};
+  const slotEmoji={breakfast:'🌅',snack1:'🍎',lunch:'🥗',snack2:'🍎',snack3:'🍎',dinner:'🍽️',evening:'🍮'};
+  const slotLabel={breakfast:'Breakfast',snack1:'Snack 1',lunch:'Lunch',snack2:'Snack 2',snack3:'Snack 3',dinner:'Dinner',evening:'Evening'};
   const d=wk.days||wk;
-  const slots=['breakfast','snack1','lunch','snack2','dinner','evening'];
+  const slots=['breakfast','snack1','lunch','snack2','snack3','dinner','evening'];
 
   return days.map(day=>{
     const meals=d[day];
@@ -4530,7 +4563,7 @@ function renderRecipeDetail(recipe,mealName,slot){
   const isDisliked=dislikedMeals.some(d=>d.name===mealName);
   const safeName=mealName.replace(/"/g,'&quot;');
   // Map slot name to meal category pool
-  const slotCatMap={breakfast:'breakfasts',snack1:'snacks',snack2:'snacks',lunch:'lunches',dinner:'dinners',evening:'evening_snacks'};
+  const slotCatMap={breakfast:'breakfasts',snack1:'snacks',snack2:'snacks',snack3:'snacks',lunch:'lunches',dinner:'dinners',evening:'evening_snacks'};
   const cat=slotCatMap[slot]||'breakfasts';
   return`
     ${recipe.micronutrients?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">${recipe.micronutrients}</div>`:''}
@@ -4544,7 +4577,7 @@ function renderRecipeDetail(recipe,mealName,slot){
         :`<button class="dislike-btn" style="color:var(--ok)" data-meal-name="${safeName}" onclick="restoreMealInline(this)">↩ Restore</button>`}
       <button class="dislike-btn" style="color:var(--ac2)" data-meal-name="${safeName}" data-meal-cat="${cat}" data-meal-cals="${recipe.calories||0}" data-meal-protein="${recipe.protein||0}" onclick="openMealSwap(this)">⇄ Swap Meal</button>
     </div>
-    <div class="meal-swap-result" id="msr_${safeName.replace(/\W+/g,'_')}" style="display:none;margin-top:12px"></div>`;
+    <div class="meal-swap-result" style="display:none;margin-top:12px"></div>`;
 }
 
 async function dislikeMealInline(btn){
@@ -4586,8 +4619,8 @@ async function openMealSwap(btn){
   if(!apiKey){alert('No API key in profile');return;}
 
   // Find the result container inline in the recipe
-  const safeKey=mealName.replace(/\W+/g,'_');
-  const resEl=document.getElementById('msr_'+safeKey);
+  // The same meal appears on several days, so look inside the card that was tapped - not by id
+  const resEl=btn.closest('.meal-det')?.querySelector('.meal-swap-result');
   if(!resEl)return;
   resEl.style.display='block';
   resEl.innerHTML=`<div style="font-size:13px;color:var(--tx2)">Finding 2 alternatives...</div>`;
@@ -4634,7 +4667,7 @@ Reply ONLY with valid JSON: {"alternatives":[{"name":"","calories":0,"protein":0
           <div style="font-size:14px;font-weight:600;margin-bottom:2px">${a.name}</div>
           <div style="font-size:11px;color:var(--tx2)">${a.calories}kcal - P:${a.protein}g C:${a.carbs}g F:${a.fats}g - ${a.difficulty||'easy'}</div>
         </div>
-        <button class="btn btn-sm" onclick="confirmMealSwap('${mealName.replace(/'/g,"\\'")}','${a.name.replace(/'/g,"\\'")}','${cat}')">Choose →</button>
+        <button class="btn btn-sm" data-old-name="${escapeHtml(mealName)}" data-new-name="${escapeHtml(a.name)}" data-meal-cat="${escapeHtml(cat)}" onclick="confirmMealSwap(this)">Choose →</button>
       </div>`).join('');
 
   }catch(e){
@@ -4643,10 +4676,11 @@ Reply ONLY with valid JSON: {"alternatives":[{"name":"","calories":0,"protein":0
   btn.textContent='⇄ Swap Meal';btn.disabled=false;
 }
 
-async function confirmMealSwap(oldName,newName,cat){
+async function confirmMealSwap(btn){
+  const oldName=btn.dataset.oldName,newName=btn.dataset.newName,cat=btn.dataset.mealCat;
+  if(!oldName||!newName)return;
   const apiKey=CU.api_key;
-  const safeKey=oldName.replace(/\W+/g,'_');
-  const resEl=document.getElementById('msr_'+safeKey);
+  const resEl=btn.closest('.meal-swap-result');
   if(!apiKey){
     if(resEl)resEl.innerHTML=`<div class="alert" style="color:var(--danger)">No API key found. Please add your Anthropic API key in Profile.</div>`;
     else alert('No API key found. Please add your Anthropic API key in Profile.');
@@ -4789,6 +4823,7 @@ function renderWeekDays(wk){
         ${meals.snack1||meals.snack?`<div><span style="color:var(--tx3);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-right:6px">Snack 1</span>🍎 ${meals.snack1||meals.snack}</div>`:''}
         ${meals.lunch?`<div><span style="color:var(--tx3);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-right:6px">Lunch</span>🥗 ${meals.lunch}</div>`:''}
         ${meals.snack2?`<div><span style="color:var(--tx3);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-right:6px">Snack 2</span>🍎 ${meals.snack2}</div>`:''}
+        ${meals.snack3?`<div><span style="color:var(--tx3);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-right:6px">Snack 3</span>🍎 ${meals.snack3}</div>`:''}
         ${meals.dinner?`<div><span style="color:var(--tx3);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-right:6px">Dinner</span>🍽️ ${meals.dinner}</div>`:''}
         ${meals.evening?`<div><span style="color:var(--tx3);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-right:6px">Evening</span>🍮 ${meals.evening}</div>`:''}
       </div>
@@ -4810,7 +4845,7 @@ async function genShoppingList(){
   if(!rotation.length){out.innerHTML='<div class="alert alert-warn">Generate your plan first to get a shopping list.</div>';return;}
 
   const weekCount=parseInt(document.getElementById('shop-weeks-sel')?.value)||1;
-  const slots=['breakfast','snack1','snack','lunch','snack2','dinner','evening'];
+  const slots=['breakfast','snack1','snack','lunch','snack2','snack3','dinner','evening'];
   const days=['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
 
   // Count how many times each meal appears in the rotation (for multiplying batch quantities)
@@ -5365,7 +5400,7 @@ function renderTrainingPlan(){
           <tbody>
             ${(s.exercises||[]).map((ex,ei)=>`<tr>
               <td>
-                <button class="ex-btn" onclick='showHowTo(${JSON.stringify(ex.name)},${JSON.stringify(ex.how_to||ex.notes||"")})'>
+                <button class="ex-btn" data-exname="${escapeHtml(ex.name)}" data-howto="${escapeHtml(ex.how_to||ex.notes||'')}" onclick="showHowTo(this.dataset.exname,this.dataset.howto)">
                   ${ex.name}<span class="howto-badge">?</span>
                 </button>
                 ${ex.notes?`<div class="ex-note">${ex.notes}</div>`:''}
@@ -5396,7 +5431,7 @@ function renderTrainingPlan(){
             <tbody>
               ${(ab.exercises||[]).map((ex,ei)=>`<tr>
                 <td>
-                  <button class="ex-btn" onclick='showHowTo(${JSON.stringify(ex.name)},${JSON.stringify(ex.how_to||"")})'>
+                  <button class="ex-btn" data-exname="${escapeHtml(ex.name)}" data-howto="${escapeHtml(ex.how_to||'')}" onclick="showHowTo(this.dataset.exname,this.dataset.howto)">
                     ${ex.name}<span class="howto-badge">?</span>
                   </button>
                   ${ex.progression_note?`<div class="ex-note">${ex.progression_note}</div>`:''}
@@ -5445,7 +5480,7 @@ function showHowTo(name,cues){
 // EXERCISE SWAP
 // ============================================================
 function openSwapModal(sidx,eidx,name){
-  swapSessionIdx=sidx;swapExIdx=eidx;swapExercise=name;
+  swapSessionIdx=sidx;swapExIdx=eidx;swapExercise=name;pendingSwap=null;
   document.getElementById('swap-current-info').textContent=`Current exercise: ${name}. We will find the closest alternative that hits the same muscles.`;
   document.getElementById('swap-result').style.display='none';
   document.getElementById('swap-equip').value='';
@@ -5476,6 +5511,7 @@ async function getSwap(){
     });
     clearTimeout(timeout);
     const data=await res.json();
+    if(data.error)throw new Error(data.error.message);
     const text=(extractAiText(data)||'{}').replace(/[—–]/g,'-');
     const jm=text.match(/\{[\s\S]*\}/)?.[0]||'{}';
     let swap;
@@ -5485,17 +5521,19 @@ async function getSwap(){
       throw new Error('AI response could not be parsed - stop_reason: '+(data.stop_reason||'unknown')+' | parse error: '+parseErr.message);
     }
 
+    if(!swap.name)throw new Error('No alternative came back - stop_reason: '+(data.stop_reason||'unknown')+'. Please try again.');
+    pendingSwap=swap;
     document.getElementById('swap-result').style.display='block';
     document.getElementById('swap-result').innerHTML=`<div class="alert alert-ok">✓ Alternative found: <strong>${swap.name}</strong></div>
     <div style="font-size:13px;color:var(--tx2);line-height:1.6;margin-bottom:12px">${swap.how_to||''}</div>
-    <button class="btn btn-sm" onclick='confirmSwap(${JSON.stringify(swap)})'>Use This Exercise Permanently</button>
+    <button class="btn btn-sm" onclick="confirmSwap(pendingSwap)">Use This Exercise Permanently</button>
     <button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="closeModal('swap-modal')">Keep Original</button>`;
   }catch(e){alert(describeAiError(e,'Request timed out. Please try again.')||('Error finding swap: '+e.message));}
   document.getElementById('swap-btn').textContent='Find Alternative ⚡';
 }
 
 async function confirmSwap(swap){
-  if(swapSessionIdx===null||swapExIdx===null)return;
+  if(!swap||swapSessionIdx===null||swapExIdx===null)return;
   // Handle both main sessions (numeric index) and ab sessions ('ab0', 'ab1' etc)
   const isAbSwap=String(swapSessionIdx).startsWith('ab');
   let session;
@@ -5632,9 +5670,11 @@ function setSessRating(n,btn){sessRating=n;document.querySelectorAll('#sess-rati
 function toggleChk(btn){btn.classList.toggle('done');}
 function addSet(cid,eid,repPlaceholder){
   const c=document.getElementById(cid);const n=c.children.length+1;
+  // Same ids as the rows built by loadTrackerSess, so logWorkout picks the new row up
+  const i=n-1;
   const ph=repPlaceholder||'reps';
   const d=document.createElement('div');d.className='set-row';
-  d.innerHTML=`<div class="set-num">S${n}</div><input class="set-inp" type="number" step=".5" placeholder="kg"><input class="set-inp" type="number" placeholder="${ph}" style="color:var(--tx2)" onfocus="if(this.value==='')this.style.color='var(--tx)'" onblur="if(this.value==='')this.style.color='var(--tx2)'"><input class="set-inp" type="text" placeholder="-" style="font-size:11px"><button class="set-chk" onclick="toggleChk(this)">✓</button>`;
+  d.innerHTML=`<div class="set-num">S${n}</div><input class="set-inp" type="number" step=".5" placeholder="kg" id="${eid}_w${i}"><input class="set-inp" type="number" placeholder="${ph}" id="${eid}_r${i}" style="color:var(--tx2)" onfocus="if(this.value==='')this.style.color='var(--tx)'" onblur="if(this.value==='')this.style.color='var(--tx2)'"><input class="set-inp" type="text" placeholder="-" id="${eid}_n${i}" style="font-size:11px"><button class="set-chk" onclick="toggleChk(this)">✓</button>`;
   c.appendChild(d);
 }
 
@@ -5702,9 +5742,10 @@ async function logWorkout(sidx){
           }catch(e){console.error('Assessment parse:',e);}
         }
         if(knownNums.length){
-          await updateUserField(31,knownNums.join(' | '));
-          CU.known_numbers=knownNums.join(' | ');
-          celebrateMsg('assessmentComplete','📊','Assessment Complete!');
+          if(await updateUserField(31,knownNums.join(' | '))){
+            CU.known_numbers=knownNums.join(' | ');
+            celebrateMsg('assessmentComplete','📊','Assessment Complete!');
+          }
         }
       }
     }
@@ -5812,18 +5853,26 @@ function renderMealLog(){
   <button class="btn" onclick="saveMealLog()">Save Today's Log (+10 pts)</button>`;
 
   el.innerHTML=html;
+  // Anything added but not yet saved survives a redraw of this tab
+  renderExtraFoods();
 }
 
 function addExtraFood(){
-  const name=document.getElementById('extra-food')?.value;
-  const cals=document.getElementById('extra-cals')?.value;
+  const name=(document.getElementById('extra-food')?.value||'').trim();
   if(!name)return;
+  const num=id=>Math.max(0,parseInt(document.getElementById(id)?.value)||0);
+  extraFoods.push({name,calories:num('extra-cals'),protein:num('extra-p'),carbs:num('extra-c')});
+  ['extra-food','extra-cals','extra-p','extra-c'].forEach(id=>{const f=document.getElementById(id);if(f)f.value='';});
+  renderExtraFoods();
+}
+
+function removeExtraFood(i){extraFoods.splice(i,1);renderExtraFoods();}
+
+function renderExtraFoods(){
   const list=document.getElementById('extra-list');
-  const div=document.createElement('div');
-  div.style.cssText='font-size:13px;color:var(--tx2);padding:6px 0;border-bottom:1px solid var(--b1)';
-  div.textContent=`${name} - ${cals||0} kcal`;
-  list.appendChild(div);
-  document.getElementById('extra-food').value='';document.getElementById('extra-cals').value='';
+  if(!list)return;
+  list.innerHTML=extraFoods.map((f,i)=>`<div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--tx2);padding:6px 0;border-bottom:1px solid var(--b1)"><span>${escapeHtml(f.name)} - ${f.calories} kcal, P:${f.protein}g, C:${f.carbs}g</span><button class="btn btn-ghost btn-xs" onclick="removeExtraFood(${i})">Remove</button></div>`).join('')
+    +(extraFoods.length?'<div style="font-size:11px;color:var(--tx3);margin-top:6px">These are added to today\'s totals when you save the log.</div>':'');
 }
 
 async function saveMealLog(){
@@ -5847,10 +5896,13 @@ async function saveMealLog(){
     totalFats+=parseInt(meal.fats)||0;
     eaten.push({name:meal.name,calories:meal.calories||0,protein:meal.protein||0});
   });
+  // Food outside the plan counts toward the day and is stored in food_outside_plan_json
+  for(const f of extraFoods){totalCals+=f.calories;totalProtein+=f.protein;totalCarbs+=f.carbs;}
   const lid='ml_'+Date.now();
   try{
-    await dbAppend('meal_logs',[lid,CU.user_id,new Date().toISOString(),new Date().toDateString(),userMealPlan?.plan_id||'',JSON.stringify(eaten),totalCals,totalProtein,totalCarbs,totalFats,'',10,'{}',waterMl,'']);
+    await dbAppend('meal_logs',[lid,CU.user_id,new Date().toISOString(),new Date().toDateString(),userMealPlan?.plan_id||'',JSON.stringify(eaten),totalCals,totalProtein,totalCarbs,totalFats,'',10,JSON.stringify(extraFoods),waterMl,'']);
     await addPoints({pts:10,meals_logged:1});
+    extraFoods=[];renderExtraFoods();
     hideLoad();
     celebrate('meal','🥗');
     renderDashboard();
@@ -5978,7 +6030,9 @@ Write the ENTIRE report in this voice, not just a closing line.`}]})
     });
     clearTimeout(timeout);
     const data=await res.json();
-    const report=(extractAiText(data)||'Keep grinding.').replace(/[—–]/g,'-');
+    if(data.error)throw new Error(data.error.message);
+    const report=(extractAiText(data)||'').replace(/[—–]/g,'-').trim();
+    if(!report)throw new Error('No report came back - stop_reason: '+(data.stop_reason||'unknown')+'. Please try again.');
     hideLoad();
     document.getElementById('ai-report').innerHTML=`<div class="card"><div class="card-lbl">AI Progress Report</div><div style="font-size:14px;line-height:1.7;white-space:pre-wrap">${report}</div></div>`;
   }catch(e){hideLoad();alert(describeAiError(e,'The request timed out. Please try again.')||('Error: '+e.message));}
@@ -6583,9 +6637,9 @@ function renderProfile(){
 }
 
 async function updateSpiceLevel(el,style){
+  if(!await updateUserField(37,style))return;
   document.querySelectorAll('#prof-spice .pill').forEach(p=>p.classList.remove('on'));
   el.classList.add('on');
-  await updateUserField(37,style);
   CU.spice_level=style;
   celebrateMsg('spiceUpdated','🌶️','Spice Level Updated!');
 }
@@ -6617,15 +6671,15 @@ async function saveFoodPrefs(){
 async function saveWeighInDay(){
   const day=document.getElementById('prof-weighin-day')?.value;
   if(!day)return;
-  await updateUserField(33,day);
+  if(!await updateUserField(33,day))return;
   CU.weigh_in_day=day;
   celebrateMsg('weighInDayUpdated','📅','Weigh-In Day Updated!',{day});
 }
 
 async function updateBatchCooking(el,style){
+  if(!await updateUserField(34,style))return;
   document.querySelectorAll('#prof-batch .pill').forEach(p=>p.classList.remove('on'));
   el.classList.add('on');
-  await updateUserField(34,style);
   CU.batch_cooking=style;
   // Show/hide batch days row based on selection
   const daysRow=document.getElementById('prof-batch-days-row');
@@ -6634,9 +6688,9 @@ async function updateBatchCooking(el,style){
 }
 
 async function updateBatchDays(el,days){
+  if(!await updateUserField(38,days))return;
   document.querySelectorAll('#prof-batch-days .pill').forEach(p=>p.classList.remove('on'));
   el.classList.add('on');
-  await updateUserField(38,days);
   CU.batch_days=days;
   celebrateMsg('batchDaysUpdated','📅','Batch Days Updated!');
 }
@@ -6644,14 +6698,20 @@ async function updateBatchDays(el,days){
 async function saveApiKey(){
   const key=document.getElementById('prof-apikey')?.value.trim();
   if(!key)return;
-  await updateUserField(20,key);
+  if(!await updateUserField(20,key))return;
   CU.api_key=key;
   celebrateMsg('apiKeySaved','🔑','API Key Saved!');
 }
 
 async function updateGoal(){
   const goal=document.getElementById('prof-goal')?.value;
-  await updateUserField(7,goal);await updateUserField(25,'true');
+  // One write for both fields, so the goal and its "updated" flag cannot get out of step
+  showLoad('Saving','Updating your goal...');
+  try{
+    const patched=await patchUserRow(CU.user_id,{7:goal,25:'true'},CU);
+    hideLoad();
+    if(!patched){alert('Could not save - your profile was not found. Please sign out and back in.');return;}
+  }catch(e){hideLoad();alert('Error saving goal: '+e.message);return;}
   CU.goal=goal;CU.goal_updated='true';
   postAutoWall(`🎯 ${CU.username} updated their goal to: ${goal.toUpperCase()}`);
   renderDashboard();renderProfile();
@@ -6664,9 +6724,9 @@ async function updateGoal(){
 }
 
 async function updateMotStyle(el,style){
+  if(!await updateUserField(29,style))return;
   document.querySelectorAll('#prof-mot .pill').forEach(p=>p.classList.remove('on'));
   el.classList.add('on');
-  await updateUserField(29,style);
   CU.mot_style=style;
   celebrateMsg('motStyleUpdated','💬','Motivation Style Updated!',{style});
   // Regenerate how-to guide so it reflects new style, and confirm once it's actually done
@@ -6677,7 +6737,7 @@ async function updateMotStyle(el,style){
 }
 
 async function updateAvatar(av){
-  await updateUserField(23,av);
+  if(!await updateUserField(23,av))return;
   CU.avatar=av;
   document.getElementById('app-av').textContent=av;
   renderProfile();renderUserGrid();
@@ -6755,12 +6815,16 @@ async function saveTrainingSetup(){
   }catch(e){hideLoad();alert('Error saving training setup: '+e.message);}
 }
 
+// Returns true only if the value was saved. On failure it has already told the
+// user, so callers must stop: do not update memory or show a success message.
 async function updateUserField(colIdx,value){
   showLoad('Saving','...');
   try{
-    await patchUserRow(CU.user_id,{[colIdx]:value},CU);
+    const patched=await patchUserRow(CU.user_id,{[colIdx]:value},CU);
     hideLoad();
-  }catch(e){console.error(e);hideLoad();alert('Error saving: '+e.message);return;}
+    if(!patched){alert('Could not save - your profile was not found. Please sign out and back in.');return false;}
+    return true;
+  }catch(e){console.error(e);hideLoad();alert('Error saving: '+e.message);return false;}
 }
 
 function deleteAccount(){
@@ -7721,7 +7785,7 @@ async function requestMealSync(targetUserId){
   if(!confirm(`Request meal sync with ${target.username}? They will see a notification on their dashboard to accept or decline. Your next plan generation will use ${target.username}'s meal names with your own calorie targets.`))return;
   showLoad('Requesting','Sending sync request...');
   try{
-    await updateUserField(44,'pending_'+targetUserId);
+    if(!await updateUserField(44,'pending_'+targetUserId))return;
     CU.meal_sync_with='pending_'+targetUserId;
     hideLoad();
     renderProfile();
@@ -7775,7 +7839,7 @@ async function cancelMealSync(){
   showLoad('Cancelling','Removing meal sync...');
   try{
     const partner=getSyncPartnerUser();
-    await updateUserField(44,'');
+    if(!await updateUserField(44,''))return;
     CU.meal_sync_with='';
     if(partner){
       const patched=await patchUserRow(partner.user_id,{44:''},partner);
@@ -7793,7 +7857,7 @@ async function cancelMealSync(){
 
 async function clearDeclinedSync(){
   try{
-    await updateUserField(44,'');
+    if(!await updateUserField(44,''))return;
     CU.meal_sync_with='';
     renderDashboard();
     renderProfile();
