@@ -1279,7 +1279,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='05 Oct 18:26';
+const APP_BUILD='05 Oct 19:01';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -2307,10 +2307,9 @@ async function init(){
     // PWA install banner
     initPwaBanner();
     // PWA shortcut deep links - handle hash navigation from home screen shortcuts
+    // Nobody is logged in yet, so remember the tab and open it after login
     const _hash=window.location.hash.replace('#','');
-    if(_hash&&document.getElementById('tab-'+_hash)){
-      goTab(_hash);
-    }
+    if(_hash&&document.getElementById('tab-'+_hash))pendingDeepLink=_hash;
   }catch(e){hideLoad();console.error('Init error:',e);}
 }
 
@@ -2437,11 +2436,12 @@ function renderUserGrid(){
     return;
   }
   for(const u of allUsers){
-    const pts=(allPoints.find(p=>p.user_id===u.user_id)||{}).season_points||0;
+    // Points are only known after login - show nothing rather than a wrong 0
+    const known=allPoints.find(p=>p.user_id===u.user_id);
     g.innerHTML+=`<div class="ucard" onclick="selUser('${u.user_id}')">
       <div class="ucard-av">${u.avatar||'💪'}</div>
       <div class="ucard-name">${escapeHtml(u.username)}</div>
-      <div class="ucard-pts">${pts} pts</div>
+      <div class="ucard-pts">${known?(known.season_points||0)+' pts':''}</div>
     </div>`;
   }
   if(allUsers.length<5){
@@ -2506,6 +2506,8 @@ async function loginUser(u){
     renderProfile();
     loadShopList();
     checkWeighInDay();
+    // Home-screen shortcut (e.g. Log a Workout): open that tab now the data is loaded
+    if(pendingDeepLink){const t=pendingDeepLink;pendingDeepLink='';if(u.is_new_user!=='true')goTab(t);}
     // Show the saved how-to guide immediately if one exists, instead of regenerating every login
     if(userMealPlan?.how_to_guide){
       renderHowToGuideText(userMealPlan.how_to_guide);
@@ -2567,6 +2569,7 @@ function signOut(){
   selLoginUser=null;pinBuf='';updatePinDots();
   swapEquipmentPhoto=null;
   extraFoods=[];pendingSwap=null;usersLoadError=false;
+  carriedCalorieTarget=null;pendingDeepLink='';
   // Clear every tab back to its empty state so nothing rendered for this user is left on screen
   EMPTY_TAB_IDS.forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=emptyTabHtml[id]||'';});
   const injBtn=document.getElementById('injury-guide-btn-wrap');
@@ -2812,15 +2815,15 @@ function renderDashboard(){
   if(!userMealPlan&&!userTrainingPlan)aEl.innerHTML+=`<div class="alert alert-info">👋 Welcome! Hit "Generate Plan" to get your personalised programme.</div>`;
   if(userPoints.season_points>=1500)aEl.innerHTML+=`<div class="alert alert-ok">🏆 SEASON WIN! You hit 1500 points! Absolute legend.</div>`;
   if(CU.goal_updated==='true')aEl.innerHTML+=`<div class="alert alert-warn">⚡ Goal updated. Generate a new plan to reflect your changes.</div>`;
-  // 4 week progress photo prompt - date based not session count based
-  const photoKey='last_photo_prompt_'+CU.user_id;
-  const lastPrompt=sessionStorage.getItem(photoKey);
-  const fourWeeksMs=28*24*60*60*1000;
-  if(sessionCount>0&&(!lastPrompt||Date.now()-parseInt(lastPrompt)>fourWeeksMs)){
-    aEl.innerHTML+=`<div class="alert alert-info">📸 Progress photo time! It has been 4 weeks - take a photo for your own comparison. You might be surprised how far you have come. <button style="background:none;border:none;color:var(--tx3);cursor:pointer;font-size:11px;margin-left:8px" onclick="sessionStorage.setItem('last_photo_prompt_${CU.user_id}',Date.now());this.closest('.alert').remove()">Dismiss</button></div>`;
-    sessionStorage.setItem(photoKey,Date.now());
-  }
-  // Social event planning button - only visible if a plan exists and it is not already the event day
+  // 4 week progress photo prompt. Remembered on this device, so it shows once
+  // every 4 weeks (counted from sign-up, then from the last dismissal) and stays
+  // until dismissed, instead of appearing in every new browser session.
+  let lastPhotoPrompt=0;
+  try{lastPhotoPrompt=parseInt(localStorage.getItem('last_photo_prompt_'+CU.user_id))||0;}catch(e){}
+  const photoRef=lastPhotoPrompt||new Date(CU.created_at).getTime()||Date.now();
+  if((userMealPlan||userTrainingPlan)&&Date.now()-photoRef>28*24*60*60*1000){
+    aEl.innerHTML+=`<div class="alert alert-info">📸 Progress photo time! It has been 4 weeks - take a photo for your own comparison. You might be surprised how far you have come. <button style="background:none;border:none;color:var(--tx3);cursor:pointer;font-size:11px;margin-left:8px" onclick="dismissPhotoPrompt(this)">Dismiss</button></div>`;
+  }  // Social event planning button - only visible if a plan exists and it is not already the event day
   if(userMealPlan&&!eventDay){
     aEl.innerHTML+=`<button class="event-plan-btn" style="width:100%;margin-top:8px;padding:10px 14px;text-align:left" onclick="openModal('event-modal')">🎉 Plan a Social Event - bank calories in advance</button>`;
   }
@@ -3156,26 +3159,30 @@ async function saveWeighIn(){
   const weight=document.getElementById('wi-weight')?.value;
   const notes=document.getElementById('wi-notes')?.value||'';
   sessionStorage.setItem('wi_prompted_'+CU.user_id+'_'+new Date().toDateString(),'done');
-  const lastWeight=measurements.length>0?parseFloat(measurements[measurements.length-1].weight)||0:0;
   const currentWeight=parseFloat(weight)||0;
-  let adjMsg='';let adjAmount=0;
-  if(lastWeight>0&&currentWeight>0){
-    const diff=currentWeight-lastWeight;
-    if(CU.goal==='cut'){
-      if(diff>0.5){adjMsg=`You are up ${diff.toFixed(1)}kg this week. We recommend reducing calories by 100 to stay on track.`;adjAmount=-100;}
-      else if(diff<-1){adjMsg=`You are down ${Math.abs(diff).toFixed(1)}kg this week - great progress! You could add 50 calories to preserve more muscle.`;adjAmount=50;}
-      else{adjMsg='Weight is moving in the right direction. Calories stay the same this week.';}
-    }else if(CU.goal==='bulk'){
-      if(diff<0.2){adjMsg=`Only ${diff.toFixed(1)}kg gained. Add 100 calories this week to drive better muscle growth.`;adjAmount=100;}
-      else if(diff>0.8){adjMsg=`Up ${diff.toFixed(1)}kg - gaining a little fast. Reduce by 50 calories to keep it clean.`;adjAmount=-50;}
-      else{adjMsg='Perfect rate of gain. Calories stay the same.';}
-    }else{adjMsg='Weight is stable. Calories stay the same this week.';}
-  }
   showLoad('Saving','Logging weigh-in...');
   try{
+    // Compare against the previous weigh-in. The first weigh-in compares against
+    // the sign-up weight. If the history cannot be read, no adjustment is offered.
+    let prevWeight=0,prevDate=null;
+    try{
+      const wd=await dbGet('weigh_in_log');
+      const mine=(wd.values||[]).filter(r=>r[1]===CU.user_id&&r[0]!=='record_id'&&parseFloat(r[3])>0)
+        .sort((a,b)=>new Date(a[2])-new Date(b[2]));
+      if(mine.length){prevWeight=parseFloat(mine[mine.length-1][3])||0;prevDate=mine[mine.length-1][2];}
+      else{prevWeight=parseFloat(CU.weight_kg)||0;prevDate=CU.created_at;}
+    }catch(e){console.error('Weigh-in history:',e);}
+    const {adjAmount,adjMsg}=weighInAdjustment(prevWeight,prevDate,currentWeight,CU.goal);
     const rid='wi_'+Date.now();
     await dbAppend('weigh_in_log',[rid,CU.user_id,new Date().toISOString(),weight,weighInRatings.energy,weighInRatings.hunger,weighInRatings.training,notes,adjAmount,'pending']);
     measurements.push({logged_at:new Date().toISOString(),weight,waist:'',chest:'',biceps:'',shoulders:'',quads:'',calves:'',forearms:''});
+    // Keep the profile weight current, so protein and next month's targets use the real weight
+    if(currentWeight>0){
+      try{
+        const patched=await patchUserRow(CU.user_id,{5:currentWeight},CU);
+        if(patched)CU.weight_kg=currentWeight;
+      }catch(e){console.error('Profile weight update:',e);}
+    }
     closeModal('weigh-modal');
     // Check if this is a pattern analysis week (every 3rd weigh-in)
     // If yes, pattern analysis fires instead of the simple weekly modal
@@ -3184,12 +3191,16 @@ async function saveWeighIn(){
     if(!patternFired){
       // Not a pattern week - use the simple weekly adjustment as normal
       hideLoad();
-      if(adjAmount!==0){
-        pendingCalAdj={amount:adjAmount,message:adjMsg};
+      const cur=parseInt(userMealPlan?.meals?.daily_targets?.calories)||0;
+      const proposed=cur?applyCalorieFloor(cur+adjAmount):0;
+      if(adjAmount!==0&&cur&&proposed!==cur){
+        pendingCalAdj={amount:proposed-cur,message:adjMsg};
         document.getElementById('cal-adj-content').innerHTML=`
           <div class="alert alert-info">${adjMsg}</div>
-          <div style="font-size:14px;color:var(--tx2);margin-top:10px">Current target: <strong style="color:var(--ac)">${userMealPlan?.meals?.daily_targets?.calories||0} kcal</strong></div>
-          <div style="font-size:14px;color:var(--tx2)">Proposed target: <strong style="color:var(--ac)">${(userMealPlan?.meals?.daily_targets?.calories||0)+adjAmount} kcal</strong></div>`;
+          <div style="font-size:14px;color:var(--tx2);margin-top:10px">Current target: <strong style="color:var(--ac)">${cur} kcal</strong></div>
+          <div style="font-size:14px;color:var(--tx2)">Proposed target: <strong style="color:var(--ac)">${proposed} kcal</strong></div>
+          ${proposed!==cur+adjAmount?`<div style="font-size:12px;color:var(--tx3);margin-top:6px">Limited to your minimum of ${calorieFloor()} kcal a day.</div>`:''}
+          <div style="font-size:12px;color:var(--tx3);margin-top:10px">Your meals stay the same. Each recipe will show its portion resized to match, so the change is spread across the whole day.</div>`;
         openModal('cal-adj-modal');
       }else{
         postAutoWall(`📊 ${CU.username} completed their weekly weigh-in!`);
@@ -3202,7 +3213,7 @@ async function saveWeighIn(){
 
 async function confirmCalAdj(){
   if(!pendingCalAdj||!userMealPlan?.meals?.daily_targets)return;
-  userMealPlan.meals.daily_targets.calories+=pendingCalAdj.amount;
+  setCalorieTarget((parseInt(userMealPlan.meals.daily_targets.calories)||0)+pendingCalAdj.amount);
   closeModal('cal-adj-modal');
   pendingCalAdj=null;
   // Persist updated calorie target back to the database so it survives a refresh
@@ -3220,8 +3231,9 @@ async function confirmCalAdj(){
     postAutoWall(`📊 ${CU.username} completed their weekly weigh-in and adjusted their calorie target!`);
     celebrateMsg('caloriesAdjusted','📊','Calories Adjusted!',{cals:userMealPlan.meals.daily_targets.calories});
   }catch(e){console.error('Cal adj save:',e);alert('Your calorie adjustment could not be saved and may not survive a refresh. Please try again: '+e.message);}
+  // Redraw so the resized portions show straight away
+  renderDashboard();renderMealPlan();
 }
-
 // ============================================================
 // MEAL PICKER
 // ============================================================
@@ -3233,6 +3245,8 @@ const MAX_PLAN_RECIPES=36;
 let isGenerating=false;
 // True when the last attempt to load the profile list failed
 let usersLoadError=false;
+// A tab asked for by a home-screen shortcut before anyone was logged in
+let pendingDeepLink='';
 let swapEquipmentPhoto=null;
 // The alternative exercise the AI last suggested, waiting for the user to accept it
 let pendingSwap=null;
@@ -3425,6 +3439,12 @@ async function generatePlan(){
     const monthNumber=myPlanCount+1;
     const isMonth2OrLater=monthNumber>=2;
 
+    // Next month starts where last month ended: carry the current (adjusted) calorie
+    // target into the new plan. A goal change since the last plan starts fresh from
+    // the profile instead.
+    const prevTarget=parseInt(userMealPlan?.meals?.daily_targets?.calories)||0;
+    carriedCalorieTarget=(prevTarget&&CU.goal_updated!=='true')?prevTarget:null;
+
     // Save the monthly check-in answers now, before generation - awaited so
     // this same generation's fetch below is guaranteed to see them, not just
     // future ones
@@ -3541,7 +3561,7 @@ async function generatePlan(){
       low_calorie_meals:extraRecipes.meals?.low_calorie_meals||extraRecipes.low_calorie_meals||[],
       bulking_meals:extraRecipes.meals?.bulking_meals||extraRecipes.bulking_meals||[],
     // Always use the calculated targets as ground truth - don't rely on AI returning them correctly
-    },daily_targets:nameData.daily_targets||calculatedTargets};
+    },daily_targets:{...calculatedTargets,base_calories:calculatedTargets.calories}};
 
     // CALL 5 - ROTATION built from chosen meal names
     showLoad('Building Weekly Schedule (5 of 6)','Mapping your meals into a 4-week rotation...');
@@ -3587,6 +3607,13 @@ async function generatePlan(){
         const patched=await patchUserRow(CU.user_id,{32:'false'},CU);
         if(patched)CU.is_new_user='false';
       }catch(e){}
+    }
+    // The new plan reflects the changed goal, so the "Goal updated" banner can go
+    if(CU.goal_updated==='true'){
+      try{
+        const patched=await patchUserRow(CU.user_id,{25:''},CU);
+        if(patched)CU.goal_updated='';
+      }catch(e){console.error('Clear goal flag:',e);}
     }
 
     await ensurePointsRow(CU.user_id,CU.username);
@@ -3712,6 +3739,83 @@ function describeAiError(e,timeoutMsg){
   return null;
 }
 
+// ---- CALORIE TARGET RULES ----
+// The lowest daily target the app will ever set: 1500 kcal for men, 1200 for
+// women. Applied at generation and to every adjustment.
+function calorieFloor(){return String(CU?.sex||'').toLowerCase()==='male'?1500:1200;}
+function applyCalorieFloor(kcal){return Math.max(calorieFloor(),Math.round(kcal));}
+
+// Last month's final calorie target, carried into the plan being generated.
+// Only read while isGenerating is true. null means "work it out from the profile".
+let carriedCalorieTarget=null;
+
+// daily_targets.calories is the CURRENT target. daily_targets.base_calories is
+// the target the plan's recipes were written for. When a weigh-in changes the
+// target, the recipes are not rewritten - every portion is scaled by
+// calories / base_calories instead, on the recipe screens, the meal log and the
+// shopping list. Plans from before 5 Oct 2026 have no base_calories and get one
+// the first time their target changes.
+function planBaseCalories(){
+  const t=userMealPlan?.meals?.daily_targets;
+  return parseInt(t?.base_calories)||parseInt(t?.calories)||0;
+}
+function portionScale(){
+  const t=userMealPlan?.meals?.daily_targets;
+  const base=parseInt(t?.base_calories)||0,cur=parseInt(t?.calories)||0;
+  if(!base||!cur)return 1;
+  const s=cur/base;
+  return Math.abs(s-1)<0.005?1:Math.min(1.5,Math.max(0.6,s));
+}
+function scaledMacro(v){return Math.round((parseFloat(v)||0)*portionScale());}
+// The ONLY way to change the calorie target of an existing plan
+function setCalorieTarget(newTarget){
+  const t=userMealPlan.meals.daily_targets;
+  if(!parseInt(t.base_calories))t.base_calories=parseInt(t.calories)||0;
+  t.calories=applyCalorieFloor(newTarget);
+  return t.calories;
+}
+// Restates the g / ml / kg / l amounts in an ingredient list at the current
+// portion size, e.g. "200g chicken" becomes "190g (was 200g) chicken". Whole
+// items, spoon measures and anything under 20g are left alone.
+function scaleIngredientText(text){
+  const s=portionScale();
+  if(s===1||!text)return text;
+  return String(text).replace(/(\d+(?:\.\d+)?)(\s*)(kg|g|ml|l)\b/gi,(m,num,sp,unit)=>{
+    const q=parseFloat(num);const u=unit.toLowerCase();
+    let scaled;
+    if(u==='kg'||u==='l'){scaled=Math.round(q*s*20)/20;}
+    else{if(q<20)return m;scaled=Math.round(q*s/5)*5;}
+    if(scaled===q)return m;
+    return `${scaled}${sp}${unit} (was ${num}${unit})`;
+  });
+}
+function portionNoteHtml(recipe){
+  const s=portionScale();
+  if(s===1)return'';
+  return `<div class="alert alert-info" style="font-size:12px;margin-bottom:10px">⚖️ Adjusted for your current target: <strong>${Math.round(s*100)}% portion</strong>, about ${scaledMacro(recipe.calories)} kcal. Amounts in g and ml are resized below. Whole items (eggs, tins), spoon measures and anything under 20g stay the same.</div>`;
+}
+// Works out the weekly calorie adjustment from two weigh-ins, as a rate per
+// week so a missed week does not look like a sudden jump.
+function weighInAdjustment(prevWeight,prevDate,currentWeight,goal){
+  if(!(prevWeight>0)||!(currentWeight>0))return{adjAmount:0,adjMsg:'',rate:0};
+  const days=(Date.now()-new Date(prevDate).getTime())/86400000;
+  const weeks=isNaN(days)?1:Math.max(1,days/7);
+  const diff=currentWeight-prevWeight;
+  const rate=diff/weeks;
+  const since=weeks>=1.5?`over the last ${Math.round(weeks)} weeks (${Math.abs(rate).toFixed(1)}kg a week)`:'since your last weigh-in';
+  const moved=Math.abs(diff).toFixed(1);
+  let adjAmount=0,adjMsg='';
+  if(goal==='cut'){
+    if(rate>0.5){adjMsg=`You are up ${moved}kg ${since}. We recommend reducing calories by 100 to stay on track.`;adjAmount=-100;}
+    else if(rate<-1){adjMsg=`You are down ${moved}kg ${since} - great progress! You could add 50 calories to preserve more muscle.`;adjAmount=50;}
+    else{adjMsg='Weight is moving in the right direction. Calories stay the same this week.';}
+  }else if(goal==='bulk'){
+    if(rate<0.2){adjMsg=`${diff>0?'Only '+moved+'kg gained':'No weight gained'} ${since}. Add 100 calories to drive better muscle growth.`;adjAmount=100;}
+    else if(rate>0.8){adjMsg=`Up ${moved}kg ${since} - gaining a little fast. Reduce by 50 calories to keep it clean.`;adjAmount=-50;}
+    else{adjMsg='Perfect rate of gain. Calories stay the same.';}
+  }else{adjMsg='Weight is stable. Calories stay the same this week.';}
+  return{adjAmount,adjMsg,rate};
+}
 function getUserMacros(){
   const u=CU;
   const w=parseFloat(u.weight_kg)||75;
@@ -3720,7 +3824,11 @@ function getUserMacros(){
   let bmr=u.sex==='male'?10*w+6.25*h-5*a+5:10*w+6.25*h-5*a-161;
   const mult={'3':1.375,'4':1.55,'5':1.55,'6':1.725}[u.training_days]||1.375;
   const tdee=Math.round(bmr*mult);
-  const tc=u.goal==='cut'?tdee-400:u.goal==='bulk'?tdee+300:tdee;
+  const formula=u.goal==='cut'?tdee-400:u.goal==='bulk'?tdee+300:tdee;
+  // While generating: last month's final target, if one is being carried over.
+  // Any other time (a meal swap): the size the current plan's recipes were written for.
+  const planned=isGenerating?carriedCalorieTarget:(planBaseCalories()||null);
+  const tc=applyCalorieFloor(planned||formula);
   const protein=Math.round(w*2.2);
   const fats=Math.round(tc*0.25/9);
   const carbs=Math.round((tc-(protein*4)-(fats*9))/4);
@@ -3981,18 +4089,26 @@ async function checkPatternAnalysis(){
     const analysis=await genPatternAnalysis(last3,recentLogs);
     if(!analysis){hideLoad();return false;}
 
+    // The app does the sum, not the AI: the direction comes from the recommendation,
+    // the size is limited to 100 kcal, and the result can never go below the floor.
+    // The AI's own new_target number is ignored.
+    const currentCals=parseInt(userMealPlan?.meals?.daily_targets?.calories)||0;
+    const rawAdj=Math.min(100,Math.abs(parseInt(analysis.adjustment_kcal)||0));
+    const wantedAdj=analysis.recommendation==='CUT'?-rawAdj:analysis.recommendation==='INCREASE'?rawAdj:0;
+    const newTarget=currentCals?applyCalorieFloor(currentCals+wantedAdj):0;
+    const adj=currentCals?newTarget-currentCals:0;
+
     // Store the pending adjustment
     pendingPatternAdj={
       recommendation:analysis.recommendation,
-      adjustment_kcal:analysis.adjustment_kcal||0,
-      new_target:analysis.new_target||userMealPlan?.meals?.daily_targets?.calories||0,
+      adjustment_kcal:adj,
+      new_target:newTarget,
       headline:analysis.headline,
       explanation:analysis.explanation,
       composition_note:analysis.composition_note||''
     };
 
     // Build the modal content
-    const currentCals=userMealPlan?.meals?.daily_targets?.calories||0;
     const recColor={
       'CUT':'var(--danger)',
       'INCREASE':'var(--ok)',
@@ -4001,8 +4117,8 @@ async function checkPatternAnalysis(){
     }[analysis.recommendation]||'var(--ac)';
 
     const recLabel={
-      'CUT':`Reduce by ${Math.abs(analysis.adjustment_kcal)} kcal - new target ${analysis.new_target} kcal`,
-      'INCREASE':`Add ${analysis.adjustment_kcal} kcal - new target ${analysis.new_target} kcal`,
+      'CUT':adj?`Reduce by ${Math.abs(adj)} kcal - new target ${newTarget} kcal`:`Already at your minimum of ${calorieFloor()} kcal - holding at ${currentCals} kcal`,
+      'INCREASE':`Add ${adj} kcal - new target ${newTarget} kcal`,
       'HOLD':`Keep at ${currentCals} kcal`,
       'HOLD_ADJUST':`Keep at ${currentCals} kcal - adjust composition`
     }[analysis.recommendation]||'';
@@ -4015,17 +4131,12 @@ async function checkPatternAnalysis(){
       </div>
       <div style="font-size:14px;line-height:1.7;color:var(--tx);margin-bottom:14px">${analysis.explanation}</div>
       ${analysis.composition_note?`<div class="alert alert-info" style="font-size:13px">${analysis.composition_note}</div>`:''}
-      ${analysis.adjustment_kcal===0?`<div id="pattern-confirm-btn-wrap" style="display:none"></div>`:''}
+      ${adj===0?`<div id="pattern-confirm-btn-wrap" style="display:none"></div>`:''}
     `;
 
-    // If HOLD with no adjustment, hide the confirm button and just show a dismiss
-    if(analysis.recommendation==='HOLD'||analysis.recommendation==='HOLD_ADJUST'){
-      document.getElementById('pattern-confirm-btn').style.display=analysis.adjustment_kcal===0?'none':'block';
-      document.getElementById('pattern-modal-actions').querySelector('.btn-ghost').textContent='Got It';
-    }else{
-      document.getElementById('pattern-confirm-btn').style.display='block';
-      document.getElementById('pattern-modal-actions').querySelector('.btn-ghost').textContent='Keep Current Calories';
-    }
+    // Nothing to apply (a hold, or already at the minimum): hide the confirm button and just show a dismiss
+    document.getElementById('pattern-confirm-btn').style.display=adj===0?'none':'block';
+    document.getElementById('pattern-modal-actions').querySelector('.btn-ghost').textContent=adj===0?'Got It':'Keep Current Calories';
 
     hideLoad();
     openModal('pattern-modal');
@@ -4041,7 +4152,7 @@ async function checkPatternAnalysis(){
 async function confirmPatternAdj(){
   if(!pendingPatternAdj||!userMealPlan?.meals?.daily_targets)return;
   showLoad('Saving','Updating your nutrition target...');
-  userMealPlan.meals.daily_targets.calories=pendingPatternAdj.new_target;
+  setCalorieTarget(pendingPatternAdj.new_target);
   closeModal('pattern-modal');
   let saveFailed=false;
 
@@ -4052,7 +4163,7 @@ async function confirmPatternAdj(){
       const ri=mp.values.findIndex(r=>r[0]===userMealPlan.plan_id);
       if(ri>=0){
         const row=[...mp.values[ri]];
-        row[5]=pendingPatternAdj.new_target;
+        row[5]=userMealPlan.meals.daily_targets.calories;
         writeMealsJson(row,JSON.stringify(userMealPlan.meals));
         await dbUpdate('meal_plans',ri+1,row);
       }
@@ -4085,7 +4196,8 @@ async function confirmPatternAdj(){
     postAutoWall(`📊 ${CU.username} completed a 3-week nutrition review and updated their calorie target to ${userMealPlan.meals.daily_targets.calories} kcal`);
     celebrateMsg('nutritionUpdated','📊','Nutrition Updated!',{cals:userMealPlan.meals.daily_targets.calories});
   }
-  renderDashboard();
+  // Redraw so the resized portions show straight away
+  renderDashboard();renderMealPlan();
 }
 
 function declinePatternAdj(){
@@ -4486,6 +4598,10 @@ function renderMealPlan(){
     <div class="stat"><div class="stat-v">${t.fats||0}g</div><div class="stat-l">Fats</div></div>
   </div>`;
 
+  if(portionScale()!==1){
+    html+=`<div class="alert alert-info" style="margin-bottom:16px">⚖️ Your target has moved from ${planBaseCalories()} to ${t.calories} kcal since this plan was written, so every portion is shown at <strong>${Math.round(portionScale()*100)}%</strong>. Open any meal to see its resized amounts. Your next plan will be written at the new target.</div>`;
+  }
+
   // Shopping list button
   html+=`<button class="btn btn-ghost" style="width:100%;margin-bottom:16px" onclick="genShoppingList()">🛒 Generate Shopping List</button>`;
   html+=`<div id="shopping-list-out" style="margin-bottom:16px"></div>`;
@@ -4544,7 +4660,7 @@ function renderWeekDaysInline(wk,recipeMap){
             <div style="flex:1;min-width:0">
               <div style="font-size:10px;color:var(--tx3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:2px">${slotLabel[slot]||slot}</div>
               <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${mealName}${isDisliked?' <span style="font-size:10px;color:var(--danger);font-weight:400;letter-spacing:.5px">DISLIKED</span>':''}</div>
-              ${recipe?`<div style="font-size:11px;color:var(--tx2);margin-top:2px">${recipe.calories||0}kcal &nbsp;P:${recipe.protein||0}g &nbsp;C:${recipe.carbs||0}g &nbsp;F:${recipe.fats||0}g</div>`:''}
+              ${recipe?`<div style="font-size:11px;color:var(--tx2);margin-top:2px">${scaledMacro(recipe.calories)}kcal &nbsp;P:${scaledMacro(recipe.protein)}g &nbsp;C:${scaledMacro(recipe.carbs)}g &nbsp;F:${scaledMacro(recipe.fats)}g</div>`:''}
             </div>
             ${recipe?.bulk_cook?'<span class="badge badge-bulk" style="font-size:9px">Batch</span>':''}
             ${recipe?.difficulty?`<span class="badge ${ {'easy':'badge-diff-e','medium':'badge-diff-m','hard':'badge-diff-h'}[recipe.difficulty]||'badge-diff-e'}" style="font-size:9px">${recipe.difficulty}</span>`:''}
@@ -4567,7 +4683,8 @@ function renderRecipeDetail(recipe,mealName,slot){
   const cat=slotCatMap[slot]||'breakfasts';
   return`
     ${recipe.micronutrients?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">${recipe.micronutrients}</div>`:''}
-    ${recipe.ingredients_uk?`<div class="det-lbl">Ingredients (UK) - Serves ${recipe.servings||1}</div><div class="ingr">${recipe.ingredients_uk}</div>`:''}
+    ${portionNoteHtml(recipe)}
+    ${recipe.ingredients_uk?`<div class="det-lbl">Ingredients (UK) - Serves ${recipe.servings||1}</div><div class="ingr">${scaleIngredientText(recipe.ingredients_uk)}</div>`:''}
     ${recipe.ingredients_us?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">US: ${recipe.ingredients_us}</div>`:''}
     ${recipe.method?`<div class="det-lbl">Method</div><div class="method">${fmtMethod(recipe.method)}</div>`:''}
     ${recipe.bulk_cook?`<div class="alert alert-info" style="margin-top:10px">🍳 Batch cook - makes <strong>${recipe.batch_portions||recipe.servings||2} portions</strong>. Portion into containers. Refrigerate up to 5 days or freeze up to 3 months.</div>`:''}
@@ -4783,10 +4900,10 @@ function renderMealCard(meal,cat){
       </div>
     </div>
     <div class="meal-macros">
-      <span><b>${meal.calories||0}</b> kcal</span>
-      <span>P:<b>${meal.protein||0}g</b></span>
-      <span>C:<b>${meal.carbs||0}g</b></span>
-      <span>F:<b>${meal.fats||0}g</b></span>
+      <span><b>${scaledMacro(meal.calories)}</b> kcal</span>
+      <span>P:<b>${scaledMacro(meal.protein)}g</b></span>
+      <span>C:<b>${scaledMacro(meal.carbs)}g</b></span>
+      <span>F:<b>${scaledMacro(meal.fats)}g</b></span>
       ${meal.prep_time_mins?`<span>⏱<b>${meal.prep_time_mins}m</b></span>`:''}
       ${meal.servings?`<span>Serves:<b>${meal.servings}</b></span>`:''}
     </div>
@@ -4796,7 +4913,8 @@ function renderMealCard(meal,cat){
       ${!isDisliked?`<button class="dislike-btn" onclick="dislikeMeal(this)">👎 Dislike</button>`:`<button class="dislike-btn" style="color:var(--ok)" onclick="restoreMeal(this)">↩ Restore</button>`}
     </div>
     <div class="meal-det" id="${id}" data-meal-name="${meal.name.replace(/"/g,'&quot;')}" data-meal-cat="${cat}">
-      ${meal.ingredients_uk?`<div class="det-lbl">Ingredients (UK) - Serves ${meal.servings||1}</div><div class="ingr">${meal.ingredients_uk}</div>`:''}
+      ${portionNoteHtml(meal)}
+      ${meal.ingredients_uk?`<div class="det-lbl">Ingredients (UK) - Serves ${meal.servings||1}</div><div class="ingr">${scaleIngredientText(meal.ingredients_uk)}</div>`:''}
       ${meal.ingredients_us?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">US: ${meal.ingredients_us}</div>`:''}
       ${meal.method?`<div class="det-lbl">Method</div><div class="method">${fmtMethod(meal.method)}</div>`:''}
       ${meal.bulk_cook?`<div class="alert alert-info" style="margin-top:10px">🍳 Batch cook - makes <strong>${meal.batch_portions||meal.servings||2} portions</strong>. Portion into containers. Refrigerate up to 5 days or freeze up to 3 months.</div>`:''}
@@ -5124,7 +5242,8 @@ async function genShoppingList(){
     // For batch meals count how many times they appear - but batch_portions already accounts for servings
     // So multiply by count (appearances in rotation) but only by 1/batch_portions each time
     const batchPortions=parseInt(recipe.batch_portions)||1;
-    const multiplier=recipe.bulk_cook?(count/batchPortions):count;
+    // Times the current portion size, so the list matches the resized recipes
+    const multiplier=(recipe.bulk_cook?(count/batchPortions):count)*portionScale();
 
     // Strip cost annotations before splitting - these aren't ingredients
     // (e.g. "Approx £3.20/serving." or "est. cost/serving: £1.40")
@@ -5844,7 +5963,7 @@ function renderMealLog(){
     html+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--b1)">
       <div>
         <div style="font-weight:500;font-size:14px">${m.name}</div>
-        <div style="font-size:12px;color:var(--tx2);font-family:'JetBrains Mono',monospace">${m.calories||0} kcal P:${m.protein||0}g</div>
+        <div style="font-size:12px;color:var(--tx2);font-family:'JetBrains Mono',monospace">${scaledMacro(m.calories)} kcal P:${scaledMacro(m.protein)}g</div>
       </div>
       <label class="toggle"><input type="checkbox" id="${mid}"><div class="tslider"></div></label>
     </div>`;
@@ -5902,11 +6021,12 @@ async function saveMealLog(){
     const cbId=cb.id;
     const meal=Object.values(recipeMap).find(m=>'ml_'+m.name.replace(/\W+/g,'_')===cbId);
     if(!meal)return;
-    totalCals+=parseInt(meal.calories)||0;
-    totalProtein+=parseInt(meal.protein)||0;
-    totalCarbs+=parseInt(meal.carbs)||0;
-    totalFats+=parseInt(meal.fats)||0;
-    eaten.push({name:meal.name,calories:meal.calories||0,protein:meal.protein||0});
+    // Counted at the current portion size, not the size the recipe was written at
+    totalCals+=scaledMacro(meal.calories);
+    totalProtein+=scaledMacro(meal.protein);
+    totalCarbs+=scaledMacro(meal.carbs);
+    totalFats+=scaledMacro(meal.fats);
+    eaten.push({name:meal.name,calories:scaledMacro(meal.calories),protein:scaledMacro(meal.protein)});
   });
   // Food outside the plan counts toward the day and is stored in food_outside_plan_json
   for(const f of extraFoods){totalCals+=f.calories;totalProtein+=f.protein;totalCarbs+=f.carbs;}
@@ -6612,7 +6732,7 @@ function renderProfile(){
       <div id="prof-batch-days-row" style="margin-top:12px;${(CU.batch_cooking||'')===('Fresh meals every day')?'display:none':''}">
         <label class="flbl" style="margin-bottom:6px;display:block">What do you batch cook?</label>
         <div class="pills" id="prof-batch-detail" style="margin-bottom:10px">
-          ${['Batch breakfast','Batch lunches','Batch dinners','Batch snacks'].map(s=>`<div class="pill ${(CU.batch_cooking||'').includes(s)?'on':''}" onclick="tpill(this)">${s}</div>`).join('')}
+          ${['Batch breakfast','Batch lunches','Batch dinners','Batch snacks'].map(s=>`<div class="pill ${(CU.batch_cooking||'').includes(s)?'on':''}" onclick="updateBatchDetail(this)">${s}</div>`).join('')}
         </div>
         <label class="flbl" style="margin-bottom:6px;display:block">Which days?</label>
         <div class="pills" id="prof-batch-days">
@@ -6690,17 +6810,39 @@ async function saveWeighInDay(){
   celebrateMsg('weighInDayUpdated','📅','Weigh-In Day Updated!',{day});
 }
 
+// The profile's meal prep style is stored as "Style (Batch lunches,Batch dinners)",
+// the same shape onboarding writes. Built from the pills currently switched on.
+function profBatchValue(style){
+  if(style==='Fresh meals every day')return style;
+  const detail=getOnPills('prof-batch-detail');
+  return detail?`${style} (${detail})`:style;
+}
+
 async function updateBatchCooking(el,style){
-  if(!await updateUserField(34,style))return;
+  const value=profBatchValue(style);
+  if(!await updateUserField(34,value))return;
   document.querySelectorAll('#prof-batch .pill').forEach(p=>p.classList.remove('on'));
   el.classList.add('on');
-  CU.batch_cooking=style;
+  CU.batch_cooking=value;
   // Show/hide batch days row based on selection
   const daysRow=document.getElementById('prof-batch-days-row');
   if(daysRow)daysRow.style.display=style==='Fresh meals every day'?'none':'block';
   celebrateMsg('batchStyleUpdated','🍳','Meal Prep Style Updated!');
 }
 
+// "What do you batch cook?" pills in Profile - saved as soon as one is tapped
+async function updateBatchDetail(el){
+  el.classList.toggle('on');
+  const style=(CU.batch_cooking||'Mix - I decide per meal').split(' (')[0];
+  const value=profBatchValue(style);
+  if(!await updateUserField(34,value)){el.classList.toggle('on');return;}
+  CU.batch_cooking=value;
+}
+
+function dismissPhotoPrompt(btn){
+  try{localStorage.setItem('last_photo_prompt_'+CU.user_id,Date.now());}catch(e){}
+  btn.closest('.alert')?.remove();
+}
 async function updateBatchDays(el,days){
   if(!await updateUserField(38,days))return;
   document.querySelectorAll('#prof-batch-days .pill').forEach(p=>p.classList.remove('on'));
@@ -7384,7 +7526,11 @@ async function createUser(){
   const region=document.getElementById('ob-region').value;
   const motStyle=getOnPills('ob-mot-style')||'Mix of Everything';
   const baselineType=getOnPills('ob-baseline-type')||'Assessment Week (Recommended)';
-  const knownNums=[document.getElementById('ob-sq')?.value,document.getElementById('ob-dl')?.value,document.getElementById('ob-bp')?.value,document.getElementById('ob-row')?.value,document.getElementById('ob-ohp')?.value].filter(Boolean).join(',');
+  // Saved with the lift names, so the AI can tell which number is which
+  const cardioBase=document.getElementById('ob-cardio-base')?.value.trim()||'';
+  const knownNums=!baselineType.includes('Know')?'':[['Squat','ob-sq'],['Deadlift','ob-dl'],['Bench Press','ob-bp'],['Row','ob-row'],['Overhead Press','ob-ohp']]
+    .map(([label,id])=>{const v=document.getElementById(id)?.value;return v?`${label}: ${v}kg`:'';})
+    .concat(cardioBase?['Cardio baseline: '+cardioBase]:[]).filter(Boolean).join(' | ');
   const apiKey=document.getElementById('ob-apikey').value.trim();
   const waterTarget=Math.min(Math.max(Math.round((parseFloat(weight)||75)*30),1500),2500);
   const injFull=[injuries,injDetail].filter(Boolean).join(' - ');
