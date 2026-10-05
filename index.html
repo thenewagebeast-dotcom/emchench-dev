@@ -1279,7 +1279,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='05 Oct 17:22';
+const APP_BUILD='05 Oct 18:26';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -5704,8 +5704,20 @@ async function logWorkout(sidx){
   showLoad('Logging Session','Saving your workout...');
   try{
     await dbAppend('workout_logs',[lid,CU.user_id,new Date().toISOString(),new Date().toDateString(),userTrainingPlan.plan_id,sidx,JSON.stringify(exercises),notes,10+(pb?15:0),JSON.stringify({}),sessRating,'']);
+  }catch(e){hideLoad();alert('Error saving session: '+e.message);console.error(e);return;}
+  // The session is saved - say so now. The rating, points, assessment capture and
+  // deload check need several more trips to the sheet, so they finish in the
+  // background. stillHere() stops them touching the screen if the user has signed out.
+  hideLoad();
+  postAutoWall(`💪 ${CU.username} just crushed ${s.name}!${pb?' NEW PB! 🏆':''} (+${10+(pb?15:0)} pts)`);
+  celebrate(pb?'pb':'workout',pb?'🏆':'💪');
+  const uid=CU.user_id;
+  const stillHere=()=>!!CU&&CU.user_id===uid;
+  (async()=>{
+  try{
     await dbAppend('session_ratings',['sr_'+Date.now(),CU.user_id,new Date().toISOString(),s.name,sessRating,notes]);
     await addPoints({pts:10+(pb?15:0),sessions_logged:1,pbs_logged:pb?1:0});
+    if(!stillHere())return;
 
     // Fix 2 - Assessment Phase 2: after all assessment sessions logged, extract Set 5 weights and save as known_numbers
     const isAssessmentSession=s.name?.toLowerCase().includes('assessment');
@@ -5714,6 +5726,7 @@ async function logWorkout(sidx){
       // throughout, since the sheet returns a stored "0" back as the number 0.
       const allAssessmentIndices=(userTrainingPlan.sessions||[]).map((ss,i)=>ss.name?.toLowerCase().includes('assessment')?String(i):null).filter(x=>x!==null);
       const logsData=await dbGet('workout_logs');
+      if(!stillHere())return;
       const myLogs=(logsData.values||[]).filter(r=>r[1]===CU.user_id&&r[4]===userTrainingPlan.plan_id);
       // Only count a log as an assessment completion if the session at that index is actually an assessment session
       const loggedAssessmentIndices=myLogs
@@ -5772,16 +5785,15 @@ async function logWorkout(sidx){
       }
     }
 
-    hideLoad();
-    postAutoWall(`💪 ${CU.username} just crushed ${s.name}!${pb?' NEW PB! 🏆':''} (+${10+(pb?15:0)} pts)`);
-    celebrate(pb?'pb':'workout',pb?'🏆':'💪');
     const newCount=(userPoints.sessions_logged||0);
     if(newCount===1)celebrateMsg('firstSession','🎉','First Session!');
     else if(newCount===10)celebrateMsg('tenSessions','🔥','10 Sessions!');
     else if(newCount===25)celebrateMsg('twentyFiveSessions','⚡','25 Sessions!');
     else if(newCount===50)celebrateMsg('fiftySessions','🏆','50 Sessions!');
+    if(!stillHere())return;
     renderDashboard();
-  }catch(e){hideLoad();alert('Error saving session: '+e.message);console.error(e);}
+  }catch(e){console.error('After-session updates failed:',e);}
+  })();
 }
 
 // ============================================================
@@ -5901,11 +5913,13 @@ async function saveMealLog(){
   const lid='ml_'+Date.now();
   try{
     await dbAppend('meal_logs',[lid,CU.user_id,new Date().toISOString(),new Date().toDateString(),userMealPlan?.plan_id||'',JSON.stringify(eaten),totalCals,totalProtein,totalCarbs,totalFats,'',10,JSON.stringify(extraFoods),waterMl,'']);
-    await addPoints({pts:10,meals_logged:1});
     extraFoods=[];renderExtraFoods();
     hideLoad();
     celebrate('meal','🥗');
     renderDashboard();
+    // The log is saved. Points take three more trips to the sheet, so they finish
+    // in the background and the dashboard is redrawn when they land.
+    addPoints({pts:10,meals_logged:1}).then(()=>{if(CU)renderDashboard();}).catch(e=>console.error('Meal log points:',e));
   }catch(e){hideLoad();alert('Error saving meals: '+e.message);}
 }
 
