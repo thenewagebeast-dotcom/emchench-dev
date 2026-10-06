@@ -632,14 +632,18 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
       <button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="saveSoreness()">Save Soreness</button>
     </div>
     <div class="card">
-      <div class="card-lbl">Holiday Mode</div>
-      <div class="two-col">
-        <div class="frow"><label class="flbl">Start Date</label><input class="finput" type="date" id="hol-start"></div>
-        <div class="frow"><label class="flbl">End Date</label><input class="finput" type="date" id="hol-end"></div>
+      <div class="card-lbl">Pause - Holiday, Illness or Injury</div>
+      <div id="pause-status"></div>
+      <div id="pause-form">
+        <div class="frow"><label class="flbl">Reason</label><select class="fsel" id="pause-reason"><option>Holiday</option><option>Illness</option><option>Injury</option><option>Other</option></select></div>
+        <div class="two-col">
+          <div class="frow"><label class="flbl">Start Date</label><input class="finput" type="date" id="hol-start"></div>
+          <div class="frow"><label class="flbl">End Date</label><input class="finput" type="date" id="hol-end"></div>
+        </div>
+        <div style="font-size:11px;color:var(--tx3);margin-bottom:10px">Freezes your streaks for up to 30 days. They pick up where they left off.</div>
+        <button class="btn btn-ghost btn-sm" onclick="setHoliday()">Start Pause</button>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="setHoliday()">Set Holiday Mode 🏖️</button>
-    </div>
-  </div>
+    </div>  </div>
 
   <!-- PROGRESS -->
   <div class="tab" id="tab-progress">
@@ -1138,7 +1142,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
       <div class="frow"><label class="flbl">Forearms (cm)</label><input class="finput" id="m-forearms" type="number" step=".5" placeholder="30"></div>
     </div>
     <div class="frow"><label class="flbl">Notes</label><input class="finput" id="m-notes" placeholder="Any notes..."></div>
-    <div style="display:flex;gap:10px"><button class="btn btn-ghost" onclick="closeModal('meas-modal')">Cancel</button><button class="btn" style="flex:1" onclick="saveMeasurements()">Save (+5 pts)</button></div>
+    <div style="display:flex;gap:10px"><button class="btn btn-ghost" onclick="closeModal('meas-modal')">Cancel</button><button class="btn" style="flex:1" onclick="saveMeasurements()">Save (+5 pts, once a week)</button></div>
   </div>
 </div>
 
@@ -1181,6 +1185,17 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
   </div>
 </div>
 
+<!-- INFO / ADVICE MODAL -->
+<div class="modal-bg" id="info-modal">
+  <div class="modal">
+    <div class="modal-title" id="info-modal-title"></div>
+    <div id="info-modal-content" style="font-size:14px;line-height:1.7;color:var(--tx)"></div>
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="btn btn-ghost" id="info-modal-profile" style="display:none" onclick="infoGoProfile()">Open Profile</button>
+      <button class="btn" style="flex:1" onclick="closeModal('info-modal')">OK</button>
+    </div>
+  </div>
+</div>
 <!-- CALORIE ADJUSTMENT MODAL -->
 <div class="modal-bg" id="cal-adj-modal">
   <div class="modal">
@@ -1279,7 +1294,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='05 Oct 19:01';
+const APP_BUILD='06 Oct 17:51';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -2570,6 +2585,7 @@ function signOut(){
   swapEquipmentPhoto=null;
   extraFoods=[];pendingSwap=null;usersLoadError=false;
   carriedCalorieTarget=null;pendingDeepLink='';
+  activityLogs={meals:[],workouts:[],water:[],pauses:[],loaded:false};mealLogPlannedToday=null;
   // Clear every tab back to its empty state so nothing rendered for this user is left on screen
   EMPTY_TAB_IDS.forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=emptyTabHtml[id]||'';});
   const injBtn=document.getElementById('injury-guide-btn-wrap');
@@ -2591,7 +2607,7 @@ async function loadUserData(){
   // is what made logging in slow. They now arrive together in one request. If
   // the batch itself fails, each section falls back to its own single read.
   let batch=null;
-  try{batch=await dbGetMany(['points','meal_plans','training_plans','wall_posts','competitions','measurements','disliked_meals','social_events','water_log']);}
+  try{batch=await dbGetMany(['points','meal_plans','training_plans','wall_posts','competitions','measurements','disliked_meals','social_events','water_log','meal_logs','workout_logs','holiday_log']);}
   catch(e){console.error('Load data - batch read failed, falling back to single reads:',e);}
   const sheetData=async name=>{
     const s=batch&&batch[name];
@@ -2612,7 +2628,7 @@ async function loadUserData(){
       }
     }
     document.getElementById('app-pts').textContent=(userPoints.season_points||0)+' PTS';
-    document.getElementById('app-streak').textContent=userPoints.current_streak?'🔥 '+userPoints.current_streak+' day streak':'';
+    showStreakHeader();
   }catch(e){console.error('Load data - points:',e);}
 
   try{
@@ -2702,6 +2718,20 @@ async function loadUserData(){
       }
     }
   }catch(e){console.error('Load data - water log:',e);}
+
+  try{
+    // Meal, workout and water logs plus pauses - what the streaks are worked out from.
+    // All four must load, or streaks are left as stored (never recalculated from part of the picture).
+    activityLogs={meals:[],workouts:[],water:[],pauses:[],loaded:false};
+    const mine=(d,header)=>(d.values||[]).filter(r=>r[0]&&r[0]!==header&&r[1]===CU.user_id);
+    const meals=mine(await sheetData('meal_logs'),'log_id').map(parseMealLogRow);
+    const workouts=mine(await sheetData('workout_logs'),'log_id').map(parseWorkoutLogRow);
+    const water=mine(await sheetData('water_log'),'record_id').map(r=>({day:dayKey(r[2]),ml:parseInt(r[3])||0}));
+    const pauses=mine(await sheetData('holiday_log'),'record_id').map(parsePauseRow);
+    activityLogs={meals,workouts,water,pauses,loaded:true};
+    // A streak that should have reset (or a second device's logs) shows up here. Saved in the background.
+    if(refreshStreaks()&&userPoints.record_id)addPoints({pts:0}).catch(e=>console.error('Streak save:',e));
+  }catch(e){console.error('Load data - activity logs (streaks left as stored):',e);}
 }
 
 // ============================================================
@@ -2716,9 +2746,9 @@ function renderDashboard(){
 
   // Streaks
   document.getElementById('dash-streaks').innerHTML=`
-    <div class="streak-box"><div class="streak-val">🔥${userPoints.current_streak||0}</div><div class="streak-lbl">Workout Streak</div></div>
-    <div class="streak-box"><div class="streak-val">🥗${userPoints.meal_streak||0}</div><div class="streak-lbl">Meal Streak</div></div>
-    <div class="streak-box"><div class="streak-val">💧${userPoints.water_streak||0}</div><div class="streak-lbl">Water Streak</div></div>`;
+    <div class="streak-box"><div class="streak-val">🔥${userPoints.current_streak||0}</div><div class="streak-lbl">Workout Streak (weeks)</div></div>
+    <div class="streak-box"><div class="streak-val">🥗${userPoints.meal_streak||0}</div><div class="streak-lbl">Meal Streak (days)</div></div>
+    <div class="streak-box"><div class="streak-val">💧${userPoints.water_streak||0}</div><div class="streak-lbl">Water Streak (days)</div></div>`;
 
   // Stats
   document.getElementById('dash-stats').innerHTML=`
@@ -2899,22 +2929,17 @@ function logWater(ml){
   const wt=parseInt(CU.water_target_ml)||2000;
   const isTrainDay=!!getTodaySession();
   const adjTarget=isTrainDay?wt+500:wt;
-  if(waterMl>=adjTarget&&waterMl-ml<adjTarget){celebrate('water','💧');
-    // Increment water streak - once per day only
-    const wKey='last_water_date_'+CU.user_id;
-    const wToday=new Date().toDateString();
-    if(sessionStorage.getItem(wKey)!==wToday){
-      if(!userPoints)userPoints={};
-      userPoints.water_streak=(userPoints.water_streak||0)+1;
-      sessionStorage.setItem(wKey,wToday);
-      // Persist via addPoints with zero pts so only streak updates
-      addPoints({pts:0,water_streak_inc:true}).catch(e=>console.error('Water streak save:',e));
-    }
+  // The water streak is worked out from the water log, so just record today's total
+  setWaterDay(dayKey(new Date()),waterMl);
+  refreshStreaks();
+  if(waterMl>=adjTarget&&waterMl-ml<adjTarget){
+    celebrate('water','💧');
+    // Save the updated streak to the points row (no points for water)
+    addPoints({pts:0}).catch(e=>console.error('Water streak save:',e));
   }
   renderDashboard();
   saveWaterLog().catch(e=>console.error('Water log save:',e));
 }
-
 async function saveWaterLog(){
   // Capture synchronously before any await - signOut() nulls CU and resets waterMl
   // to 0, and this is a fire-and-forget call so it must survive that happening mid-flight.
@@ -2954,7 +2979,7 @@ function renderLeaderboard(id){
       <div class="lb-av">${allUsers.find(u=>u.user_id===p.user_id)?.avatar||'💪'}</div>
       <div class="lb-info">
         <div class="lb-name">${escapeHtml(p.username)}${p.user_id===CU.user_id?' (you)':''}</div>
-        <div class="lb-meta">${p.sessions_logged} sessions · 🔥${p.current_streak}d · ${p.pbs_logged} PBs</div>
+        <div class="lb-meta">${p.sessions_logged} sessions · 🔥${p.current_streak||0}w · ${p.pbs_logged} PBs</div>
         <div class="prog-bar"><div class="prog-fill" style="width:${Math.min((p.season_points/1500)*100,100)}%"></div></div>
       </div>
       <div class="lb-pts-w"><div class="lb-pts">${p.season_points}</div><div class="lb-pts-l">/ 1500</div></div>
@@ -2979,7 +3004,7 @@ function renderCompeteLeaderboard(){
     workout_streak:{
       label:'Workout Streak',
       getValue:p=>p.current_streak||0,
-      primaryLabel:'DAY STREAK',
+      primaryLabel:'WEEK STREAK',
       primaryUnit:'🔥',
       color:'var(--ac2)'
     },
@@ -3024,7 +3049,7 @@ function renderCompeteLeaderboard(){
 
     const secondaryStats=[];
     if(_lbSortMode!=='season_points')secondaryStats.push(`<div class="lb-sec-stat">Season <span>${p.season_points||0} pts</span></div>`);
-    if(_lbSortMode!=='workout_streak')secondaryStats.push(`<div class="lb-sec-stat">🔥 Workout <span>${p.current_streak||0}d</span></div>`);
+    if(_lbSortMode!=='workout_streak')secondaryStats.push(`<div class="lb-sec-stat">🔥 Workout <span>${p.current_streak||0}w</span></div>`);
     if(_lbSortMode!=='meal_streak')secondaryStats.push(`<div class="lb-sec-stat">🥗 Meals <span>${p.meal_streak||0}d</span></div>`);
     if(_lbSortMode!=='water_streak')secondaryStats.push(`<div class="lb-sec-stat">💧 Water <span>${p.water_streak||0}d</span></div>`);
 
@@ -3175,7 +3200,7 @@ async function saveWeighIn(){
     const {adjAmount,adjMsg}=weighInAdjustment(prevWeight,prevDate,currentWeight,CU.goal);
     const rid='wi_'+Date.now();
     await dbAppend('weigh_in_log',[rid,CU.user_id,new Date().toISOString(),weight,weighInRatings.energy,weighInRatings.hunger,weighInRatings.training,notes,adjAmount,'pending']);
-    measurements.push({logged_at:new Date().toISOString(),weight,waist:'',chest:'',biceps:'',shoulders:'',quads:'',calves:'',forearms:''});
+    measurements.push({weighIn:true,logged_at:new Date().toISOString(),weight,waist:'',chest:'',biceps:'',shoulders:'',quads:'',calves:'',forearms:''});
     // Keep the profile weight current, so protein and next month's targets use the real weight
     if(currentWeight>0){
       try{
@@ -3933,7 +3958,7 @@ async function buildProgressionContext(){
     // PBs from workout logs
     const wld=await dbGet('workout_logs');
     const myLogs=wld.values
-      ?wld.values.filter(r=>r[1]===CU.user_id&&r[0]!=='log_id')
+      ?wld.values.filter(r=>r[1]===CU.user_id&&r[0]!=='log_id'&&String(r[5])!=='cardio')
       :[];
     const totalSessions=myLogs.length;
     const pbSessions=myLogs.filter(r=>(parseInt(r[8])||0)>=25).length;
@@ -4082,7 +4107,7 @@ async function checkPatternAnalysis(){
     const wld=await dbGet('workout_logs');
     const periodStart=new Date(last3[0][2]);
     const recentLogs=wld.values
-      ?wld.values.filter(r=>r[1]===CU.user_id&&r[0]!=='log_id'&&new Date(r[2])>=periodStart)
+      ?wld.values.filter(r=>r[1]===CU.user_id&&r[0]!=='log_id'&&String(r[5])!=='cardio'&&new Date(r[2])>=periodStart)
       :[];
 
     // Generate the pattern analysis via AI
@@ -5712,7 +5737,16 @@ function renderTracker(){
       ${userTrainingPlan.ab_sessions?.map((ab,i)=>`<option value="ab${i}">${ab.name}</option>`).join('')||''}
     </select>
   </div>
-  <div id="tracker-sess"></div>`;
+  <div id="tracker-sess"></div>
+  <div class="card" style="margin-top:16px">
+    <div class="card-lbl">Light Cardio - Optional</div>
+    <div style="font-size:12px;color:var(--tx2);margin-bottom:10px">A walk, an easy bike ride, a swim. Never required, and it does not affect your streak. +${EXTRA_SESSION_POINTS} pts, up to ${EXTRA_SESSIONS_PER_WEEK} a week.</div>
+    <div class="two-col">
+      <div class="frow"><label class="flbl">What did you do?</label><input class="finput" id="cardio-type" placeholder="e.g. Walk"></div>
+      <div class="frow"><label class="flbl">Minutes</label><input class="finput" id="cardio-mins" type="number" placeholder="30"></div>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="logCardio()">Log Cardio</button>
+  </div>`;
 
   el.innerHTML=html;
   if(todaySess){document.getElementById('tracker-sel').value=userTrainingPlan.sessions.indexOf(todaySess);loadTrackerSess();}
@@ -5779,7 +5813,8 @@ function loadTrackerSess(){
     <label for="pb-checkbox" style="font-size:13px;color:var(--tx2);cursor:pointer">I hit a personal best this session 🏆 (+15 pts)</label>
   </div>
   <div class="frow"><label class="flbl">Session Notes</label><input class="finput" id="tracker-notes" placeholder="How did it feel? Any notes..."></div>
-  <button class="btn" onclick="logWorkout('${idx}')">✓ Log Session (+10 pts)</button>`;
+  <div class="frow"><label class="flbl">Had to stop early? (optional)</label><select class="fsel" id="stop-early"><option value="">No</option><option>Sick</option><option>Injury</option><option>Emergency</option><option>Other</option></select><div style="font-size:11px;color:var(--tx3);margin-top:4px">Protects your weekly streak once a week if you could not finish. Points still come from the sets you log.</div></div>
+  <button class="btn" onclick="logWorkout('${idx}')">✓ Log Session (up to ${idx.startsWith('ab')?EXTRA_SESSION_POINTS:sessionShare(plannedSessionsPerWeek()||3)} pts)</button>`;
 
   document.getElementById('tracker-sess').innerHTML=html;
 }
@@ -5819,23 +5854,42 @@ async function logWorkout(sidx){
 
   const pb=document.getElementById('pb-checkbox')?.checked||false;
   const notes=document.getElementById('tracker-notes')?.value||'';
+  // How much of the session was logged decides the points and whether it counts toward the week
+  const plannedSets=(s.exercises||[]).reduce((n,ex)=>n+(parseInt(ex.sets)||3),0);
+  const loggedSets=exercises.reduce((n,ex,i)=>n+Math.min(ex.sets.length,parseInt(s.exercises[i].sets)||3),0);
+  const pct=plannedSets?Math.min(1,loggedSets/plannedSets):0;
+  const stopReason=document.getElementById('stop-early')?.value||'';
+  const award=workoutAward({key:String(sidx),isAb,pct,pb});
   const lid='wl_'+Date.now();
   showLoad('Logging Session','Saving your workout...');
   try{
-    await dbAppend('workout_logs',[lid,CU.user_id,new Date().toISOString(),new Date().toDateString(),userTrainingPlan.plan_id,sidx,JSON.stringify(exercises),notes,10+(pb?15:0),JSON.stringify({}),sessRating,'']);
+    await dbAppend('workout_logs',[lid,CU.user_id,new Date().toISOString(),new Date().toDateString(),userTrainingPlan.plan_id,sidx,JSON.stringify(exercises),notes,award.total,JSON.stringify({}),sessRating,JSON.stringify({pct:Math.round(pct*100)/100,stop:stopReason})]);
   }catch(e){hideLoad();alert('Error saving session: '+e.message);console.error(e);return;}
   // The session is saved - say so now. The rating, points, assessment capture and
   // deload check need several more trips to the sheet, so they finish in the
   // background. stillHere() stops them touching the screen if the user has signed out.
   hideLoad();
-  postAutoWall(`💪 ${CU.username} just crushed ${s.name}!${pb?' NEW PB! 🏆':''} (+${10+(pb?15:0)} pts)`);
-  celebrate(pb?'pb':'workout',pb?'🏆':'💪');
+  activityLogs.workouts.push({day:dayKey(new Date()),key:String(sidx),pct,stop:stopReason,cardio:false,extra:isAb,pts:award.total});
+  const counted=pct>=0.5;
+  if(stopReason){
+    // Advice first, then what it means for points and the week
+    const streakLine=counted?'You logged enough of this session for it to count as normal.'
+      :isAb?''
+      :!award.stopUsed?'This session still counts toward your week, so your streak is safe.'
+      :'You have already used "had to stop early" this week, so this session does not count toward your week. If you will be out for a while, set a Pause in Body Stats instead.';
+    showInfo('Session Logged',adviceHtml(stopReason)+`<p>${award.total?'+'+award.total+' points for what you logged. ':''}${streakLine}</p>`,stopReason==='Injury');
+  }else if(!counted){
+    showInfo('Session Logged','<p>Under half of the sets were recorded, so this one earns no points and does not count toward your week. If you did more, fill in the rest of your sets and log it again.</p>');
+  }else{
+    postAutoWall(`💪 ${CU.username} just crushed ${s.name}!${award.pb?' NEW PB! 🏆':''}${award.total?' (+'+award.total+' pts)':''}`);
+    celebrate(award.pb?'pb':'workout',award.pb?'🏆':'💪');
+  }
   const uid=CU.user_id;
   const stillHere=()=>!!CU&&CU.user_id===uid;
   (async()=>{
   try{
     await dbAppend('session_ratings',['sr_'+Date.now(),CU.user_id,new Date().toISOString(),s.name,sessRating,notes]);
-    await addPoints({pts:10+(pb?15:0),sessions_logged:1,pbs_logged:pb?1:0});
+    await addPoints({pts:award.total,sessions_logged:1,pbs_logged:award.pb?1:0});
     if(!stillHere())return;
 
     // Fix 2 - Assessment Phase 2: after all assessment sessions logged, extract Set 5 weights and save as known_numbers
@@ -5890,7 +5944,7 @@ async function logWorkout(sidx){
         if(r[1]!==CU.user_id)return false;
         const idx=parseInt(r[5]);
         const name=isNaN(idx)?'':userTrainingPlan.sessions[idx]?.name||'';
-        return !name.toLowerCase().includes('assessment')&&!String(r[5]).startsWith('ab');
+        return !name.toLowerCase().includes('assessment')&&!String(r[5]).startsWith('ab')&&String(r[5])!=='cardio';
       })||[];
       const sessionsCompleted=myNonAssessmentLogs.length;
       const deloadKey='deload_offered_'+CU.user_id+'_'+Math.floor(sessionsCompleted/((parseInt(CU.training_days)||4)*3));
@@ -5949,6 +6003,8 @@ function renderMealLog(){
   const allMeals=todayMealNames.length
     ?todayMealNames.map(n=>recipeMap[n]).filter(Boolean)
     :Object.values(userMealPlan.meals.meals||{}).flat().filter(m=>m&&!dislikedMeals.some(d=>d.name===m.name));
+  // Saved with the log, so the meal streak knows how many meals today held
+  mealLogPlannedToday=todayMealNames.length?new Set(allMeals.map(m=>m.name)).size:null;
 
   let html=`<div class="stats-grid">
     <div class="stat"><div class="stat-v">${t.calories||0}</div><div class="stat-l">Target kcal</div></div>
@@ -5969,6 +6025,7 @@ function renderMealLog(){
     </div>`;
   }
 
+  if(mealLogPlannedToday)html+=`<div style="font-size:11px;color:var(--tx3);margin-top:10px">Tick at least ${mealsNeeded(mealLogPlannedToday)} of ${mealLogPlannedToday} to count today toward your meal streak. You can save more than once - ticks add up across the day.</div>`;
   html+=`</div>
   <div class="card">
     <div class="card-lbl">Log Food Outside Plan</div>
@@ -6030,16 +6087,22 @@ async function saveMealLog(){
   });
   // Food outside the plan counts toward the day and is stored in food_outside_plan_json
   for(const f of extraFoods){totalCals+=f.calories;totalProtein+=f.protein;totalCarbs+=f.carbs;}
+  if(!eaten.length&&!extraFoods.length){hideLoad();alert('Tick at least one meal, or add a food, before saving.');return;}
+  // 10 points once a day, however many times the log is saved
+  const today=dayKey(new Date());
+  const mealPts=activityLogs.meals.some(m=>m.day===today&&m.pts>0)?0:MEAL_LOG_POINTS;
   const lid='ml_'+Date.now();
   try{
-    await dbAppend('meal_logs',[lid,CU.user_id,new Date().toISOString(),new Date().toDateString(),userMealPlan?.plan_id||'',JSON.stringify(eaten),totalCals,totalProtein,totalCarbs,totalFats,'',10,JSON.stringify(extraFoods),waterMl,'']);
+    await dbAppend('meal_logs',[lid,CU.user_id,new Date().toISOString(),new Date().toDateString(),userMealPlan?.plan_id||'',JSON.stringify(eaten),totalCals,totalProtein,totalCarbs,totalFats,'',mealPts,JSON.stringify(extraFoods),waterMl,JSON.stringify({planned:mealLogPlannedToday})]);
+    activityLogs.meals.push({day:today,names:eaten.map(m=>m.name),planned:mealLogPlannedToday,pts:mealPts});
+    refreshStreaks();
     extraFoods=[];renderExtraFoods();
     hideLoad();
     celebrate('meal','🥗');
     renderDashboard();
     // The log is saved. Points take three more trips to the sheet, so they finish
     // in the background and the dashboard is redrawn when they land.
-    addPoints({pts:10,meals_logged:1}).then(()=>{if(CU)renderDashboard();}).catch(e=>console.error('Meal log points:',e));
+    addPoints({pts:mealPts,meals_logged:1}).then(()=>{if(CU)renderDashboard();}).catch(e=>console.error('Meal log points:',e));
   }catch(e){hideLoad();alert('Error saving meals: '+e.message);}
 }
 
@@ -6047,6 +6110,7 @@ async function saveMealLog(){
 // BODY STATS
 // ============================================================
 function renderBody(){
+  renderPauseStatus();
   const last=measurements[measurements.length-1]||{};
   const fields=[{k:'weight',l:'Weight',u:'kg'},{k:'waist',l:'Waist',u:'cm'},{k:'chest',l:'Chest',u:'cm'},{k:'biceps',l:'Biceps',u:'cm'},{k:'shoulders',l:'Shoulders',u:'cm'},{k:'quads',l:'Quads',u:'cm'},{k:'calves',l:'Calves',u:'cm'},{k:'forearms',l:'Forearms',u:'cm'}];
   document.getElementById('meas-display').innerHTML=fields.map(f=>`<div class="meas-box"><div class="meas-lbl">${f.l}</div><div class="meas-val">${last[f.k]||'-'}<span class="meas-unit"> ${f.u}</span></div></div>`).join('');
@@ -6076,27 +6140,105 @@ async function saveSoreness(){
   }catch(e){console.error('Soreness save:',e);alert('Your soreness log could not be saved. Please try again: '+e.message);}
 }
 
+// Pause (was Holiday Mode): freezes all three streaks between two dates for a
+// holiday, illness or injury. Up to PAUSE_MAX_DAYS, one at a time. Dates are
+// stored with a leading D so the sheet keeps them as text.
+function currentPause(){
+  const today=dayKey(new Date());
+  return activityLogs.pauses.filter(p=>p.start&&p.end&&p.end>=p.start&&p.end>=today).sort((a,b)=>a.start<b.start?-1:1)[0]||null;
+}
+function renderPauseStatus(){
+  const st=document.getElementById('pause-status'),form=document.getElementById('pause-form');
+  if(!st||!form)return;
+  const p=currentPause();
+  const fmt=k=>dayFromKey(k).toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+  if(p){
+    const live=p.start<=dayKey(new Date());
+    st.innerHTML=`<div class="alert alert-info" style="margin-bottom:10px">${live?'Paused':'Pause booked'} (${escapeHtml(p.reason)}): ${fmt(p.start)} to ${fmt(p.end)}. Your streaks are frozen for these dates and pick up where they left off.</div><button class="btn btn-ghost btn-sm" onclick="endPause()">${live?'End Pause Now':'Cancel Pause'}</button>`;
+    form.style.display='none';
+  }else{
+    st.innerHTML=activityLogs.loaded?'':'<div class="alert alert-warn" style="margin-bottom:10px">Your logs could not be loaded, so pauses are unavailable right now. Sign out and back in to try again.</div>';
+    form.style.display=activityLogs.loaded?'block':'none';
+  }
+}
 async function setHoliday(){
   const start=document.getElementById('hol-start')?.value;
   const end=document.getElementById('hol-end')?.value;
+  const reason=document.getElementById('pause-reason')?.value||'Holiday';
   if(!start||!end){alert('Please set both start and end dates');return;}
-  showLoad('Saving','Setting holiday mode...');
+  if(end<start){alert('The end date is before the start date.');return;}
+  if(end<dayKey(new Date())){alert('Those dates have already passed.');return;}
+  if(daysBetween(start,end)+1>PAUSE_MAX_DAYS){alert(`A pause can be up to ${PAUSE_MAX_DAYS} days. Please shorten it.`);return;}
+  if(currentPause()){alert('You already have a pause set. End it first.');return;}
+  showLoad('Saving','Setting your pause...');
   try{
-    await dbAppend('holiday_log',['hol_'+Date.now(),CU.user_id,start,end,'active']);
+    const id='hol_'+Date.now();
+    await dbAppend('holiday_log',[id,CU.user_id,'D'+start,'D'+end,'active',reason]);
+    activityLogs.pauses.push({id,start,end,status:'active',reason});
     hideLoad();
-    celebrateMsg('holidaySet','🏖️','Holiday Mode Set!',{start,end});
-    postAutoWall(`🏖️ ${CU.username} is going on holiday! Streak is protected. Lucky thing!`);
-  }catch(e){hideLoad();alert('Error setting holiday: '+e.message);}
+    if(refreshStreaks())addPoints({pts:0}).catch(e=>console.error('Streak save:',e));
+    renderBody();renderDashboard();
+    if(reason==='Holiday'){
+      celebrateMsg('holidaySet','🏖️','Holiday Mode Set!',{start,end});
+      postAutoWall(`🏖️ ${CU.username} is going on holiday! Streak is protected. Lucky thing!`);
+    }else{
+      // Illness and injury are private - nothing is posted to the wall
+      showInfo('Pause Set',adviceHtml(reason)+'<p>Your streaks are frozen for these dates and will pick up where they left off.</p>',reason==='Injury');
+    }
+  }catch(e){hideLoad();alert('Error setting pause: '+e.message);}
+}
+async function endPause(){
+  const p=currentPause();
+  if(!p)return;
+  if(!confirm('End this pause? Your streaks start counting again from today.'))return;
+  showLoad('Saving','Ending your pause...');
+  try{
+    const hd=await dbGet('holiday_log');
+    const ri=(hd.values||[]).findIndex(r=>String(r[0])===p.id&&r[1]===CU.user_id);
+    if(ri<0)throw new Error('Pause not found');
+    // The pause now ends yesterday. If that is before it started, it never happened.
+    const newEnd=addDays(dayKey(new Date()),-1);
+    const row=[...hd.values[ri]];
+    while(row.length<6)row.push('');
+    row[2]='D'+p.start;row[3]='D'+newEnd;row[4]=newEnd<p.start?'cancelled':'ended';
+    await dbUpdate('holiday_log',ri+1,row);
+    p.end=newEnd;p.status=row[4];
+    hideLoad();
+    if(refreshStreaks())addPoints({pts:0}).catch(e=>console.error('Streak save:',e));
+    renderBody();renderDashboard();
+  }catch(e){hideLoad();alert('Error ending pause: '+e.message);}
 }
 
+// Optional light cardio. Saved to workout_logs with session_number 'cardio',
+// which never counts as a planned session. 5 points, up to 3 a week.
+async function logCardio(){
+  const type=(document.getElementById('cardio-type')?.value||'').trim()||'Cardio';
+  const mins=parseInt(document.getElementById('cardio-mins')?.value)||0;
+  if(mins<=0){alert('Enter how many minutes you did.');return;}
+  const today=dayKey(new Date());
+  const rewarded=activityLogs.workouts.filter(w=>w.cardio&&w.pts>0&&w.day&&weekStart(w.day)===weekStart(today)).length;
+  const pts=rewarded<EXTRA_SESSIONS_PER_WEEK?EXTRA_SESSION_POINTS:0;
+  showLoad('Saving','Logging your cardio...');
+  try{
+    await dbAppend('workout_logs',['wl_'+Date.now(),CU.user_id,new Date().toISOString(),new Date().toDateString(),userTrainingPlan?.plan_id||'','cardio',JSON.stringify([{name:type,minutes:mins}]),'',pts,JSON.stringify({}),'',JSON.stringify({cardio:true})]);
+  }catch(e){hideLoad();alert('Error saving cardio: '+e.message);return;}
+  activityLogs.workouts.push({day:today,key:'cardio',pct:null,stop:'',cardio:true,extra:false,pts});
+  hideLoad();
+  document.getElementById('cardio-type').value='';document.getElementById('cardio-mins').value='';
+  showInfo('Cardio Logged',`<p>${escapeHtml(type)}, ${mins} minutes. ${pts?'+'+pts+' points.':'Logged. You have already had points for '+EXTRA_SESSIONS_PER_WEEK+' cardio sessions this week, so this one is for you, not the scoreboard.'}</p>`);
+  if(pts)addPoints({pts}).then(()=>{if(CU)renderDashboard();}).catch(e=>console.error('Cardio points:',e));
+}
 async function saveMeasurements(){
   const vals={weight:document.getElementById('m-weight')?.value||'',waist:document.getElementById('m-waist')?.value||'',chest:document.getElementById('m-chest')?.value||'',biceps:document.getElementById('m-biceps')?.value||'',shoulders:document.getElementById('m-shoulders')?.value||'',quads:document.getElementById('m-quads')?.value||'',calves:document.getElementById('m-calves')?.value||'',forearms:document.getElementById('m-forearms')?.value||''};
   showLoad('Saving','Logging measurements...');
   try{
     const mid='meas_'+Date.now();
     await dbAppend('measurements',[mid,CU.user_id,new Date().toISOString(),vals.weight,vals.waist,vals.chest,vals.biceps,vals.shoulders,vals.quads,vals.calves,vals.forearms,'']);
+    // 5 points once a week (Monday to Sunday). A weigh-in is not a body stats entry.
+    const statsWeek=weekStart(dayKey(new Date()));
+    const statsPts=measurements.some(m=>!m.weighIn&&dayKey(m.logged_at)&&weekStart(dayKey(m.logged_at))===statsWeek)?0:BODY_STATS_POINTS;
     measurements.push({logged_at:new Date().toISOString(),...vals});
-    await addPoints({pts:5});
+    await addPoints({pts:statsPts});
     closeModal('meas-modal');hideLoad();renderBody();
     celebrate('measurement','📏');
     postAutoWall(`📏 ${CU.username} just logged their measurements. Progress is being tracked!`);
@@ -6110,7 +6252,7 @@ function renderProgressContent(){
   document.getElementById('progress-content').innerHTML=`
     <div class="stats-grid">
       <div class="stat"><div class="stat-v">${userPoints.sessions_logged||0}</div><div class="stat-l">Sessions</div></div>
-      <div class="stat"><div class="stat-v">${userPoints.current_streak||0}</div><div class="stat-l">Streak</div></div>
+      <div class="stat"><div class="stat-v">${userPoints.current_streak||0}</div><div class="stat-l">Week Streak</div></div>
       <div class="stat"><div class="stat-v">${userPoints.pbs_logged||0}</div><div class="stat-l">PBs</div></div>
       <div class="stat"><div class="stat-v">${userPoints.season_points||0}</div><div class="stat-l">Pts</div></div>
     </div>
@@ -6155,7 +6297,7 @@ async function genProgressReport(){
       signal:controller.signal,
       headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
       body:JSON.stringify({model:AI_MODEL,max_tokens:5000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:`You are E=MC-HENCH. Write a progress report for ${CU.username} in ${style} motivational style.
-Stats: ${userPoints.sessions_logged} sessions, ${userPoints.current_streak} day streak, ${userPoints.pbs_logged} PBs, ${userPoints.season_points} season pts.
+Stats: ${userPoints.sessions_logged} sessions, ${userPoints.current_streak||0} week workout streak, ${userPoints.pbs_logged} PBs, ${userPoints.season_points} season pts.
 Goal: ${CU.goal}, Experience: ${CU.experience}, Weight: ${CU.weight_kg}kg.
 ${recompSummary?recompSummary+' If this shows body recomposition (e.g. waist down while other measurements hold or rise) even though bodyweight has barely moved, explicitly call this out as real progress the scale alone would not show.':''}
 Under 180 words. Direct. Give 3 specific action points for next 2 weeks.
@@ -6228,8 +6370,9 @@ SECTION: A Note Just for You
 
 For the logging section, cover BOTH training sessions and meals - the plan cannot adapt without data from either. Explicitly clarify that the Meal Plan tab shows what to eat, while the Meal Log tab is a separate tab where you log what you actually ate each day - make clear these are two different places, not the same screen. Every session and every meal logged = next week's plan calculated correctly. Missed logs = the system is working blind. Make this feel important, not like admin.
 For the progression section, explain double progression in plain language: you are given a rep range, when you can hit the top of that range comfortably the weight goes up, you drop back to the bottom of the range with the new weight, and repeat. This is the most evidence-backed system for natural lifters.
+For the streaks and points section, use these exact rules and no others: the workout streak counts weeks - a week counts when every planned session is logged with at least half of its sets, Monday to Sunday. The meal streak counts days - a day counts when at least 80 percent of that day's meals are ticked in the Meal Log. The water streak counts days the water target is hit. One missed day in any 7 is forgiven for meals and water; a second resets that streak. Points reward following your own plan: a full week of planned sessions is worth about 100 points for everyone, shared across the sessions, with full points for logging 90 percent or more of a session's sets, three quarters for 80 to 89 percent, half for 50 to 79 percent and none below that. Logging meals earns 10 points once a day, a personal best 15, body stats 5 once a week, and optional light cardio 5 up to three times a week.
 For the shop section, briefly explain: the Shop tab is a directory of trusted places to buy supplements, protein and meal prep basics, rated by the people actually using this app, and anyone can add a new store to it.
-For the modes section, briefly explain two things: Holiday Mode (found in Body Stats) freezes your streak while you're away instead of resetting it, and picks up exactly where it left off when you're back - meals and workouts can still be logged as normal. Calorie banking (set up when planning ahead for a social event) reduces your calories slightly on the days leading up to the event, so you have more room to enjoy it on the day itself, then returns to normal straight after.
+For the modes section, briefly explain two things: Pause (found in Body Stats) freezes your streaks for a holiday, illness or injury for up to 30 days instead of resetting them, and picks up exactly where it left off when you're back - meals and workouts can still be logged as normal. Calorie banking (set up when planning ahead for a social event) reduces your calories slightly on the days leading up to the event, so you have more room to enjoy it on the day itself, then returns to normal straight after.
 
 Voice for this style - ${style}: ${styleVoice}
 Write the ENTIRE guide in this voice, not just the closing section. Make it feel personal to ${CU.username}. Plain text only.`}]})
@@ -7020,6 +7163,217 @@ async function executeAccountDeletion(){
 }
 
 // ============================================================
+// STREAKS AND POINTS RULES (agreed 6 Oct 2026 - see STREAKS-SPEC)
+// ============================================================
+// Streaks are WORKED OUT from the user's own logs every time, never counted up.
+// That is what lets a missed day reset them, keeps two devices in step, and
+// stops a day being counted twice. Nothing here may add 1 to a stored streak.
+// ---- streak engine start ----
+const PAUSE_MAX_DAYS=30;          // longest pause (holiday, illness, injury)
+const MEAL_DAY_SHARE=0.8;         // share of the day's meals that must be ticked
+const MEAL_LOG_POINTS=10,PB_POINTS=15,BODY_STATS_POINTS=5,EXTRA_SESSION_POINTS=5;
+const EXTRA_SESSIONS_PER_WEEK=3;  // rewarded cardio sessions, and rewarded ab sessions, per week
+const WEEK_POINTS=100;            // a full week of planned sessions, whatever the plan size
+
+function pad2(n){return String(n).padStart(2,'0');}
+// Any stored date -> 'YYYY-MM-DD' in the user's own timezone ('' if unreadable).
+// Plain calendar dates the app wrote itself ("D2026-07-10") are used as written.
+function dayKey(v){
+  if(v==null||v==='')return'';
+  if(!(v instanceof Date)){
+    const m=String(v).match(/^D?(\d{4})-(\d{2})-(\d{2})$/);
+    if(m)return m[1]+'-'+m[2]+'-'+m[3];
+  }
+  const d=v instanceof Date?v:new Date(String(v));
+  if(isNaN(d.getTime()))return'';
+  return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
+}
+// Midday, so adding days never trips over a clock change
+function dayFromKey(k){const p=k.split('-').map(Number);return new Date(p[0],p[1]-1,p[2],12);}
+function addDays(k,n){const d=dayFromKey(k);d.setDate(d.getDate()+n);return dayKey(d);}
+function daysBetween(a,b){return Math.round((dayFromKey(b)-dayFromKey(a))/86400000);}
+// The training week runs Monday to Sunday
+function weekStart(k){return addDays(k,-((dayFromKey(k).getDay()+6)%7));}
+
+// A daily streak (meals, water). hitDays and skipDays are Sets of day keys.
+// Skipped days (a pause, a social event) neither count nor break. Today never
+// breaks a streak, because the day is not over. One miss in any 7 days is
+// forgiven; a second resets the streak to 0.
+function dailyStreak(hitDays,skipDays,today,firstDay){
+  if(!firstDay||firstDay>today)return 0;
+  if(daysBetween(firstDay,today)>1500)firstDay=addDays(today,-1500);
+  let run=0,lastForgiven=null;
+  for(let d=firstDay;d<=today;d=addDays(d,1)){
+    if(hitDays.has(d)){run++;continue;}
+    if(skipDays.has(d)||d===today||run===0)continue;
+    if(lastForgiven===null||daysBetween(lastForgiven,d)>=7){lastForgiven=d;continue;}
+    run=0;lastForgiven=null;
+  }
+  return run;
+}
+
+// The workout streak, in weeks. doneByWeek maps a Monday to the sessions done
+// that week. A week containing a paused day is skipped. The week in progress
+// never breaks the streak.
+function weeklyStreak(doneByWeek,plannedPerWeek,pausedWeeks,today,firstDay){
+  if(!firstDay||!(plannedPerWeek>0)||firstDay>today)return{current:0,longest:0};
+  const thisWeek=weekStart(today);
+  let run=0,longest=0;
+  for(let w=weekStart(firstDay);w<=thisWeek;w=addDays(w,7)){
+    if((doneByWeek.get(w)||0)>=plannedPerWeek){run++;longest=Math.max(longest,run);continue;}
+    if(pausedWeeks.has(w)||w===thisWeek)continue;
+    run=0;
+  }
+  return{current:run,longest};
+}
+
+// How many different planned sessions count as done in each week. A session is
+// done if at least half its sets were logged. One session a week logged under
+// half still counts if it was marked "had to stop early". Logs from before
+// 6 Oct 2026 have no share recorded and count as done. Cardio and ab sessions
+// are extras and never count here.
+function sessionsDoneByWeek(workouts){
+  const weeks=new Map();
+  for(const w of [...workouts].sort((a,b)=>a.day<b.day?-1:a.day>b.day?1:0)){
+    if(!w.day||w.cardio||w.extra)continue;
+    const wk=weekStart(w.day);
+    const rec=weeks.get(wk)||{keys:new Set(),stopUsed:false};
+    weeks.set(wk,rec);
+    if(w.pct==null||w.pct>=0.5)rec.keys.add(w.key);
+    else if(w.stop&&!rec.stopUsed){rec.stopUsed=true;rec.keys.add(w.key);}
+  }
+  return new Map([...weeks].map(([k,v])=>[k,v.keys.size]));
+}
+
+// Points: a full week of your own plan is worth the same for everyone.
+function sessionShare(plannedPerWeek){return Math.round(WEEK_POINTS/Math.max(1,plannedPerWeek));}
+function loggedTier(pct){return pct>=0.9?1:pct>=0.8?0.75:pct>=0.5?0.5:0;}
+function sessionPoints(pct,plannedPerWeek){return Math.round(sessionShare(plannedPerWeek)*loggedTier(pct));}
+
+// Meals: 80% of the day's planned meals, rounded to whole meals (3 of 4, 4 of 5, 5 of 6, 6 of 7)
+function mealsNeeded(planned){return Math.max(1,Math.round(planned*MEAL_DAY_SHARE));}
+// entries = every meal log saved on one day. Logs with no planned count
+// (older logs, or a day with no rotation) count as a full day.
+function mealDayHit(entries){
+  const names=new Set();let planned=0;
+  for(const e of entries){(e.names||[]).forEach(n=>names.add(n));if(e.planned)planned=Math.max(planned,e.planned);}
+  return planned?names.size>=mealsNeeded(planned):entries.length>0;
+}
+
+// logs: {meals:[{day,names,planned}],workouts:[{day,key,pct,stop,cardio,extra}],water:[{day,ml}],pauses:[{start,end}]}
+// ctx: {today, plannedPerWeek, waterTarget(day), eventDays:Set}
+function computeStreaks(logs,ctx){
+  const pauseDays=new Set(),pausedWeeks=new Set();
+  for(const p of logs.pauses||[]){
+    if(!p.start||!p.end||p.end<p.start)continue;
+    let n=0;
+    for(let d=p.start;d<=p.end&&n<=PAUSE_MAX_DAYS;d=addDays(d,1),n++){pauseDays.add(d);pausedWeeks.add(weekStart(d));}
+  }
+  const first=list=>list.map(x=>x.day).filter(Boolean).sort()[0]||'';
+
+  const byDay=new Map();
+  for(const m of logs.meals||[]){if(!m.day)continue;if(!byDay.has(m.day))byDay.set(m.day,[]);byDay.get(m.day).push(m);}
+  const mealHits=new Set([...byDay].filter(([,entries])=>mealDayHit(entries)).map(([d])=>d));
+  const mealSkips=new Set([...pauseDays,...(ctx.eventDays||[])]);
+
+  const waterMax=new Map();
+  for(const w of logs.water||[]){if(w.day)waterMax.set(w.day,Math.max(waterMax.get(w.day)||0,parseInt(w.ml)||0));}
+  const waterHits=new Set([...waterMax].filter(([d,ml])=>ml>=ctx.waterTarget(d)).map(([d])=>d));
+
+  return{
+    workout:weeklyStreak(sessionsDoneByWeek(logs.workouts||[]),ctx.plannedPerWeek,pausedWeeks,ctx.today,first((logs.workouts||[]).filter(w=>!w.cardio&&!w.extra))),
+    meal:dailyStreak(mealHits,mealSkips,ctx.today,first(logs.meals||[])),
+    water:dailyStreak(waterHits,pauseDays,ctx.today,first(logs.water||[]))
+  };
+}
+
+// Sheet rows -> the plain records the rules above work on
+function parseMealLogRow(r){
+  let names=[],planned=null;
+  try{names=(JSON.parse(String(r[5]||'[]'))||[]).map(m=>m&&m.name).filter(Boolean);}catch(e){}
+  try{planned=parseInt(JSON.parse(String(r[14]||'{}')).planned)||null;}catch(e){}
+  return{day:dayKey(r[2])||dayKey(r[3]),names,planned,pts:parseInt(r[11])||0};
+}
+function parseWorkoutLogRow(r){
+  let x={};
+  try{x=JSON.parse(String(r[11]||'{}'))||{};}catch(e){}
+  const key=String(r[5]);
+  return{day:dayKey(r[2])||dayKey(r[3]),key,pct:typeof x.pct==='number'?x.pct:null,stop:x.stop||'',cardio:key==='cardio',extra:key.startsWith('ab'),pts:parseInt(r[8])||0};
+}
+function parsePauseRow(r){return{id:String(r[0]),start:dayKey(r[2]),end:dayKey(r[3]),status:String(r[4]||'active'),reason:String(r[5]||'Holiday')};}
+// ---- streak engine end ----
+
+// This user's logs, loaded at login and added to as they log. loaded is false
+// if any of them could not be read - in that case streaks are left exactly as
+// stored, never recalculated from partial data.
+let activityLogs={meals:[],workouts:[],water:[],pauses:[],loaded:false};
+// How many meals today's rotation holds (null when there is no rotation for today)
+let mealLogPlannedToday=null;
+
+function plannedSessionsPerWeek(){return parseInt(CU?.training_days)||(userTrainingPlan?.sessions||[]).length||0;}
+function currentStreakContext(){
+  const trainDows=new Set((userTrainingPlan?.sessions||[]).map(s=>parseInt(s.day_of_week)).filter(n=>!isNaN(n)));
+  const base=parseInt(CU.water_target_ml)||2000;
+  return{
+    today:dayKey(new Date()),
+    plannedPerWeek:plannedSessionsPerWeek(),
+    waterTarget:day=>base+(trainDows.has(dayFromKey(day).getDay())?500:0),
+    eventDays:new Set(socialEvents.filter(e=>e.status!=='cancelled').map(e=>dayKey(e.event_date)).filter(Boolean))
+  };
+}
+function showStreakHeader(){
+  const el=document.getElementById('app-streak');
+  if(el)el.textContent=userPoints.current_streak?'🔥 '+userPoints.current_streak+' week streak':'';
+}
+// Recalculates the three streaks from the logs into userPoints. Returns true if
+// any of them changed. Does nothing when the logs could not be loaded.
+function refreshStreaks(){
+  if(!CU||!activityLogs.loaded)return false;
+  const s=computeStreaks(activityLogs,currentStreakContext());
+  const now=[s.workout.current,s.workout.longest,s.meal,s.water];
+  const was=[userPoints.current_streak||0,userPoints.longest_streak||0,userPoints.meal_streak||0,userPoints.water_streak||0];
+  userPoints.current_streak=now[0];userPoints.longest_streak=now[1];userPoints.meal_streak=now[2];userPoints.water_streak=now[3];
+  showStreakHeader();
+  return now.join()!==was.join();
+}
+function setWaterDay(day,ml){
+  const rec=activityLogs.water.find(w=>w.day===day);
+  if(rec)rec.ml=ml;else activityLogs.water.push({day,ml});
+}
+// What a strength or ab session logged right now would earn
+function workoutAward({key,isAb,pct,pb}){
+  const wk=weekStart(dayKey(new Date()));
+  const thisWeek=activityLogs.workouts.filter(w=>w.day&&weekStart(w.day)===wk);
+  const alreadyRewarded=thisWeek.some(w=>w.key===key&&w.pts>0);
+  let base=0;
+  if(isAb){
+    if(pct>=0.5&&!alreadyRewarded&&thisWeek.filter(w=>w.extra&&w.pts>0).length<EXTRA_SESSIONS_PER_WEEK)base=EXTRA_SESSION_POINTS;
+  }else if(!alreadyRewarded){
+    base=sessionPoints(pct,plannedSessionsPerWeek()||3);
+  }
+  const pbPts=pb&&base>0?PB_POINTS:0;
+  // "Had to stop early" protects one under-half session a week
+  const stopUsed=thisWeek.some(w=>!w.extra&&!w.cardio&&w.stop&&w.pct!=null&&w.pct<0.5);
+  return{base,pb:pbPts,total:base+pbPts,alreadyRewarded,stopUsed};
+}
+
+const INJURY_ADVICE='Sorry to hear that. Please get it looked at by a doctor or physiotherapist before you train that area again. We can adapt your plan, but we cannot examine an injury. If the pain is strong or it does not feel right, it is best to get professional help straight away rather than wait.';
+const SICK_ADVICE='Rest up. Training while ill usually sets you back further. If you are not feeling better after a few days, it is worth speaking to a doctor.';
+// A plain message box. html is built by the app only - never pass user or AI text unescaped.
+function showInfo(title,html,offerProfile){
+  document.getElementById('info-modal-title').textContent=title;
+  document.getElementById('info-modal-content').innerHTML=html;
+  document.getElementById('info-modal-profile').style.display=offerProfile?'block':'none';
+  openModal('info-modal');
+}
+function infoGoProfile(){closeModal('info-modal');goTab('profile');}
+// The advice shown when someone stops or pauses because of illness or injury
+function adviceHtml(reason){
+  if(reason==='Injury')return`<p style="margin-bottom:12px">${INJURY_ADVICE}</p><p style="margin-bottom:12px">Once you know what it is, add it under <strong>Injuries</strong> in your Profile so your next plan and any exercise swaps work around it.</p>`;
+  if(reason==='Sick'||reason==='Illness')return`<p style="margin-bottom:12px">${SICK_ADVICE}</p>`;
+  return'';
+}
+// ============================================================
 // POINTS
 // ============================================================
 async function ensurePointsRow(userId,username){
@@ -7042,6 +7396,9 @@ async function addPoints({pts=0,sessions_logged=0,meals_logged=0,pbs_logged=0,ch
   const myUserId=CU?.user_id;
   const myUsername=CU?.username;
   if(!myUserId)return;
+  // Streaks are worked out from the logs, never added to. Taken now, while this
+  // user's logs are certainly the ones in memory.
+  const streaks=activityLogs.loaded?computeStreaks(activityLogs,currentStreakContext()):null;
   await ensurePointsRow(myUserId,myUsername);
 
   // Work on a local copy from here on, not the live (possibly since-reset) userPoints
@@ -7049,10 +7406,11 @@ async function addPoints({pts=0,sessions_logged=0,meals_logged=0,pbs_logged=0,ch
   p.total_points=(p.total_points||0)+pts;
   p.season_points=(p.season_points||0)+pts;
 
-  // Season win detection
-  if((p.season_points||0)>=1500&&!sessionStorage.getItem('season_win_celebrated_'+myUserId)){
-    p.season_wins=(p.season_wins||0)+1;
-    sessionStorage.setItem('season_win_celebrated_'+myUserId,'1');
+  // Season win: counted ONCE, when season points first reach 1500. The count is
+  // in the points row, not the browser, so a new session cannot count it again.
+  // (Monthly seasons replace this when the new backend is built.)
+  if((p.season_points||0)>=1500&&!((p.season_wins||0)>0)){
+    p.season_wins=1;
     celebrateMsg('seasonWin','🏆','SEASON WIN!');
     postAutoWall(`🏆 ${myUsername} just won the season with ${p.season_points} points! LEGEND.`);
   }
@@ -7060,32 +7418,12 @@ async function addPoints({pts=0,sessions_logged=0,meals_logged=0,pbs_logged=0,ch
   p.meals_logged=(p.meals_logged||0)+meals_logged;
   p.pbs_logged=(p.pbs_logged||0)+pbs_logged;
   p.challenges_won=(p.challenges_won||0)+challenges_won;
-
-  if(sessions_logged){
-    // Only extend streak if this is the first session logged today
-    // Prevents double-counting when two sessions are logged on the same day
-    const todayStr=new Date().toDateString();
-    const lastLoggedKey='last_session_date_'+myUserId;
-    const lastDate=sessionStorage.getItem(lastLoggedKey);
-    if(lastDate!==todayStr){
-      p.current_streak=(p.current_streak||0)+1;
-      sessionStorage.setItem(lastLoggedKey,todayStr);
-    }
-    sessionCount++;
-    if((p.current_streak||0)>(p.longest_streak||0)){
-      p.longest_streak=p.current_streak;
-    }
-  }
-  if(meals_logged){
-    const todayStr=new Date().toDateString();
-    const mealKey='last_meal_date_'+myUserId;
-    if(sessionStorage.getItem(mealKey)!==todayStr){
-      p.meal_streak=(p.meal_streak||0)+1;
-      sessionStorage.setItem(mealKey,todayStr);
-    }
-  }
-  if(water_streak_inc){
-    p.water_streak=p.water_streak||0;
+  if(sessions_logged)sessionCount++;
+  if(streaks){
+    p.current_streak=streaks.workout.current;
+    p.longest_streak=streaks.workout.longest;
+    p.meal_streak=streaks.meal;
+    p.water_streak=streaks.water;
   }
 
   let saveFailed=false;
@@ -7093,7 +7431,7 @@ async function addPoints({pts=0,sessions_logged=0,meals_logged=0,pbs_logged=0,ch
     const pd=await dbGet('points');
     if(pd.values){
       const ri=pd.values.findIndex(r=>r[1]===myUserId);
-      if(ri>=0)await dbUpdate('points',ri+1,[p.record_id,myUserId,myUsername,p.total_points,p.season_points,p.sessions_logged,p.meals_logged,p.pbs_logged,p.challenges_won,p.current_streak,p.longest_streak||0,p.season_wins||0,new Date().toISOString(),p.meal_streak||0,p.water_streak||0]);
+      if(ri>=0)await dbUpdate('points',ri+1,[p.record_id,myUserId,myUsername,p.total_points,p.season_points,p.sessions_logged,p.meals_logged,p.pbs_logged,p.challenges_won,p.current_streak||0,p.longest_streak||0,p.season_wins||0,new Date().toISOString(),p.meal_streak||0,p.water_streak||0]);
     }
   }catch(e){console.error('Points DB save failed:',e);saveFailed=true;}
 
@@ -7115,12 +7453,10 @@ async function addPoints({pts=0,sessions_logged=0,meals_logged=0,pbs_logged=0,ch
     userPoints=p;
     const warnMark=saveFailed?` <span title="Latest points update could not be saved - will retry next time you earn points" style="color:var(--warn)">⚠</span>`:'';
     const ptsEl=document.getElementById('app-pts');
-    const streakEl=document.getElementById('app-streak');
     if(ptsEl)ptsEl.innerHTML=(userPoints.season_points||0)+' PTS'+warnMark;
-    if(streakEl)streakEl.textContent=userPoints.current_streak?'🔥 '+userPoints.current_streak+' day streak':'';
+    showStreakHeader();
   }
 }
-
 // ============================================================
 // ONBOARDING PROGRESS SAVE/RESTORE
 // ============================================================
