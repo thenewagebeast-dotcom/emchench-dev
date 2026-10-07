@@ -1294,7 +1294,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='07 Oct 17:36';
+const APP_BUILD='07 Oct 17:45';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -2844,6 +2844,7 @@ function renderDashboard(){
   aEl.innerHTML='';
   if(!userMealPlan&&!userTrainingPlan)aEl.innerHTML+=`<div class="alert alert-info">👋 Welcome! Hit "Generate Plan" to get your personalised programme.</div>`;
   if(userPoints.season_points>=1500)aEl.innerHTML+=`<div class="alert alert-ok">🏆 SEASON WIN! You hit 1500 points! Absolute legend.</div>`;
+  if(userMealPlan)aEl.innerHTML+=planRuleWarningHtml();
   if(CU.goal_updated==='true')aEl.innerHTML+=`<div class="alert alert-warn">⚡ Goal updated. Generate a new plan to reflect your changes.</div>`;
   // 4 week progress photo prompt. Remembered on this device, so it shows once
   // every 4 weeks (counted from sign-up, then from the last dismissal) and stays
@@ -3586,7 +3587,7 @@ async function generatePlan(){
       low_calorie_meals:extraRecipes.meals?.low_calorie_meals||extraRecipes.low_calorie_meals||[],
       bulking_meals:extraRecipes.meals?.bulking_meals||extraRecipes.bulking_meals||[],
     // Always use the calculated targets as ground truth - don't rely on AI returning them correctly
-    },daily_targets:{...calculatedTargets,base_calories:calculatedTargets.calories}};
+    },daily_targets:{...calculatedTargets,base_calories:calculatedTargets.calories},built_for:currentFoodRules()};
 
     // CALL 5 - ROTATION built from chosen meal names
     showLoad('Building Weekly Schedule (5 of 6)','Mapping your meals into a 4-week rotation...');
@@ -3764,6 +3765,74 @@ function describeAiError(e,timeoutMsg){
   return null;
 }
 
+// ---- INGREDIENT REGION ----
+// users[15]: 'uk' (metric, UK product names), 'us' (US names and measures) or
+// 'both'. ingredients_uk is ALWAYS the full metric list, whatever the region -
+// portion resizing and the shopping list do their maths from it.
+function userRegion(){
+  const r=String(CU?.ingredient_region||'uk').toLowerCase();
+  return r==='us'||r==='both'?r:'uk';
+}
+function regionPromptLine(){
+  const r=userRegion();
+  if(r==='us')return'\nREGION: United States. Use ingredient and product names found in US supermarkets (cilantro, zucchini, eggplant, ground beef). ingredients_uk must still be the full list in metric (g, ml) because the app does its maths from it. ingredients_us must be the COMPLETE ingredient list in US measures (cups, oz, lb, tbsp), every ingredient with its own quantity - not just the differences.';
+  if(r==='both')return'\nREGION: UK first, with US alternatives. ingredients_uk is the full metric list using UK product names. ingredients_us lists the US names and measures wherever they differ.';
+  return'\nREGION: United Kingdom. Use ingredient and product names found in UK supermarkets, in metric measures. Leave ingredients_us as an empty string.';
+}
+function regionFieldLimit(){
+  const r=userRegion();
+  if(r==='us')return'ingredients_us: up to 130 words, the complete list in US measures, every ingredient with its own quantity.';
+  if(r==='both')return'ingredients_us: up to 30 words, differences from the UK version only.';
+  return'ingredients_us: leave as an empty string.';
+}
+// The ingredient lists for one recipe, in the user's region. The US list is only
+// shown as the main list when the plan was written for a US user - older plans
+// hold "differences only" there, which would be an incomplete recipe.
+function ingredientsHtml(recipe){
+  const r=userRegion();
+  const serves=recipe.servings||1;
+  const metric=recipe.ingredients_uk?scaleIngredientText(recipe.ingredients_uk):'';
+  const us=recipe.ingredients_us||'';
+  if(r==='us'&&us&&userMealPlan?.meals?.built_for?.region==='us'){
+    return`<div class="det-lbl">Ingredients (US) - Serves ${serves}</div><div class="ingr">${us}</div>${metric?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">Metric: ${metric}</div>`:''}`;
+  }
+  return(metric?`<div class="det-lbl">Ingredients (UK) - Serves ${serves}</div><div class="ingr">${metric}</div>`:'')
+    +(r!=='uk'&&us?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">US: ${us}</div>`:'');
+}
+
+// ---- FOOD RULES A PLAN WAS WRITTEN FOR ----
+// meals_json.built_for records the diet, allergies and region a plan was written
+// for. If the profile has changed since, the plan's recipes may contain foods
+// the user now avoids, and the app says so until a new plan is generated.
+function normAllergies(list){
+  return(list||[]).map(x=>String(x).trim()).filter(x=>x&&x.toLowerCase()!=='none').sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1).join(', ');
+}
+function currentFoodRules(){
+  return{dietary_type:CU.dietary_type||'',allergies:[...(CU.allergies||[])],region:userRegion()};
+}
+// A list of plain-text differences between the plan's rules and the profile now
+function planRuleChanges(){
+  const b=userMealPlan?.meals?.built_for;
+  if(!b||!CU)return[];
+  const out=[];
+  if(String(b.dietary_type||'')!==String(CU.dietary_type||''))out.push(`your diet is now ${CU.dietary_type||'not set'} (this plan was written for ${b.dietary_type||'not set'})`);
+  if(normAllergies(b.allergies).toLowerCase()!==normAllergies(CU.allergies).toLowerCase())out.push(`your allergies are now ${normAllergies(CU.allergies)||'none'} (this plan was written for ${normAllergies(b.allergies)||'none'})`);
+  return out;
+}
+function planRuleWarningHtml(){
+  const changes=planRuleChanges();
+  if(!changes.length)return'';
+  return`<div class="alert" style="border:1px solid var(--danger);color:var(--danger);margin-bottom:16px"><strong>Check before you cook.</strong> Since this plan was written, ${escapeHtml(changes.join(' and '))}. Its recipes may contain foods you now avoid. Generate a new plan so every recipe follows your current rules.</div>`;
+}
+// Saves the current plan's meals_json back to its row. Throws if it cannot.
+async function saveMealPlanJson(){
+  const mp=await dbGet('meal_plans');
+  const ri=(mp.values||[]).findIndex(r=>r[0]===userMealPlan.plan_id);
+  if(ri<0)throw new Error('Your plan could not be found to update.');
+  const row=[...mp.values[ri]];
+  writeMealsJson(row,JSON.stringify(userMealPlan.meals));
+  await dbUpdate('meal_plans',ri+1,row);
+}
 // ---- CALORIE TARGET RULES ----
 // The lowest daily target the app will ever set: 1500 kcal for men, 1200 for
 // women. Applied at generation and to every adjustment.
@@ -4340,7 +4409,7 @@ DAILY TOTAL: ${mt.breakfast.calories} + (${mt.midSnacks}x${mt.snack.calories}) +
   return`Generate full recipes for ONLY these exact meal names:
 ${allMeals}
 
-USER: ${u.username}, dietary:${u.dietary_type}, allergies:${u.allergies?.join(',')||'none'}
+USER: ${u.username}, dietary:${u.dietary_type}, allergies:${u.allergies?.join(',')||'none'}${regionPromptLine()}
 Kitchen:${u.kitchen||'standard'}, Air fryer:${hasAirFryer}, Batch pref:${batchPref}
 Spice level: ${u.spice_level||'Medium'} - calibrate all heat/spice to this level
 INGREDIENT DISLIKES - NEVER use these ingredients: ${u.ingredient_dislikes||'none'}
@@ -4352,7 +4421,7 @@ ${catTargets}
 
 FIELD LIMITS - these are ceilings to stop rambling, not targets to hit. Include every necessary detail (a quantity for every ingredient, a temperature and time for every heated step, real technique) and stop once the recipe is genuinely complete. Never pad to fill space, and never cut a necessary detail just to stay under a number.
 ingredients_uk: up to 130 words, every single ingredient with its own specific quantity.
-ingredients_us: up to 30 words, differences from the UK version only.
+${regionFieldLimit()}
 method: as many steps as the dish genuinely needs - usually 4 to 8, occasionally more for a genuinely multi-part dish (e.g. a separate sauce or side that needs its own step) - each step up to 25 words.
 micronutrients: up to 15 words.
 INGREDIENT QUANTITY RULE - required, not optional: every single ingredient, including every spice and seasoning, must have a specific measured quantity (tsp, tbsp, g, ml, or a count). Never list a spice or ingredient by name alone with no amount - "turmeric" on its own is not acceptable, "1 tsp turmeric" is. This applies even when several vegetables get blended or cooked together - "400g onion, tomato, garlic, ginger" is not acceptable because there is no way to tell how much of each; write "100g onion, 100g tomato, 2 cloves garlic, 20g ginger" instead, even if they all go in the blender at the same time.
@@ -4623,6 +4692,7 @@ function renderMealPlan(){
     <div class="stat"><div class="stat-v">${t.fats||0}g</div><div class="stat-l">Fats</div></div>
   </div>`;
 
+  html+=planRuleWarningHtml();
   if(portionScale()!==1){
     html+=`<div class="alert alert-info" style="margin-bottom:16px">⚖️ Your target has moved from ${planBaseCalories()} to ${t.calories} kcal since this plan was written, so every portion is shown at <strong>${Math.round(portionScale()*100)}%</strong>. Open any meal to see its resized amounts. Your next plan will be written at the new target.</div>`;
   }
@@ -4730,8 +4800,7 @@ function renderRecipeDetail(recipe,mealName,slot){
   return`
     ${recipe.micronutrients?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">${recipe.micronutrients}</div>`:''}
     ${portionNoteHtml(recipe)}
-    ${recipe.ingredients_uk?`<div class="det-lbl">Ingredients (UK) - Serves ${recipe.servings||1}</div><div class="ingr">${scaleIngredientText(recipe.ingredients_uk)}</div>`:''}
-    ${recipe.ingredients_us?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">US: ${recipe.ingredients_us}</div>`:''}
+    ${ingredientsHtml(recipe)}
     ${recipe.method?`<div class="det-lbl">Method</div><div class="method">${fmtMethod(recipe.method)}</div>`:''}
     ${recipe.bulk_cook?`<div class="alert alert-info" style="margin-top:10px">🍳 Batch cook - makes <strong>${recipe.batch_portions||recipe.servings||2} portions</strong>. Portion into containers. Refrigerate up to 5 days or freeze up to 3 months.</div>`:''}
     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
@@ -4862,7 +4931,7 @@ async function confirmMealSwap(btn){
     const prompt=`You are E=MC-HENCH. Generate a full recipe for "${newName}" as a ${cat.replace(/_/g,' ')} meal.
 Macro targets: ${target.calories}kcal, ${target.protein}g protein, ${target.carbs}g carbs, ${target.fats}g fats (within 5%).
 Dietary: ${CU.dietary_type||'any'}. Allergies: ${CU.allergies?.join(',')||'none'}. Dislikes: ${CU.ingredient_dislikes||'none'}.${getHealthDietLine()}
-Kitchen: ${CU.kitchen||'standard'}. Cook time max: ${CU.cook_time||'20 mins'}. Budget: ${CU.weekly_budget||'mid-range'}. Spice: ${CU.spice_level||'Medium'}.
+Kitchen: ${CU.kitchen||'standard'}. Cook time max: ${CU.cook_time||'20 mins'}. Budget: ${CU.weekly_budget||'mid-range'}. Spice: ${CU.spice_level||'Medium'}.${regionPromptLine()}
 INGREDIENT QUANTITY RULE - required: every ingredient, including every spice and seasoning, must have a specific measured quantity (tsp, tbsp, g, ml, or a count) - never list a spice by name alone with no amount. This applies even when several vegetables get blended or cooked together - give each one its own quantity, not one shared total for the group.
 INGREDIENT STATE RULE - required: list every ingredient in its raw, as-purchased state, and make sure the method actually cooks or prepares every ingredient listed - never list something as an ingredient without a step that uses it.
 DISH NAME CONSISTENCY - required: if the dish name specifies a particular type of an ingredient, the ingredients list must use that exact type, not a different or more generic one - and name the specific variety of anything that genuinely has meaningfully different common types, rather than defaulting to a generic term.
@@ -4960,8 +5029,7 @@ function renderMealCard(meal,cat){
     </div>
     <div class="meal-det" id="${id}" data-meal-name="${meal.name.replace(/"/g,'&quot;')}" data-meal-cat="${cat}">
       ${portionNoteHtml(meal)}
-      ${meal.ingredients_uk?`<div class="det-lbl">Ingredients (UK) - Serves ${meal.servings||1}</div><div class="ingr">${scaleIngredientText(meal.ingredients_uk)}</div>`:''}
-      ${meal.ingredients_us?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">US: ${meal.ingredients_us}</div>`:''}
+      ${ingredientsHtml(meal)}
       ${meal.method?`<div class="det-lbl">Method</div><div class="method">${fmtMethod(meal.method)}</div>`:''}
       ${meal.bulk_cook?`<div class="alert alert-info" style="margin-top:10px">🍳 Batch cook - makes <strong>${meal.batch_portions||meal.servings||2} portions</strong>. Portion into containers. Refrigerate up to 5 days or freeze up to 3 months.</div>`:''}
     </div>
@@ -6777,7 +6845,7 @@ function renderProfile(){
       <div class="frow"><label class="flbl">Health Conditions and the Swaps You Use</label><textarea class="ftarea" id="prof-health" style="min-height:60px" placeholder="e.g. Type 2 diabetes - no added sugar, I use sweetener and wholegrain rice">${escapeHtml(CU.health_conditions||'')}</textarea><div class="alert alert-warn" style="margin-top:8px;margin-bottom:0;font-size:12px">Be honest and specific here. Your plan is built around what you tell us - if a condition is left out, we cannot leave out the foods or exercises that conflict with it, and the plan will not be right for you. This is not medical advice - check with your GP if you are unsure. Changes apply on your next plan generation.</div></div>
       <button class="btn btn-ghost btn-sm" onclick="saveStats()">Save Stats</button>
     </div>
-
+${renderFoodSetupCard()}
     <div class="card">
       <div class="card-lbl">Training Setup</div>
       <div class="frow"><label class="flbl">What Time Do You Usually Train?</label>
@@ -7085,6 +7153,95 @@ async function changePin(){
   }
 }
 
+// ---- PROFILE: FOOD AND KIT ----
+// The choices come from the sign-up form itself, so the two can never drift apart.
+function obPillTexts(obId){
+  return Array.from(document.querySelectorAll('#'+obId+' .pill')).map(p=>p.textContent.trim()).filter(t=>t&&t!=='Other');
+}
+function obOptionsHtml(obId,current){
+  return Array.from(document.querySelectorAll('#'+obId+' option')).map(o=>`<option value="${escapeHtml(o.value)}" ${String(current)===o.value?'selected':''}>${escapeHtml(o.textContent)}</option>`).join('');
+}
+function profPillSet(id,obId,current){
+  const std=obPillTexts(obId);
+  const cur=(Array.isArray(current)?current:String(current||'').split(',')).map(x=>String(x).trim()).filter(Boolean);
+  return{
+    html:`<div class="pills" id="${id}">${std.map(t=>`<div class="pill ${cur.includes(t)?'on':''}" onclick="tpill(this)">${escapeHtml(t)}</div>`).join('')}</div>`,
+    other:cur.filter(x=>!std.includes(x)&&x!=='Other').join(', ')
+  };
+}
+function renderFoodSetupCard(){
+  const al=profPillSet('prof-allergies','ob-allergies',CU.allergies);
+  const fl=profPillSet('prof-flavours','ob-flavours',CU.flavour_prefs);
+  const sn=profPillSet('prof-snack','ob-snack-style',CU.snack_style);
+  const eq=profPillSet('prof-equip','ob-equip',CU.equipment);
+  const ca=profPillSet('prof-cardio','ob-cardio',CU.cardio_options);
+  const ki=profPillSet('prof-kitchen','ob-kitchen',CU.kitchen);
+  const other=(id,val,ph)=>`<input class="finput" id="${id}" value="${escapeHtml(val)}" placeholder="${ph}" style="margin-top:8px">`;
+  return`
+    <div class="card">
+      <div class="card-lbl">Food and Kit</div>
+      <div class="frow"><label class="flbl">Dietary Type</label><select class="fsel" id="prof-dietary">${obOptionsHtml('ob-dietary',CU.dietary_type)}</select></div>
+      <div class="frow"><label class="flbl">Allergies / Intolerances</label>${al.html}${other('prof-allergies-other',al.other,'Anything else? e.g. shellfish, sesame')}</div>
+      <div class="alert alert-warn" style="font-size:12px">Keep these up to date. Every recipe we write follows them, so if an allergy is missing here we cannot leave that food out. A change does not rewrite the plan you already have - generate a new plan after changing your diet or allergies.</div>
+      <div class="frow"><label class="flbl">Cuisine Preferences</label>${fl.html}</div>
+      <div class="frow"><label class="flbl">Snack Style</label>${sn.html}</div>
+      <div class="two-col">
+        <div class="frow"><label class="flbl">Meals Per Day</label><select class="fsel" id="prof-mpd">${obOptionsHtml('ob-meals-per-day',CU.meals_per_day)}</select></div>
+        <div class="frow"><label class="flbl">Ingredient Region</label><select class="fsel" id="prof-region">${obOptionsHtml('ob-region',userRegion())}</select></div>
+      </div>
+      <div class="frow"><label class="flbl">Equipment Access</label>${eq.html}${other('prof-equip-other',eq.other,'Other equipment, e.g. cable machine, leg press')}</div>
+      <div class="frow"><label class="flbl">Cardio Available</label>${ca.html}${other('prof-cardio-other',ca.other,'Other cardio, e.g. treadmill, swimming')}</div>
+      <div class="frow"><label class="flbl">Kitchen Appliances</label>${ki.html}${other('prof-kitchen-other',ki.other,'Anything else? e.g. soup maker')}</div>
+      <div style="font-size:11px;color:var(--tx3);margin-bottom:10px">Changes apply to your next plan. Meal swaps and exercise swaps use them straight away.</div>
+      <button class="btn btn-ghost btn-sm" onclick="saveFoodSetup()">Save Food and Kit</button>
+    </div>
+`;
+}
+async function saveFoodSetup(){
+  const list=(pillsId,otherId)=>[...getOnPills(pillsId).split(','),...(otherId?(document.getElementById(otherId)?.value||''):'').split(',')].map(x=>x.trim()).filter(Boolean);
+  const diet=document.getElementById('prof-dietary')?.value||CU.dietary_type;
+  let allergies=list('prof-allergies','prof-allergies-other');
+  // "None" only means something on its own
+  if(allergies.some(a=>a.toLowerCase()!=='none'))allergies=allergies.filter(a=>a.toLowerCase()!=='none');
+  const flavours=list('prof-flavours');
+  const snack=list('prof-snack');
+  const mpd=document.getElementById('prof-mpd')?.value||CU.meals_per_day;
+  const region=document.getElementById('prof-region')?.value||'uk';
+  const equipment=list('prof-equip','prof-equip-other');
+  const cardio=list('prof-cardio','prof-cardio-other');
+  const kitchen=list('prof-kitchen','prof-kitchen-other');
+  if(!equipment.length){alert('Pick at least one equipment option, so we know what your training plan can use.');return;}
+  const foodChanged=String(diet)!==String(CU.dietary_type||'')||normAllergies(allergies).toLowerCase()!==normAllergies(CU.allergies).toLowerCase();
+  showLoad('Saving','Updating your food and kit...');
+  let stamped=false;
+  try{
+    // A plan from before 7 Oct 2026 has no record of the rules it was written
+    // for. Record the OLD rules on it first, so the change is flagged on the
+    // plan from now on - not just in this session.
+    if(foodChanged&&userMealPlan?.meals&&!userMealPlan.meals.built_for){
+      userMealPlan.meals.built_for={dietary_type:CU.dietary_type||'',allergies:[...(CU.allergies||[])]};
+      stamped=true;
+      await saveMealPlanJson();
+    }
+    const patched=await patchUserRow(CU.user_id,{10:equipment.join(','),11:cardio.join(','),12:diet,13:allergies.join(','),14:flavours.join(','),15:region,26:kitchen.join(','),27:mpd,28:snack.join(',')},CU);
+    if(!patched)throw new Error('your profile was not found. Please sign out and back in.');
+    CU.equipment=equipment;CU.cardio_options=cardio;CU.dietary_type=diet;CU.allergies=allergies;
+    CU.flavour_prefs=flavours;CU.ingredient_region=region;CU.kitchen=kitchen.join(',');
+    CU.meals_per_day=mpd;CU.snack_style=snack.join(',');
+    hideLoad();
+    renderProfile();renderDashboard();
+    if(userMealPlan)renderMealPlan();
+    try{if(userMealPlan||userTrainingPlan)renderSupps();}catch(e){console.error('Supplements redraw:',e);}
+    if(foodChanged&&userMealPlan){
+      showInfo('Food Rules Updated','<p style="margin-bottom:12px">Saved. Your current plan was written before this change, so its recipes may still contain foods you now avoid.</p><p style="margin-bottom:12px"><strong>Generate a new plan before relying on it.</strong> Until then, check each recipe yourself.</p><p>Meal swaps already follow your new rules.</p>');
+    }else{
+      celebrateMsg('foodPrefsSaved','✅','Food and Kit Saved!');
+    }
+  }catch(e){
+    if(stamped)delete userMealPlan.meals.built_for;
+    hideLoad();alert('Could not save: '+e.message);
+  }
+}
 async function saveStats(){
   const weight=document.getElementById('prof-weight')?.value;
   const height=document.getElementById('prof-height')?.value;
