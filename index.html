@@ -536,7 +536,6 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
     <div class="nav-i active" onclick="goTab('dashboard')">Dashboard</div>
     <div class="nav-i" onclick="goTab('meals')">Meal Plan</div>
     <div class="nav-i" onclick="goTab('training')">Training</div>
-    <div class="nav-i" onclick="goTab('tracker')">Log Workout</div>
     <div class="nav-i" onclick="goTab('meallog')">Meal Log</div>
     <div class="nav-i" onclick="goTab('body')">Body Stats</div>
     <div class="nav-i" onclick="goTab('progress')">Progress</div>
@@ -580,7 +579,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
     <div class="card"><div class="card-lbl">Season Leaderboard</div><div id="dash-lb"></div></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
       <button class="btn" style="flex:1;min-width:200px" onclick="openGenModal()">⚡ Generate Plan</button>
-      <button class="btn btn-ghost" style="flex:1;min-width:200px" onclick="goTab('tracker')">+ Log Workout</button>
+      <button class="btn btn-ghost" style="flex:1;min-width:200px" onclick="goTab('training')">+ Log Workout</button>
     </div>
   </div>
 
@@ -593,8 +592,8 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 
   <!-- TRAINING -->
   <div class="tab" id="tab-training">
-    <div class="pg-title">Training Plan</div>
-    <div class="pg-sub">Progressive overload - tailored to you, advancing every week</div>
+    <div class="pg-title">Training</div>
+    <div class="pg-sub">Your plan and your logging in one place - one exercise at a time</div>
     <div id="injury-guide-btn-wrap" style="display:none;margin-bottom:12px">
       <button class="btn btn-ghost" style="width:100%;font-size:13px" onclick="renderInjuryModal()">🏥 View Your Injury Guide &amp; Safe Exercises</button>
     </div>
@@ -602,11 +601,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
   </div>
 
   <!-- TRACKER -->
-  <div class="tab" id="tab-tracker">
-    <div class="pg-title">Log Workout</div>
-    <div class="pg-sub">Track sets, reps and weight - tick the box when you hit a personal best</div>
-    <div id="tracker-content"><div class="empty"><div class="empty-icon">📋</div><div class="empty-title">No Session Loaded</div><div class="empty-text">Generate your plan first</div></div></div>
-  </div>
+  <div class="tab" id="tab-tracker"></div>
 
   <!-- MEAL LOG -->
   <div class="tab" id="tab-meallog">
@@ -1294,7 +1289,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='07 Oct 18:20';
+const APP_BUILD='07 Oct 18:43';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -1459,7 +1454,7 @@ let syncRequest=null;
 let SESSION_TOKEN=null;
 // Snapshot of each tab's empty state, taken before anyone logs in. signOut()
 // restores these so one user's rendered plan can never stay on screen for the next.
-const EMPTY_TAB_IDS=['meals-content','training-content','tracker-content','meallog-content','supps-content','howto-content','progress-content','profile-content'];
+const EMPTY_TAB_IDS=['meals-content','training-content','meallog-content','supps-content','howto-content','progress-content','profile-content'];
 const emptyTabHtml={};
 EMPTY_TAB_IDS.forEach(id=>{const el=document.getElementById(id);if(el)emptyTabHtml[id]=el.innerHTML;});
 
@@ -2586,6 +2581,7 @@ function signOut(){
   extraFoods=[];pendingSwap=null;usersLoadError=false;
   carriedCalorieTarget=null;pendingDeepLink='';
   activityLogs={meals:[],workouts:[],water:[],pauses:[],loaded:false};mealLogPlannedToday=null;foodCheckRunning=false;
+  stopRestTimer();trainDraft=null;trainView={mode:'week',sidx:null,step:0,touched:false};sessRating=3;
   // Clear every tab back to its empty state so nothing rendered for this user is left on screen
   EMPTY_TAB_IDS.forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=emptyTabHtml[id]||'';});
   const injBtn=document.getElementById('injury-guide-btn-wrap');
@@ -2779,7 +2775,7 @@ function renderDashboard(){
   if(ts){
     sEl.innerHTML=`<div style="font-weight:600;color:var(--ac);margin-bottom:6px">${ts.name}</div>
     <div style="font-size:13px;color:var(--tx2)">${(ts.exercises||[]).length} exercises${ts.warm_up_cardio?' + warm up':''}</div>
-    <button class="btn btn-sm" style="margin-top:10px" onclick="goTab('tracker')">Start Session →</button>`;
+    <button class="btn btn-sm" style="margin-top:10px" onclick="goTab('training')">Start Session →</button>`;
   } else if(userTrainingPlan){
     const restContent=getRestDayContent();
     sEl.innerHTML=`<div class="rest-title">Rest Day 🌿</div><div style="font-size:13px;color:var(--tx2);line-height:1.6">${restContent}</div>`;
@@ -5801,99 +5797,6 @@ function renderInjuryModal(){
   openModal('injury-modal');
 }
 
-function renderTrainingPlan(){
-  const el=document.getElementById('training-content');
-  if(!userTrainingPlan?.sessions)return;
-
-  const injBtn=document.getElementById('injury-guide-btn-wrap');
-  if(injBtn)injBtn.style.display=CU.injuries&&CU.injuries.trim()?'block':'none';
-
-  let html='';
-  if(userTrainingPlan.notes)html+=`<div class="alert alert-info">${userTrainingPlan.notes}</div>`;
-
-  html+=`<div style="font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;margin-bottom:12px">Training Sessions</div>`;
-
-  for(const s of userTrainingPlan.sessions){
-    html+=`<div class="pblock">
-      <div class="pblock-hd" onclick="toggleBlock(this)">
-        <div><div class="pblock-title">${s.name}</div><div style="font-size:12px;color:var(--tx2)">${dayName(s.day_of_week)} - ${(s.type||'').toUpperCase()}</div></div>
-        <div style="color:var(--tx3);font-size:12px">▼</div>
-      </div>
-      <div class="pblock-body">
-        ${s.warm_up_cardio?`<div class="alert alert-info" style="margin-bottom:12px">🔥 Warm Up: ${s.warm_up_cardio}</div>`:''}
-        <table class="ex-tbl">
-          <thead><tr><th style="width:40%">Exercise</th><th>Sets x Reps</th><th>Rest</th><th>Tempo <span style="cursor:pointer;color:var(--tx3);font-size:11px" onclick="showHowTo('What is Tempo?','Tempo is the speed of each phase of the lift. Format: seconds down - pause - seconds up. Example: 2-1-2 means 2 seconds lowering, 1 second pause, 2 seconds lifting. Controlling tempo builds more muscle and reduces injury risk.')">(?)</span></th></tr></thead>
-          <tbody>
-            ${(s.exercises||[]).map((ex,ei)=>`<tr>
-              <td>
-                <button class="ex-btn" data-exname="${escapeHtml(ex.name)}" data-howto="${escapeHtml(ex.how_to||ex.notes||'')}" onclick="showHowTo(this.dataset.exname,this.dataset.howto)">
-                  ${ex.name}<span class="howto-badge">?</span>
-                </button>
-                ${ex.notes?`<div class="ex-note">${ex.notes}</div>`:''}
-                <button class="dislike-btn" data-sidx="${userTrainingPlan.sessions.indexOf(s)}" data-eidx="${ei}" data-exname="${ex.name.replace(/"/g,'&quot;')}" onclick="openSwapModal(this.dataset.sidx,parseInt(this.dataset.eidx),this.dataset.exname)" style="margin-top:4px;color:var(--ac2)">⇄ Swap Exercise</button>
-              </td>
-              <td class="ex-det">${ex.sets} x ${ex.reps}</td>
-              <td class="ex-det">${ex.rest_seconds?ex.rest_seconds+'s':'-'}</td>
-              <td class="ex-det">${ex.tempo||'-'}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>`;
-  }
-
-  // Ab sessions
-  if(userTrainingPlan.ab_sessions?.length){
-    html+=`<div style="font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;margin:20px 0 12px">Ab Sessions (2-3x per week)</div>`;
-    for(const ab of userTrainingPlan.ab_sessions){
-      html+=`<div class="pblock">
-        <div class="pblock-hd" onclick="toggleBlock(this)">
-          <div><div class="pblock-title">${ab.name}</div><div style="font-size:12px;color:var(--tx2)">${ab.day_type==='after_workout'?'After main session or rest day':'Rest day'} - ${ab.duration_mins} mins</div></div>
-          <div style="color:var(--tx3);font-size:12px">▼</div>
-        </div>
-        <div class="pblock-body">
-          <table class="ex-tbl">
-            <thead><tr><th>Exercise</th><th>Sets x Reps</th><th>Rest</th></tr></thead>
-            <tbody>
-              ${(ab.exercises||[]).map((ex,ei)=>`<tr>
-                <td>
-                  <button class="ex-btn" data-exname="${escapeHtml(ex.name)}" data-howto="${escapeHtml(ex.how_to||'')}" onclick="showHowTo(this.dataset.exname,this.dataset.howto)">
-                    ${ex.name}<span class="howto-badge">?</span>
-                  </button>
-                  ${ex.progression_note?`<div class="ex-note">${ex.progression_note}</div>`:''}
-                  <button class="dislike-btn" data-sidx="ab${userTrainingPlan.ab_sessions.indexOf(ab)}" data-eidx="${ei}" data-exname="${ex.name.replace(/"/g,'&quot;')}" onclick="openSwapModal(this.dataset.sidx,parseInt(this.dataset.eidx),this.dataset.exname)" style="margin-top:4px;color:var(--ac2)">⇄ Swap Exercise</button>
-                </td>
-                <td class="ex-det">${ex.sets} x ${ex.reps}</td>
-                <td class="ex-det">${ex.rest_seconds||30}s</td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>`;
-    }
-  }
-
-  // Cardio
-  if(userTrainingPlan.cardio?.length){
-    html+=`<div style="font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;margin:20px 0 12px">Cardio Sessions</div>`;
-    html+=`<div class="alert alert-info" style="margin-bottom:14px">
-      <strong>Why cardio is scheduled this way:</strong> A light 5-10 minute warm-up before lifting is always fine - that is not what this is about. The concern is a full cardio session on the same day as lifting: cardio first depletes glycogen your muscles need for heavy lifting, and can blunt strength performance if done too close together. If you are doing a proper cardio session and a lifting session on the same day, put weights first and separate them by at least 3-6 hours. Cardio on rest days avoids this interference entirely and is the preferred approach for body recomposition. Keep rest day cardio at a moderate intensity - it aids recovery rather than adding to fatigue.
-    </div>`;
-    for(const c of userTrainingPlan.cardio){
-      html+=`<div class="card" style="display:flex;justify-content:space-between;align-items:center">
-        <div>
-          <div style="font-weight:600">${dayName(c.day_of_week)} - ${c.type}</div>
-          <div style="font-size:13px;color:var(--tx2);margin-top:3px">${c.duration_mins} mins - ${c.intensity}</div>
-          ${c.notes?`<div style="font-size:12px;color:var(--tx3);margin-top:4px">${c.notes}</div>`:''}
-        </div>
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:36px;font-weight:900;color:var(--ac3)">${c.duration_mins}m</div>
-      </div>`;
-    }
-  }
-
-  el.innerHTML=html;
-}
-
 function dayName(d){return['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d]||'Day '+d;}
 
 function showHowTo(name,cues){
@@ -5979,6 +5882,8 @@ async function confirmSwap(swap){
   const newSets=parseInt(ex.sets)||3;
   const repVal=String(ex.reps||'8-12').split('/')[0];
   ex.reps_per_set=Array(newSets).fill(repVal);
+  // Anything typed for the old exercise in an open session no longer applies
+  if(trainDraft&&String(trainDraft.sidx)===String(swapSessionIdx)&&trainDraft.sets){delete trainDraft.sets[swapExIdx];saveTrainDraft();}
   closeModal('swap-modal');
   // Save updated training plan to sheet so swap persists
   try{
@@ -6006,21 +5911,283 @@ async function confirmSwap(swap){
 // ============================================================
 // WORKOUT TRACKER
 // ============================================================
-function renderTracker(){
-  const el=document.getElementById('tracker-content');
-  if(!userTrainingPlan?.sessions?.length)return;
-  const today=new Date().getDay();
-  const todaySess=userTrainingPlan.sessions.find(s=>parseInt(s.day_of_week)===today);
+// ============================================================
+// TRAIN SCREEN - the plan and the logging in one place (7 Oct 2026)
+// ============================================================
+// The Training tab shows the week, opens a session one exercise at a time, and
+// ends on a finish screen that logs it. What is typed is kept in trainDraft and
+// saved to this phone on every change, so closing the app mid-session loses
+// nothing. logWorkout() reads the draft - there is no separate Log Workout tab.
+// ---- train rules start ----
+// The rep target shown for each set. Assessment week uses its pyramid.
+function repsTargets(ex,isAssessment){
+  if(ex.reps_per_set&&Array.isArray(ex.reps_per_set))return ex.reps_per_set.map(String);
+  const setCount=parseInt(ex.sets)||(isAssessment?4:3);
+  if(isAssessment){
+    if(setCount>=4)return['12','12','2','1'];
+    if(setCount===3)return['12','2','1'];
+    return Array(setCount).fill('12');
+  }
+  return Array(setCount).fill(String(ex.reps||'8-12').split('/')[0]);
+}
+// The top of a rep range: "8-10" gives 10, "8" gives 8, anything timed or open-ended gives 0
+function repRangeTop(reps){
+  const t=String(reps||'');
+  if(/sec|min|amrap|max|fail|hold/i.test(t))return 0;
+  const range=t.match(/(\d+)\s*-\s*(\d+)/);
+  if(range)return parseInt(range[2]);
+  const one=t.match(/\d+/);
+  return one?parseInt(one[0]):0;
+}
+// "24kg × 10, 10, 9, 8" when the weight was the same, otherwise each set in full
+function lastTimeText(sets){
+  const weights=[...new Set(sets.map(s=>parseFloat(s.weight_kg)||0))];
+  if(weights.length===1)return(weights[0]?weights[0]+'kg × ':'')+sets.map(s=>parseInt(s.reps)||0).join(', ');
+  return sets.map(s=>((parseFloat(s.weight_kg)||0)?(parseFloat(s.weight_kg))+'kg × ':'')+(parseInt(s.reps)||0)).join(', ');
+}
+// Double progression: if every planned set last time reached the top of the rep
+// range, suggest the smallest sensible jump. Returns {text, weight} or null.
+function weightNudge(ex,lastSets,isAssessment){
+  if(!lastSets||!lastSets.length||isAssessment)return null;
+  const top=repRangeTop(ex.reps);
+  const planned=parseInt(ex.sets)||3;
+  if(!top||lastSets.length<planned)return null;
+  if(!lastSets.every(s=>(parseInt(s.reps)||0)>=top))return null;
+  const heaviest=Math.max(...lastSets.map(s=>parseFloat(s.weight_kg)||0));
+  if(!heaviest)return{weight:0,text:'You hit the top of the range on every set last time. Add a rep or two, or add some weight.'};
+  const step=/dumbbell|\bdb\b|kettlebell/i.test(String(ex.name))?2:2.5;
+  const next=Math.round((heaviest+step)*2)/2;
+  return{weight:next,text:`You hit the top of the range on every set last time. Try ${next}kg today.`};
+}
+// ---- train rules end ----
 
-  let html=`<div class="frow"><label class="flbl">Select Session</label>
-    <select class="fsel" id="tracker-sel" onchange="loadTrackerSess()">
-      <option value="">Choose a session</option>
-      ${userTrainingPlan.sessions.map((s,i)=>`<option value="${i}" ${parseInt(s.day_of_week)===today?'selected':''}>${s.name} (${dayName(s.day_of_week)})</option>`).join('')}
-      ${userTrainingPlan.ab_sessions?.map((ab,i)=>`<option value="ab${i}">${ab.name}</option>`).join('')||''}
-    </select>
-  </div>
-  <div id="tracker-sess"></div>
-  <div class="card" style="margin-top:16px">
+let trainView={mode:'week',sidx:null,step:0,touched:false};
+let trainDraft=null;
+let restTimer={until:0,total:0,tick:null};
+let sessRating=3;
+const TRAIN_DRAFT_HOURS=12;
+
+function trainSession(sidx){
+  const k=String(sidx==null?'':sidx);
+  if(k==='')return null;
+  return k.startsWith('ab')?(userTrainingPlan?.ab_sessions?.[parseInt(k.replace('ab',''))||0]||null):(userTrainingPlan?.sessions?.[parseInt(k)]||null);
+}
+function trainDraftKey(sidx){return'train_draft_'+CU.user_id+'_'+(userTrainingPlan?.plan_id||'')+'_'+sidx;}
+function readTrainDraft(sidx){
+  try{
+    const d=JSON.parse(localStorage.getItem(trainDraftKey(sidx))||'null');
+    if(d&&d.sets&&Date.now()-(d.started||0)<TRAIN_DRAFT_HOURS*3600000)return d;
+  }catch(e){}
+  return null;
+}
+function saveTrainDraft(){
+  if(!trainDraft||!CU)return;
+  try{localStorage.setItem(trainDraftKey(trainDraft.sidx),JSON.stringify(trainDraft));}catch(e){}
+}
+function dropTrainDraft(sidx){try{localStorage.removeItem(trainDraftKey(sidx));}catch(e){}}
+function draftHasEntries(d){return!!d&&Object.values(d.sets||{}).some(rows=>(rows||[]).some(r=>r&&(r.w||r.r||r.done)));}
+// The set rows for one exercise in the open session, at least as many as planned
+function draftRows(ei){
+  const ex=trainSession(trainDraft.sidx)?.exercises?.[ei];
+  const planned=parseInt(ex?.sets)||3;
+  if(!trainDraft.sets[ei])trainDraft.sets[ei]=[];
+  while(trainDraft.sets[ei].length<planned)trainDraft.sets[ei].push({w:'',r:'',done:false});
+  return trainDraft.sets[ei];
+}
+function rowLogged(r){return!!r&&((parseFloat(r.w)||0)>0||(parseInt(r.r)||0)>0);}
+// Logged sets for one exercise, counted up to the planned number
+function exerciseProgress(ei){
+  const ex=trainSession(trainDraft.sidx)?.exercises?.[ei];
+  const planned=parseInt(ex?.sets)||3;
+  return{logged:Math.min(planned,(trainDraft.sets[ei]||[]).filter(rowLogged).length),planned};
+}
+function sessionProgress(){
+  const exs=trainSession(trainDraft.sidx)?.exercises||[];
+  let logged=0,planned=0;
+  exs.forEach((ex,ei)=>{const p=exerciseProgress(ei);logged+=p.logged;planned+=p.planned;});
+  return{logged,planned,pct:planned?Math.min(1,logged/planned):0};
+}
+// The most recent logged sets for an exercise, matched by name
+function lastTimeFor(exName){
+  const n=String(exName||'').trim().toLowerCase();
+  const logs=activityLogs.workouts.filter(w=>!w.cardio&&Array.isArray(w.exercises)).sort((a,b)=>String(b.at||b.day).localeCompare(String(a.at||a.day)));
+  for(const w of logs){
+    const hit=w.exercises.find(e=>String(e.name||'').trim().toLowerCase()===n&&Array.isArray(e.sets)&&e.sets.length);
+    if(hit)return hit.sets;
+  }
+  return null;
+}
+function sessionDoneThisWeek(sidx){
+  const k=String(sidx);
+  const wk=weekStart(dayKey(new Date()));
+  // Ab sessions are extras: done if logged with at least half their sets this week
+  if(k.startsWith('ab'))return activityLogs.workouts.some(w=>w.day&&weekStart(w.day)===wk&&w.key===k&&(w.pct==null||w.pct>=0.5));
+  // Planned sessions use the same rule as the weekly streak, including "had to stop early"
+  return!!doneSessionKeysByWeek(activityLogs.workouts).get(wk)?.has(k);
+}
+
+// Opening the tab on a training day goes straight into today's session, unless
+// the user has already chosen to look at the week or logged it today.
+function openTrainTab(){
+  if(trainView.mode==='week'&&!trainView.touched&&userTrainingPlan?.sessions?.length){
+    const today=new Date().getDay();
+    const idx=userTrainingPlan.sessions.findIndex(s=>parseInt(s.day_of_week)===today);
+    const loggedToday=idx>=0&&activityLogs.workouts.some(w=>w.key===String(idx)&&w.day===dayKey(new Date()));
+    if(idx>=0&&!loggedToday){openTrainSession(String(idx));return;}
+  }
+  renderTrainingPlan();
+}
+function openTrainSession(sidx){
+  const s=trainSession(sidx);
+  if(!s)return;
+  trainDraft=readTrainDraft(sidx)||{sidx:String(sidx),started:Date.now(),sets:{},step:0,pb:false,rating:3,notes:'',stop:''};
+  sessRating=trainDraft.rating||3;
+  const last=Math.max(0,(s.exercises||[]).length-1);
+  trainView={mode:'session',sidx:String(sidx),step:Math.min(Math.max(0,trainDraft.step||0),last),touched:true};
+  renderTrainingPlan();
+  window.scrollTo(0,0);
+}
+function trainBackToWeek(){
+  saveTrainDraft();
+  trainView={mode:'week',sidx:null,step:0,touched:true};
+  renderTrainingPlan();
+  window.scrollTo(0,0);
+}
+function trainGoStep(i){
+  const n=(trainSession(trainView.sidx)?.exercises||[]).length;
+  if(i<0){trainBackToWeek();return;}
+  trainView.mode=i>=n?'finish':'session';
+  trainView.step=Math.min(Math.max(0,i),Math.max(0,n-1));
+  trainDraft.step=trainView.step;
+  saveTrainDraft();
+  renderTrainingPlan();
+  window.scrollTo(0,0);
+}
+function trainSetInput(ei,si,field,value){
+  draftRows(ei)[si][field]=value;
+  saveTrainDraft();
+  const strip=document.getElementById('train-strip');
+  if(strip)strip.innerHTML=trainStripHtml();
+}
+function trainTickSet(ei,si,btn){
+  const row=draftRows(ei)[si];
+  row.done=!row.done;
+  btn.classList.toggle('done',row.done);
+  saveTrainDraft();
+  if(row.done)startRestTimer(parseInt(trainSession(trainView.sidx)?.exercises?.[ei]?.rest_seconds)||60);
+}
+function trainAddSet(ei){
+  draftRows(ei).push({w:'',r:'',done:false});
+  saveTrainDraft();
+  renderTrainingPlan();
+}
+function trainDiscard(){
+  if(!confirm('Discard everything you have entered for this session?'))return;
+  dropTrainDraft(trainView.sidx);
+  trainDraft=null;
+  stopRestTimer();
+  trainBackToWeek();
+}
+
+// ---- rest timer ----
+function startRestTimer(seconds){
+  if(restTimer.tick)clearInterval(restTimer.tick);
+  restTimer={until:Date.now()+seconds*1000,total:seconds,tick:setInterval(renderRestTimer,500)};
+  renderRestTimer();
+}
+function stopRestTimer(){
+  if(restTimer.tick)clearInterval(restTimer.tick);
+  restTimer={until:0,total:0,tick:null};
+  const el=document.getElementById('rest-timer');
+  if(el)el.innerHTML='';
+}
+function renderRestTimer(){
+  const el=document.getElementById('rest-timer');
+  if(!restTimer.until){if(el)el.innerHTML='';return;}
+  const left=Math.ceil((restTimer.until-Date.now())/1000);
+  const box='display:flex;justify-content:space-between;align-items:center;border-radius:10px;padding:10px 14px;margin:12px 0;font-size:14px';
+  if(left<=0){
+    if(restTimer.tick){
+      clearInterval(restTimer.tick);restTimer.tick=null;
+      // A buzz, no sound. Not every phone allows it.
+      try{if(navigator.vibrate)navigator.vibrate([200,100,200]);}catch(e){}
+    }
+    if(el)el.innerHTML=`<div style="${box};background:var(--ac);color:var(--bg);font-weight:600"><span>Rest over - go again</span><button class="btn btn-ghost btn-xs" style="color:var(--bg);border-color:var(--bg)" onclick="stopRestTimer()">OK</button></div>`;
+    return;
+  }
+  if(el)el.innerHTML=`<div style="${box};background:var(--s2);border:1px solid var(--b2)"><span style="color:var(--tx2)">Rest</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:600;color:var(--ac)">${Math.floor(left/60)}:${String(left%60).padStart(2,'0')}</span><button class="btn btn-ghost btn-xs" onclick="stopRestTimer()">Skip</button></div>`;
+}
+
+// ---- screens ----
+function renderTrainingPlan(){
+  const el=document.getElementById('training-content');
+  if(!userTrainingPlan?.sessions)return;
+
+  const injBtn=document.getElementById('injury-guide-btn-wrap');
+  if(injBtn)injBtn.style.display=CU.injuries&&CU.injuries.trim()?'block':'none';
+
+  // A session that no longer exists (new plan, sign-in as someone else) falls back to the week
+  if(trainView.mode!=='week'&&(!trainDraft||!trainSession(trainView.sidx))){trainView={mode:'week',sidx:null,step:0,touched:trainView.touched};trainDraft=null;}
+  el.innerHTML=trainView.mode==='session'?trainSessionHtml():trainView.mode==='finish'?trainFinishHtml():trainWeekHtml();
+  renderRestTimer();
+}
+
+function trainWeekCard(s,sidx,isAb){
+  const today=new Date().getDay();
+  const isToday=!isAb&&parseInt(s.day_of_week)===today;
+  const done=sessionDoneThisWeek(sidx);
+  const inProgress=draftHasEntries(readTrainDraft(sidx));
+  const exs=s.exercises||[];
+  const status=inProgress?'<span style="color:var(--ac2)">In progress - saved on this phone</span>':done?'<span style="color:var(--ok)">✓ Done this week</span>':isToday?'<span style="color:var(--ac)">Today</span>':'';
+  const sub=isAb?`${s.day_type==='after_workout'?'After a main session or on a rest day':'Rest day'}${s.duration_mins?' - '+s.duration_mins+' mins':''}`:`${dayName(s.day_of_week)} - ${(s.type||'').toUpperCase()}`;
+  const id='tw_'+sidx;
+  return`<div class="card" style="${isToday?'border-color:var(--ac)':''}">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+      <div style="min-width:0">
+        <div style="font-weight:600;font-size:15px">${s.name}</div>
+        <div style="font-size:12px;color:var(--tx2)">${sub} - ${exs.length} exercise${exs.length===1?'':'s'}</div>
+        ${status?`<div style="font-size:12px;margin-top:4px">${status}</div>`:''}
+      </div>
+      <button class="btn btn-sm" style="flex-shrink:0" onclick="openTrainSession('${sidx}')">${inProgress?'Resume':done?'Log again':'Start'} →</button>
+    </div>
+    <button class="expand-btn" style="margin-top:10px" onclick="const d=document.getElementById('${id}');d.style.display=d.style.display==='none'?'block':'none'">▼ See exercises</button>
+    <div id="${id}" style="display:none;margin-top:8px">
+      ${s.warm_up_cardio?`<div style="font-size:12px;color:var(--tx2);margin-bottom:6px">🔥 Warm up: ${s.warm_up_cardio}</div>`:''}
+      ${exs.map(ex=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:6px 0;border-bottom:1px solid var(--b1)"><span>${ex.name}</span><span style="color:var(--tx2);white-space:nowrap">${ex.sets||3} x ${ex.reps||'8-12'}</span></div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function trainWeekHtml(){
+  let html='';
+  if(userTrainingPlan.notes)html+=`<div class="alert alert-info">${userTrainingPlan.notes}</div>`;
+  html+=`<div style="font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;margin-bottom:4px">Your Week</div>
+  <div style="font-size:12px;color:var(--tx2);margin-bottom:12px">Tap Start to train and log a session in one place. What you enter is saved on this phone as you go.</div>`;
+  html+=userTrainingPlan.sessions.map((s,i)=>trainWeekCard(s,String(i),false)).join('');
+
+  if(userTrainingPlan.ab_sessions?.length){
+    html+=`<div style="font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;margin:20px 0 12px">Ab Sessions (2-3x per week)</div>`;
+    html+=userTrainingPlan.ab_sessions.map((s,i)=>trainWeekCard(s,'ab'+i,true)).join('');
+  }
+
+  if(userTrainingPlan.cardio?.length){
+    html+=`<div style="font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;margin:20px 0 12px">Cardio Sessions</div>`;
+    html+=`<div class="alert alert-info" style="margin-bottom:14px">
+      <strong>Why cardio is scheduled this way:</strong> A light 5-10 minute warm-up before lifting is always fine - that is not what this is about. The concern is a full cardio session on the same day as lifting: cardio first depletes glycogen your muscles need for heavy lifting, and can blunt strength performance if done too close together. If you are doing a proper cardio session and a lifting session on the same day, put weights first and separate them by at least 3-6 hours. Cardio on rest days avoids this interference entirely and is the preferred approach for body recomposition. Keep rest day cardio at a moderate intensity - it aids recovery rather than adding to fatigue.
+    </div>`;
+    for(const c of userTrainingPlan.cardio){
+      html+=`<div class="card" style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-weight:600">${dayName(c.day_of_week)} - ${c.type}</div>
+          <div style="font-size:13px;color:var(--tx2);margin-top:3px">${c.duration_mins} mins - ${c.intensity}</div>
+          ${c.notes?`<div style="font-size:12px;color:var(--tx3);margin-top:4px">${c.notes}</div>`:''}
+        </div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:36px;font-weight:900;color:var(--ac3)">${c.duration_mins}m</div>
+      </div>`;
+    }
+  }
+
+  html+=`<div class="card" style="margin-top:16px">
     <div class="card-lbl">Light Cardio - Optional</div>
     <div style="font-size:12px;color:var(--tx2);margin-bottom:10px">A walk, an easy bike ride, a swim. Never required, and it does not affect your streak. +${EXTRA_SESSION_POINTS} pts, up to ${EXTRA_SESSIONS_PER_WEEK} a week.</div>
     <div class="two-col">
@@ -6029,118 +6196,136 @@ function renderTracker(){
     </div>
     <button class="btn btn-ghost btn-sm" onclick="logCardio()">Log Cardio</button>
   </div>`;
-
-  el.innerHTML=html;
-  if(todaySess){document.getElementById('tracker-sel').value=userTrainingPlan.sessions.indexOf(todaySess);loadTrackerSess();}
+  return html;
 }
 
-function loadTrackerSess(){
-  const idx=document.getElementById('tracker-sel')?.value;
-  if(idx===''||idx===undefined)return;
+// The row of dots across the top: one per exercise, plus the finish step
+function trainStripHtml(){
+  const exs=trainSession(trainView.sidx)?.exercises||[];
+  return exs.map((ex,i)=>{
+    const p=exerciseProgress(i);
+    const current=trainView.mode==='session'&&i===trainView.step;
+    const bg=p.logged>=p.planned?'var(--ok)':p.logged>0?'var(--ac2)':'var(--b2)';
+    return`<button aria-label="Exercise ${i+1}" onclick="trainGoStep(${i})" style="flex:1;height:8px;border-radius:4px;border:none;cursor:pointer;background:${bg};outline:${current?'2px solid var(--ac)':'none'};outline-offset:2px"></button>`;
+  }).join('');
+}
 
-  let s;
-  if(idx.startsWith('ab')){
-    const abIdx=parseInt(idx.replace('ab',''))||0;
-    s=userTrainingPlan.ab_sessions?.[abIdx];
-    if(!s)return;
-  } else {
-    s=userTrainingPlan.sessions[parseInt(idx)];
-    if(!s)return;
+function trainSessionHtml(){
+  const sidx=trainView.sidx;
+  const s=trainSession(sidx);
+  const exs=s.exercises||[];
+  const ei=trainView.step;
+  const ex=exs[ei];
+  const isAb=sidx.startsWith('ab');
+  const head=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px">
+    <button class="btn btn-ghost btn-xs" onclick="trainBackToWeek()">← Week</button>
+    <div style="font-size:12px;color:var(--tx2);text-align:right">${s.name}${isAb?'':' - '+dayName(s.day_of_week)}</div>
+  </div>`;
+  if(!ex){
+    return head+`<div class="alert alert-warn">This session has no exercises listed.</div>`;
   }
-
-  let html=`<div class="alert alert-info">Logging: <strong>${s.name}</strong></div>`;
-  if(s.warm_up_cardio)html+=`<div class="alert alert-warn">🔥 ${s.warm_up_cardio}</div>`;
-
-  for(const ex of(s.exercises||[])){
-    const eid='ex_'+ex.name.replace(/\W+/g,'_').toLowerCase();
-    const isAssessment=s.name?.toLowerCase().includes('assessment');
-    // Parse reps per set. Assessment week uses pyramid: e.g. "2,2,1" or reps_per_set array.
-    // Normal sessions: single rep target applied to all sets as greyed placeholder.
-    let repsPerSet=[];
-    if(ex.reps_per_set&&Array.isArray(ex.reps_per_set)){
-      repsPerSet=ex.reps_per_set.map(String);
-    } else if(isAssessment){
-      // Default assessment pyramid if not explicitly provided
-      const setCount=ex.sets||4;
-      if(setCount>=4)repsPerSet=['12','12','2','1'];
-      else if(setCount===3)repsPerSet=['12','2','1'];
-      else repsPerSet=Array(setCount).fill('12');
-    } else {
-      // Normal: parse single rep value from ex.reps (e.g. "8-12" -> use "8-12" as placeholder for all sets)
-      const repVal=String(ex.reps||'8-12').split('/')[0];
-      repsPerSet=Array(ex.sets||3).fill(repVal);
-    }
-    html+=`<div class="log-ex">
-      <div class="log-ex-name"><span>${ex.name}</span><span style="font-size:12px;color:var(--tx2)">${ex.sets||3} x ${ex.reps||'8-12'}</span></div>
-      ${ex.notes?`<div style="font-size:11px;color:var(--tx3);margin-bottom:6px;font-style:italic">${ex.notes}</div>`:''}
-      <div class="set-hdr"><div>Set</div><div>kg</div><div>Reps</div><div>Notes</div><div></div></div>
-      <div id="sets_${eid}">
-        ${Array.from({length:ex.sets||3},(_,i)=>`
-          <div class="set-row">
-            <div class="set-num">S${i+1}</div>
-            <input class="set-inp" type="number" step=".5" placeholder="kg" id="${eid}_w${i}">
-            <input class="set-inp" type="number" placeholder="${repsPerSet[i]||'reps'}" id="${eid}_r${i}" style="color:var(--tx2)" onfocus="if(this.value==='')this.style.color='var(--tx)'" onblur="if(this.value==='')this.style.color='var(--tx2)'">
-            <input class="set-inp" type="text" placeholder="-" id="${eid}_n${i}" style="font-size:11px">
-            <button class="set-chk" onclick="toggleChk(this)">✓</button>
-          </div>`).join('')}
-      </div>
-      <button class="btn btn-ghost btn-xs" style="margin-top:7px" onclick="addSet('sets_${eid}','${eid}','${repsPerSet[repsPerSet.length-1]||'reps'}')">+ Set</button>
-    </div>`;
-  }
-
-  html+=`<div class="alert alert-info" style="font-size:12px;margin-bottom:14px">📈 <strong>Log every set as you actually did it.</strong> What you log decides your points for this session and feeds your next monthly plan. When you can hit the top of the rep range comfortably, add weight next time - that is double progression.</div>`;
-  html+=`<div class="frow"><label class="flbl">Session Rating (1=rough 5=smashed it)</label><div class="rating-row" id="sess-rating">${[1,2,3,4,5].map(n=>`<button class="rbtn" onclick="setSessRating(${n},this)">${n}</button>`).join('')}</div></div>
-  <div class="frow" style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-    <input type="checkbox" id="pb-checkbox" style="width:18px;height:18px;accent-color:var(--ac)">
-    <label for="pb-checkbox" style="font-size:13px;color:var(--tx2);cursor:pointer">I hit a personal best this session 🏆 (+15 pts)</label>
+  const isAssessment=String(s.name||'').toLowerCase().includes('assessment');
+  const targets=repsTargets(ex,isAssessment);
+  const rows=draftRows(ei);
+  const last=lastTimeFor(ex.name);
+  const nudge=weightNudge(ex,last,isAssessment);
+  const kgHint=i=>nudge&&nudge.weight?nudge.weight:(last&&last[Math.min(i,last.length-1)]&&parseFloat(last[Math.min(i,last.length-1)].weight_kg))||'kg';
+  const tempoHelp=`showHowTo('What is Tempo?','Tempo is the speed of each phase of the lift. Format: seconds down - pause - seconds up. Example: 2-1-2 means 2 seconds lowering, 1 second pause, 2 seconds lifting. Controlling tempo builds more muscle and reduces injury risk.')`;
+  const grid='display:grid;grid-template-columns:34px 1fr 1fr 44px;gap:8px;align-items:center';
+  return head+`
+  <div style="display:flex;justify-content:space-between;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--tx3);margin-bottom:6px"><span>Exercise ${ei+1} of ${exs.length}</span><span>Tap a bar to jump</span></div>
+  <div id="train-strip" style="display:flex;gap:5px;margin-bottom:16px">${trainStripHtml()}</div>
+  ${ei===0&&s.warm_up_cardio?`<div class="alert alert-warn" style="font-size:13px">🔥 Warm up first: ${s.warm_up_cardio}</div>`:''}
+  <div class="card">
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:900;line-height:1.1">${ex.name}</div>
+    <div style="font-size:13px;color:var(--tx2);margin-top:4px">${ex.sets||3} sets x ${ex.reps||'8-12'}${ex.rest_seconds?' - rest '+ex.rest_seconds+'s':''}${ex.tempo?` - tempo ${ex.tempo} <span style="cursor:pointer;color:var(--tx3)" onclick="${tempoHelp}">(?)</span>`:''}</div>
+    ${ex.notes?`<div class="ex-note" style="margin-top:6px">${ex.notes}</div>`:''}
+    ${ex.progression_note?`<div class="ex-note" style="margin-top:6px">${ex.progression_note}</div>`:''}
+    <div style="display:flex;gap:8px;margin:12px 0;flex-wrap:wrap">
+      <button class="btn btn-ghost btn-sm" data-exname="${escapeHtml(ex.name)}" data-howto="${escapeHtml(ex.how_to||ex.notes||'')}" onclick="showHowTo(this.dataset.exname,this.dataset.howto)">? How to</button>
+      <button class="btn btn-ghost btn-sm" data-sidx="${sidx}" data-eidx="${ei}" data-exname="${escapeHtml(ex.name)}" onclick="openSwapModal(this.dataset.sidx,parseInt(this.dataset.eidx),this.dataset.exname)">⇄ Swap</button>
+    </div>
+    ${last?`<div style="background:var(--s2);border:1px solid var(--b1);border-radius:8px;padding:9px 12px;font-size:13px;color:var(--tx2);margin-bottom:8px">Last time: <span style="font-family:'JetBrains Mono',monospace;color:var(--tx)">${escapeHtml(lastTimeText(last))}</span></div>`:''}
+    ${nudge?`<div style="background:rgba(0,200,120,.1);border:1px solid var(--ok);color:var(--ok);border-radius:8px;padding:9px 12px;font-size:13px;margin-bottom:8px">📈 ${nudge.text}</div>`:''}
+    <div style="${grid};font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--tx3);font-weight:600;margin:12px 0 6px"><div>Set</div><div style="text-align:center">kg</div><div style="text-align:center">Reps</div><div></div></div>
+    ${rows.map((r,i)=>`<div style="${grid};margin-bottom:8px">
+      <div class="set-num">S${i+1}</div>
+      <input class="set-inp" type="number" inputmode="decimal" step=".5" placeholder="${kgHint(i)}" value="${escapeHtml(r.w)}" oninput="trainSetInput(${ei},${i},'w',this.value)" style="padding:10px 8px;font-size:15px">
+      <input class="set-inp" type="number" inputmode="numeric" placeholder="${escapeHtml(targets[i]||targets[targets.length-1]||'reps')}" value="${escapeHtml(r.r)}" oninput="trainSetInput(${ei},${i},'r',this.value)" style="padding:10px 8px;font-size:15px">
+      <button class="set-chk ${r.done?'done':''}" aria-label="Set ${i+1} done" onclick="trainTickSet(${ei},${i},this)" style="width:38px;height:38px;font-size:16px;justify-self:end">✓</button>
+    </div>`).join('')}
+    <button class="btn btn-ghost btn-xs" onclick="trainAddSet(${ei})">+ Set</button>
+    <div id="rest-timer"></div>
   </div>
-  <div class="frow"><label class="flbl">Session Notes</label><input class="finput" id="tracker-notes" placeholder="How did it feel? Any notes..."></div>
-  <div class="frow"><label class="flbl">Had to stop early? (optional)</label><select class="fsel" id="stop-early"><option value="">No</option><option>Sick</option><option>Injury</option><option>Emergency</option><option>Other</option></select><div style="font-size:11px;color:var(--tx3);margin-top:4px">Protects your weekly streak once a week if you could not finish. Points still come from the sets you log.</div></div>
-  <button class="btn" onclick="logWorkout('${idx}')">✓ Log Session (up to ${idx.startsWith('ab')?EXTRA_SESSION_POINTS:sessionShare(plannedSessionsPerWeek()||3)} pts)</button>`;
-
-  document.getElementById('tracker-sess').innerHTML=html;
+  <div style="display:flex;gap:10px">
+    <button class="btn btn-ghost" style="flex:1" onclick="trainGoStep(${ei-1})">← ${ei===0?'Week':'Back'}</button>
+    <button class="btn" style="flex:2" onclick="trainGoStep(${ei+1})">${ei===exs.length-1?'Finish session':'Next exercise'} →</button>
+  </div>
+  <div style="text-align:center;font-size:11px;color:var(--tx3);margin-top:10px">Saved on this phone as you go. Tick a set to start the rest timer.</div>`;
 }
 
-let sessRating=3;
-function setSessRating(n,btn){sessRating=n;document.querySelectorAll('#sess-rating .rbtn').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}
-function toggleChk(btn){btn.classList.toggle('done');}
-function addSet(cid,eid,repPlaceholder){
-  const c=document.getElementById(cid);const n=c.children.length+1;
-  // Same ids as the rows built by loadTrackerSess, so logWorkout picks the new row up
-  const i=n-1;
-  const ph=repPlaceholder||'reps';
-  const d=document.createElement('div');d.className='set-row';
-  d.innerHTML=`<div class="set-num">S${n}</div><input class="set-inp" type="number" step=".5" placeholder="kg" id="${eid}_w${i}"><input class="set-inp" type="number" placeholder="${ph}" id="${eid}_r${i}" style="color:var(--tx2)" onfocus="if(this.value==='')this.style.color='var(--tx)'" onblur="if(this.value==='')this.style.color='var(--tx2)'"><input class="set-inp" type="text" placeholder="-" id="${eid}_n${i}" style="font-size:11px"><button class="set-chk" onclick="toggleChk(this)">✓</button>`;
-  c.appendChild(d);
+function trainFinishHtml(){
+  const sidx=trainView.sidx;
+  const s=trainSession(sidx);
+  const exs=s.exercises||[];
+  const isAb=sidx.startsWith('ab');
+  const prog=sessionProgress();
+  const award=workoutAward({key:String(sidx),isAb,pct:prog.pct,pb:!!trainDraft.pb});
+  const pctText=Math.round(prog.pct*100);
+  const full=isAb?EXTRA_SESSION_POINTS:sessionShare(plannedSessionsPerWeek()||3);
+  const pointsLine=award.alreadyRewarded?'You have already had the points for this session this week. Logging it again still saves your numbers.'
+    :prog.pct<0.5?'Under half of the sets are logged, so this would earn no points and would not count toward your week. Go back and fill in what you did.'
+    :`This session will earn <strong>${award.total} point${award.total===1?'':'s'}</strong>${!isAb&&award.base<full?' ('+pctText+'% of sets logged - 90% or more earns the full '+full+')':''}.`;
+  return`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px">
+    <button class="btn btn-ghost btn-xs" onclick="trainBackToWeek()">← Week</button>
+    <div style="font-size:12px;color:var(--tx2);text-align:right">${s.name}</div>
+  </div>
+  <div id="train-strip" style="display:flex;gap:5px;margin-bottom:16px">${trainStripHtml()}</div>
+  <div class="card">
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:900">Finish Session</div>
+    <div style="font-size:13px;color:var(--tx2);margin:4px 0 12px">${prog.logged} of ${prog.planned} sets logged (${pctText}%)</div>
+    ${exs.map((ex,i)=>{const p=exerciseProgress(i);return`<div onclick="trainGoStep(${i})" style="display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:8px 0;border-bottom:1px solid var(--b1);cursor:pointer"><span>${ex.name}</span><span style="white-space:nowrap;color:${p.logged>=p.planned?'var(--ok)':p.logged?'var(--ac2)':'var(--tx3)'}">${p.logged>=p.planned?'✓ ':''}${p.logged} of ${p.planned}</span></div>`;}).join('')}
+    <div class="alert alert-info" style="font-size:13px;margin-top:14px">${pointsLine}</div>
+    <div class="frow"><label class="flbl">Session Rating (1=rough 5=smashed it)</label><div class="rating-row" id="sess-rating">${[1,2,3,4,5].map(n=>`<button class="rbtn ${(trainDraft.rating||3)===n?'on':''}" onclick="setSessRating(${n},this)">${n}</button>`).join('')}</div></div>
+    ${isAb?'':`<div class="frow" style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <input type="checkbox" id="pb-checkbox" ${trainDraft.pb?'checked':''} onchange="trainDraft.pb=this.checked;saveTrainDraft();renderTrainingPlan()" style="width:18px;height:18px;accent-color:var(--ac)">
+      <label for="pb-checkbox" style="font-size:13px;color:var(--tx2);cursor:pointer">I hit a personal best this session 🏆 (+${PB_POINTS} pts)</label>
+    </div>`}
+    <div class="frow"><label class="flbl">Session Notes</label><input class="finput" id="tracker-notes" value="${escapeHtml(trainDraft.notes||'')}" oninput="trainDraft.notes=this.value;saveTrainDraft()" placeholder="How did it feel? Any notes..."></div>
+    <div class="frow"><label class="flbl">Had to stop early? (optional)</label><select class="fsel" id="stop-early" onchange="trainDraft.stop=this.value;saveTrainDraft()">${['','Sick','Injury','Emergency','Other'].map(v=>`<option value="${v}" ${(trainDraft.stop||'')===v?'selected':''}>${v||'No'}</option>`).join('')}</select><div style="font-size:11px;color:var(--tx3);margin-top:4px">Protects your weekly streak once a week if you could not finish. Points still come from the sets you log.</div></div>
+    <button class="btn" style="width:100%" onclick="logWorkout('${sidx}')">✓ Log Session</button>
+  </div>
+  <div style="display:flex;gap:10px">
+    <button class="btn btn-ghost" style="flex:1" onclick="trainGoStep(${Math.max(0,exs.length-1)})">← Back to exercises</button>
+    <button class="btn btn-ghost" style="flex:1;color:var(--danger)" onclick="trainDiscard()">Discard</button>
+  </div>`;
 }
 
+function setSessRating(n,btn){
+  sessRating=n;
+  if(trainDraft){trainDraft.rating=n;saveTrainDraft();}
+  document.querySelectorAll('#sess-rating .rbtn').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+}
 async function logWorkout(sidx){
   const isAb=sidx.startsWith('ab');
   const abIdx=isAb?parseInt(sidx.replace('ab',''))||0:null;
   const s=isAb?userTrainingPlan.ab_sessions?.[abIdx]:userTrainingPlan.sessions[parseInt(sidx)];
   if(!s)return;
 
-  const exercises=[];
-  for(const ex of(s.exercises||[])){
-    const eid='ex_'+ex.name.replace(/\W+/g,'_').toLowerCase();
-    const sets=[];let i=0;
-    while(document.getElementById(`${eid}_w${i}`)){
-      const w=parseFloat(document.getElementById(`${eid}_w${i}`)?.value)||0;
-      const r=parseInt(document.getElementById(`${eid}_r${i}`)?.value)||0;
-      const done=document.getElementById(`${eid}_w${i}`)?.closest('.set-row')?.querySelector('.set-chk')?.classList.contains('done');
-      if(w||r){sets.push({set:i+1,weight_kg:w,reps:r,completed:!!done});}
-      i++;
-    }
-    exercises.push({name:ex.name,sets});
-  }
-
-  const pb=document.getElementById('pb-checkbox')?.checked||false;
-  const notes=document.getElementById('tracker-notes')?.value||'';
+  if(!trainDraft||String(trainDraft.sidx)!==String(sidx)){alert('Open the session from the Training tab first.');return;}
+  // Everything comes from the draft the Train screen has been saving as the user typed
+  const exercises=(s.exercises||[]).map((ex,ei)=>({name:ex.name,sets:(trainDraft.sets[ei]||[])
+    .map((r,i)=>({set:i+1,weight_kg:parseFloat(r.w)||0,reps:parseInt(r.r)||0,completed:!!r.done}))
+    .filter(x=>x.weight_kg||x.reps)}));
+  const pb=!isAb&&!!trainDraft.pb;
+  const notes=trainDraft.notes||'';
+  sessRating=trainDraft.rating||3;
   // How much of the session was logged decides the points and whether it counts toward the week
   const plannedSets=(s.exercises||[]).reduce((n,ex)=>n+(parseInt(ex.sets)||3),0);
   const loggedSets=exercises.reduce((n,ex,i)=>n+Math.min(ex.sets.length,parseInt(s.exercises[i].sets)||3),0);
   const pct=plannedSets?Math.min(1,loggedSets/plannedSets):0;
-  const stopReason=document.getElementById('stop-early')?.value||'';
+  const stopReason=trainDraft.stop||'';
   const award=workoutAward({key:String(sidx),isAb,pct,pb});
   const lid='wl_'+Date.now();
   showLoad('Logging Session','Saving your workout...');
@@ -6151,7 +6336,11 @@ async function logWorkout(sidx){
   // deload check need several more trips to the sheet, so they finish in the
   // background. stillHere() stops them touching the screen if the user has signed out.
   hideLoad();
-  activityLogs.workouts.push({day:dayKey(new Date()),key:String(sidx),pct,stop:stopReason,cardio:false,extra:isAb,pts:award.total});
+  activityLogs.workouts.push({day:dayKey(new Date()),at:new Date().toISOString(),key:String(sidx),pct,stop:stopReason,cardio:false,extra:isAb,pts:award.total,exercises});
+  // Logged - the draft has done its job. Back to the week, where this session now shows as done.
+  dropTrainDraft(sidx);trainDraft=null;stopRestTimer();
+  trainView={mode:'week',sidx:null,step:0,touched:true};
+  renderTrainingPlan();
   const counted=pct>=0.5;
   if(stopReason){
     // Advice first, then what it means for points and the week
@@ -7604,7 +7793,7 @@ function weeklyStreak(doneByWeek,plannedPerWeek,pausedWeeks,today,firstDay){
 // half still counts if it was marked "had to stop early". Logs from before
 // 6 Oct 2026 have no share recorded and count as done. Cardio and ab sessions
 // are extras and never count here.
-function sessionsDoneByWeek(workouts){
+function doneSessionKeysByWeek(workouts){
   const weeks=new Map();
   for(const w of [...workouts].sort((a,b)=>a.day<b.day?-1:a.day>b.day?1:0)){
     if(!w.day||w.cardio||w.extra)continue;
@@ -7614,7 +7803,10 @@ function sessionsDoneByWeek(workouts){
     if(w.pct==null||w.pct>=0.5)rec.keys.add(w.key);
     else if(w.stop&&!rec.stopUsed){rec.stopUsed=true;rec.keys.add(w.key);}
   }
-  return new Map([...weeks].map(([k,v])=>[k,v.keys.size]));
+  return new Map([...weeks].map(([k,v])=>[k,v.keys]));
+}
+function sessionsDoneByWeek(workouts){
+  return new Map([...doneSessionKeysByWeek(workouts)].map(([k,keys])=>[k,keys.size]));
 }
 
 // Points: a full week of your own plan is worth the same for everyone.
@@ -7670,7 +7862,9 @@ function parseWorkoutLogRow(r){
   let x={};
   try{x=JSON.parse(String(r[11]||'{}'))||{};}catch(e){}
   const key=String(r[5]);
-  return{day:dayKey(r[2])||dayKey(r[3]),key,pct:typeof x.pct==='number'?x.pct:null,stop:x.stop||'',cardio:key==='cardio',extra:key.startsWith('ab'),pts:parseInt(r[8])||0};
+  let exercises=[];
+  try{const e=JSON.parse(String(r[6]||'[]'));if(Array.isArray(e))exercises=e;}catch(e){}
+  return{day:dayKey(r[2])||dayKey(r[3]),at:String(r[2]||''),key,pct:typeof x.pct==='number'?x.pct:null,stop:x.stop||'',cardio:key==='cardio',extra:key.startsWith('ab'),pts:parseInt(r[8])||0,exercises};
 }
 function parsePauseRow(r){return{id:String(r[0]),start:dayKey(r[2]),end:dayKey(r[3]),status:String(r[4]||'active'),reason:String(r[5]||'Holiday')};}
 // ---- streak engine end ----
@@ -8280,17 +8474,18 @@ async function createUser(){
 // UI HELPERS
 // ============================================================
 function goTab(tab){
+  // Log Workout is now part of Training. Home-screen shortcuts and old links still ask for it.
+  if(tab==='tracker')tab='training';
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.nav-i').forEach(n=>n.classList.remove('active'));
   document.getElementById('tab-'+tab)?.classList.add('active');
-  const tabs=['dashboard','meals','training','tracker','meallog','body','progress','compete','wall','shop','supps','howto','profile'];
+  const tabs=['dashboard','meals','training','meallog','body','progress','compete','wall','shop','supps','howto','profile'];
   const idx=tabs.indexOf(tab);
   const navIs=document.querySelectorAll('.nav-i');
   if(idx>=0&&navIs[idx])navIs[idx].classList.add('active');
 
   if(tab==='meals'&&userMealPlan)renderMealPlan();
-  if(tab==='training'&&userTrainingPlan)renderTrainingPlan();
-  if(tab==='tracker')renderTracker();
+  if(tab==='training'&&userTrainingPlan)openTrainTab();
   if(tab==='meallog')renderMealLog();
   if(tab==='body')renderBody();
   if(tab==='progress')renderProgressContent();
