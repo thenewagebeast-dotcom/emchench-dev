@@ -1294,7 +1294,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='07 Oct 17:45';
+const APP_BUILD='07 Oct 18:20';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -2585,7 +2585,7 @@ function signOut(){
   swapEquipmentPhoto=null;
   extraFoods=[];pendingSwap=null;usersLoadError=false;
   carriedCalorieTarget=null;pendingDeepLink='';
-  activityLogs={meals:[],workouts:[],water:[],pauses:[],loaded:false};mealLogPlannedToday=null;
+  activityLogs={meals:[],workouts:[],water:[],pauses:[],loaded:false};mealLogPlannedToday=null;foodCheckRunning=false;
   // Clear every tab back to its empty state so nothing rendered for this user is left on screen
   EMPTY_TAB_IDS.forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=emptyTabHtml[id]||'';});
   const injBtn=document.getElementById('injury-guide-btn-wrap');
@@ -3822,7 +3822,20 @@ function planRuleChanges(){
 function planRuleWarningHtml(){
   const changes=planRuleChanges();
   if(!changes.length)return'';
-  return`<div class="alert" style="border:1px solid var(--danger);color:var(--danger);margin-bottom:16px"><strong>Check before you cook.</strong> Since this plan was written, ${escapeHtml(changes.join(' and '))}. Its recipes may contain foods you now avoid. Generate a new plan so every recipe follows your current rules.</div>`;
+  const what=escapeHtml(changes.join(' and '));
+  const flags=planFlags();
+  const btn=(label,fn,ghost)=>`<button class="btn ${ghost?'btn-ghost ':''}btn-sm" style="margin:8px 8px 0 0" onclick="${fn}">${label}</button>`;
+  // Not yet checked against the rules as they are now
+  if(flags===null){
+    return`<div class="alert" style="border:1px solid var(--danger);color:var(--danger);margin-bottom:16px"><strong>Check before you cook.</strong> Since this plan was written, ${what}. Its recipes may contain foods you now avoid.<br>${btn('Check my recipes','runFoodCheck()')}</div>`;
+  }
+  const n=Object.keys(flags).length;
+  const total=allPlanRecipes().length;
+  const wordsOnly=userMealPlan.meals.flagged.ai?'':' The deeper AI check has not run yet, so this is word matching only.';
+  if(n){
+    return`<div class="alert" style="border:1px solid var(--danger);color:var(--danger);margin-bottom:16px"><strong>${n} of ${total} recipes need swapping.</strong> Since this plan was written, ${what}. The recipes marked in red contain foods you now avoid.${wordsOnly}<br>${btn('Replace all flagged meals','replaceFlaggedMeals()')}${btn('Check again','runFoodCheck()',true)}</div>`;
+  }
+  return`<div class="alert alert-info" style="margin-bottom:16px">Since this plan was written, ${what}. None of its ${total} recipes are flagged for your new rules.${wordsOnly} Please still read the ingredients before you cook - no check is perfect. Your next plan will be written for your new rules from the start.<br>${btn('Check again','runFoodCheck()',true)}</div>`;
 }
 // Saves the current plan's meals_json back to its row. Throws if it cannot.
 async function saveMealPlanJson(){
@@ -3832,6 +3845,215 @@ async function saveMealPlanJson(){
   const row=[...mp.values[ri]];
   writeMealsJson(row,JSON.stringify(userMealPlan.meals));
   await dbUpdate('meal_plans',ri+1,row);
+}
+// ---- RECIPES THAT BREAK THE USER'S CURRENT FOOD RULES ----
+// After a diet or allergy change, every recipe in the plan is checked two ways:
+// an AI read of the ingredients (catches hidden sources like pesto or soy sauce)
+// and plain word matching (a second net that needs no network). A recipe is
+// flagged if EITHER catches it. Results live on the plan in meals_json.flagged =
+// {key, items:{recipe name: reason}, ai:true|false}. A recipe that is not
+// flagged is never called "safe" - no check is perfect.
+// ---- food check engine start ----
+const FOOD_GROUPS={
+  dairy:{label:'dairy',words:['milk','yogurt','yoghurt','cheese','butter','cream','whey','ghee','paneer','feta','quark','parmesan','halloumi','mozzarella','cheddar','custard','casein','kefir','mascarpone','ricotta','creme fraiche','buttermilk'],
+    safe:/(dairy[- ]free|non[- ]dairy|vegan|plant[- ]based|(soya?|oat|almond|coconut|rice|cashew|hazelnut|pea|hemp)\s+(milk|yogh?urt|cream|butter|cheese)|peanut butter|nut butter|cocoa butter|butter ?beans?|cream of tartar)/i},
+  nuts:{label:'nuts',words:['nut','almond','cashew','walnut','pecan','hazelnut','pistachio','peanut','macadamia','praline','marzipan','pesto','satay','nutella','frangipane'],
+    safe:/nut[- ]free/i},
+  gluten:{label:'gluten',words:['wheat','flour','bread','pasta','spaghetti','penne','fusilli','noodle','couscous','bulgur','barley','rye','seitan','soy sauce','breadcrumb','tortilla','pitta','wrap','cracker','oat','bagel','orzo','semolina','crouton','panko','malt','lasagne','gnocchi','crumpet','muffin'],
+    safe:/(gluten[- ]free|rice noodles?|rice flour|corn ?flour|cornstarch|almond flour|coconut flour|chickpea flour|gram flour|buckwheat|corn tortillas?|tamari|lettuce wraps?)/i},
+  eggs:{label:'egg',words:['egg','mayonnaise','mayo','meringue','aioli'],safe:/(egg[- ]free|vegan)/i},
+  soy:{label:'soy',words:['soy','soya','tofu','tempeh','edamame','miso','tamari'],safe:/soya?[- ]free/i},
+  meat:{label:'meat',words:['chicken','beef','pork','lamb','turkey','bacon','ham','mince','chorizo','sausage','steak','duck','venison','salami','prosciutto','pepperoni','gelatin','gelatine','lard','meatball','pancetta','gammon'],
+    safe:/(vegan|vegetarian|plant[- ]based|meat[- ]free|quorn|jackfruit|-style|veggie|soya? mince)/i},
+  fish:{label:'fish',words:['fish','salmon','tuna','prawn','cod','mackerel','sardine','anchovy','anchovies','haddock','shrimp','crab','lobster','mussel','squid','scallop','trout','sea bass','oyster','worcestershire'],safe:/(vegan|vegetarian)/i},
+  honey:{label:'honey',words:['honey'],safe:null},
+  shellfish:{label:'shellfish',words:['shellfish','prawn','shrimp','crab','lobster','mussel','scallop','oyster','squid','clam','crayfish','langoustine'],safe:/(vegan|vegetarian)/i},
+  sesame:{label:'sesame',words:['sesame','tahini','hummus','houmous'],safe:null}
+};
+const DIET_BANS={vegan:['meat','fish','dairy','eggs','honey'],vegetarian:['meat','fish'],pescatarian:['meat'],'meat-eater':[]};
+const ALLERGY_GROUP={gluten:'gluten',wheat:'gluten',coeliac:'gluten',celiac:'gluten',dairy:'dairy',lactose:'dairy',milk:'dairy',nuts:'nuts',nut:'nuts','tree nuts':'nuts',peanuts:'nuts',peanut:'nuts',eggs:'eggs',egg:'eggs',soy:'soy',soya:'soy',fish:'fish',shellfish:'shellfish',sesame:'sesame'};
+// The food groups one set of rules rules out, as {key:{label,words,safe}}
+function bannedGroups(rules){
+  const out={};
+  for(const k of DIET_BANS[String(rules.dietary_type||'').toLowerCase()]||[])out[k]=FOOD_GROUPS[k];
+  for(const raw of rules.allergies||[]){
+    const a=String(raw).trim().toLowerCase();
+    if(!a||a==='none')continue;
+    const k=ALLERGY_GROUP[a];
+    if(k)out[k]=FOOD_GROUPS[k];
+    // Anything typed that we have no list for: look for the word itself
+    else out['x:'+a]={label:String(raw).trim(),words:[a.replace(/s$/,'')],safe:new RegExp(a.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'[- ]free','i')};
+  }
+  return out;
+}
+// Groups ruled out now that were NOT ruled out when the plan was written
+function addedGroups(oldRules,newRules){
+  const before=bannedGroups(oldRules||{}),now=bannedGroups(newRules);
+  return Object.fromEntries(Object.entries(now).filter(([k])=>!before[k]));
+}
+// Word matching on one recipe's ingredient list. Returns a reason, or ''.
+function wordFlagRecipe(recipe,groups){
+  const phrases=String(recipe.ingredients_uk||'').split(/[,;\n]/).map(p=>p.trim()).filter(Boolean);
+  for(const g of Object.values(groups)){
+    for(const phrase of phrases){
+      if(g.safe&&g.safe.test(phrase))continue;
+      for(const w of g.words){
+        if(new RegExp('\\b'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?:e?s)?\\b','i').test(phrase)){
+          return'Contains '+g.label+': '+phrase.replace(/\(.*?\)/g,'').replace(/\s+/g,' ').trim().slice(0,48);
+        }
+      }
+    }
+  }
+  return'';
+}
+function rulesKey(rules){return String(rules.dietary_type||'').toLowerCase()+'|'+normAllergies(rules.allergies).toLowerCase();}
+// ---- food check engine end ----
+
+const PLAN_CATS=['breakfasts','snacks','lunches','dinners','evening_snacks','protein_desserts','low_calorie_meals','bulking_meals'];
+function allPlanRecipes(){
+  return PLAN_CATS.flatMap(cat=>(userMealPlan?.meals?.meals?.[cat]||[]).filter(m=>m&&m.name).map(meal=>({meal,cat})));
+}
+// Flags for the rules as they are NOW. null means this plan has not been checked against them.
+function planFlags(){
+  const f=userMealPlan?.meals?.flagged;
+  return f&&CU&&f.key===rulesKey(currentFoodRules())?(f.items||{}):null;
+}
+function planFlagFor(name){const f=planFlags();return f&&f[name]?f[name]:'';}
+function flagLabelHtml(name){
+  const reason=planFlagFor(name);
+  return reason?`<div style="font-size:11px;color:var(--danger);font-weight:600;margin-top:2px">⚠ ${escapeHtml(reason)} - swap this meal</div>`:'';
+}
+let foodCheckRunning=false;
+
+// Reads every recipe against the current rules and stores the result on the plan.
+// Returns {flagged, total, aiRan, aiError}. Throws only if the result cannot be saved.
+async function checkPlanFoodRules(){
+  const rules=currentFoodRules();
+  const recipes=allPlanRecipes();
+  const groups=addedGroups(userMealPlan.meals.built_for,rules);
+  const items={};
+  // 1. Word matching - instant, and only for what has been newly ruled out
+  for(const {meal} of recipes){const r=wordFlagRecipe(meal,groups);if(r)items[meal.name]=r;}
+  // 2. AI read of every recipe against all of the current rules
+  let aiRan=false,aiError='';
+  if(!CU.api_key){aiError='no API key on this profile';}
+  else if(recipes.length){
+    try{
+      const prompt=`Check each recipe below against this person's food rules.
+RULES NOW - Diet: ${rules.dietary_type||'not set'}. Allergies and intolerances: ${normAllergies(rules.allergies)||'none'}.
+Decide whether ANY ingredient breaks a rule. Include hidden sources: pesto contains nuts and cheese, soy sauce contains gluten and soy, Worcestershire sauce contains fish, mayonnaise contains egg, stock and gravy often contain gluten, many protein powders contain milk. Be strict - if an ingredient commonly contains a ruled-out food and the recipe does not say a free-from version, flag it. Do not flag an ingredient that is clearly a free-from or plant-based version.
+RECIPES:
+${recipes.map(({meal},i)=>`${i+1}. ${meal.name} :: ${String(meal.ingredients_uk||'').replace(/\s+/g,' ').slice(0,900)}`).join('\n')}
+Return ONLY this JSON, with one entry per recipe that breaks a rule and an empty list if none do:
+\`\`\`json
+{"flagged":[{"n":1,"reason":"Contains dairy: Greek yogurt"}]}
+\`\`\`
+"n" is the recipe's number above. "reason" is under 12 words and names the ingredient.`;
+      const res=await callAI(CU.api_key,prompt,'You are a careful food safety checker for a meal planning app. You only report what is in the ingredient lists you are given.',8000);
+      for(const f of(res&&res.flagged)||[]){
+        const hit=recipes[parseInt(f.n)-1];
+        if(hit)items[hit.meal.name]=String(f.reason||items[hit.meal.name]||'Breaks one of your food rules').slice(0,90);
+      }
+      aiRan=true;
+    }catch(e){console.error('Food rule check:',e);aiError=describeAiError(e,'it timed out')||e.message;}
+  }
+  userMealPlan.meals.flagged={key:rulesKey(rules),items,ai:aiRan,checked_at:new Date().toISOString()};
+  await saveMealPlanJson();
+  return{flagged:Object.keys(items).length,total:recipes.length,aiRan,aiError};
+}
+
+// Runs the check with a loading screen and tells the user the result
+async function runFoodCheck(){
+  if(foodCheckRunning||!userMealPlan?.meals)return;
+  // A plan from before 7 Oct 2026 has no record of its rules, so there is nothing to compare against
+  if(!userMealPlan.meals.built_for){alert('This plan has no record of the rules it was written for. Generate a new plan to be sure every recipe follows your current rules.');return;}
+  foodCheckRunning=true;
+  showLoad('Checking Your Recipes','Reading every recipe against your new rules...');
+  try{
+    const r=await checkPlanFoodRules();
+    hideLoad();
+    renderMealPlan();renderDashboard();
+    const note=r.aiRan?'':`<p style="margin-bottom:12px;color:var(--warn)">The deeper AI check could not run (${escapeHtml(r.aiError)}), so this used word matching only, which can miss hidden ingredients. Tap "Check again" on the Meal Plan tab to retry.</p>`;
+    showInfo('Recipes Checked',r.flagged
+      ?`<p style="margin-bottom:12px"><strong>${r.flagged} of ${r.total} recipes need swapping.</strong> Each one is marked in red on your Meal Plan with the reason.</p>${note}<p style="margin-bottom:12px">Swap them one at a time with "Swap Meal", or tap "Replace all flagged meals" at the top of the Meal Plan and we will do it for you.</p><p>Recipes that are not marked still deserve a read - no check is perfect.</p>`
+      :`<p style="margin-bottom:12px">None of your ${r.total} recipes were flagged.</p>${note}<p>Please still read the ingredients before you cook - no check is perfect. Your next plan will be written for your new rules from the start.</p>`);
+  }catch(e){hideLoad();alert('Could not check your recipes: '+e.message);}
+  foodCheckRunning=false;
+}
+
+// Puts a new recipe in place of an old one: in its category, on every day of
+// the schedule, and in the flags. Memory only - the caller saves the plan.
+function applyMealSwapInMemory(oldName,newRecipe,cat){
+  if(!userMealPlan.meals.meals)userMealPlan.meals.meals={};
+  if(!userMealPlan.meals.meals[cat])userMealPlan.meals.meals[cat]=[];
+  const mealPool=userMealPlan.meals.meals[cat];
+  const oldIdx=mealPool.findIndex(m=>m.name===oldName);
+  if(oldIdx>=0){mealPool[oldIdx]=newRecipe;}else{mealPool.push(newRecipe);}
+  // Swap in every week of the rotation wherever oldName appears
+  for(const week of userMealPlan.meals.weekly_rotation||[]){
+    for(const day of Object.values(week.days||week)){
+      if(day&&typeof day==='object'){
+        for(const slot of Object.keys(day)){if(day[slot]===oldName)day[slot]=newRecipe.name;}
+      }
+    }
+  }
+  // The old recipe's flag goes. The new one was written for the current rules,
+  // but it still gets the word check as a second net.
+  const f=userMealPlan.meals.flagged;
+  if(f&&f.items){
+    delete f.items[oldName];
+    const reason=userMealPlan.meals.built_for?wordFlagRecipe(newRecipe,addedGroups(userMealPlan.meals.built_for,currentFoodRules())):'';
+    if(reason)f.items[newRecipe.name]=reason;
+  }
+}
+
+// The prompt for one full replacement recipe. intro says which dish to write.
+function mealRecipePrompt(intro,cat){
+  const mt=getMealTargets();
+  const catTargetMap={breakfasts:mt.breakfast,snacks:mt.snack,lunches:mt.lunch,dinners:mt.dinner,evening_snacks:mt.evening,protein_desserts:mt.evening};
+  const target=catTargetMap[cat]||mt.lunch;
+  return`You are E=MC-HENCH. ${intro}
+Macro targets: ${target.calories}kcal, ${target.protein}g protein, ${target.carbs}g carbs, ${target.fats}g fats (within 5%).
+Dietary: ${CU.dietary_type||'any'}. Allergies: ${CU.allergies?.join(',')||'none'}. Dislikes: ${CU.ingredient_dislikes||'none'}.${getHealthDietLine()}
+Kitchen: ${CU.kitchen||'standard'}. Cook time max: ${CU.cook_time||'20 mins'}. Budget: ${CU.weekly_budget||'mid-range'}. Spice: ${CU.spice_level||'Medium'}.${regionPromptLine()}
+INGREDIENT QUANTITY RULE - required: every ingredient, including every spice and seasoning, must have a specific measured quantity (tsp, tbsp, g, ml, or a count) - never list a spice by name alone with no amount. This applies even when several vegetables get blended or cooked together - give each one its own quantity, not one shared total for the group.
+INGREDIENT STATE RULE - required: list every ingredient in its raw, as-purchased state, and make sure the method actually cooks or prepares every ingredient listed - never list something as an ingredient without a step that uses it.
+DISH NAME CONSISTENCY - required: if the dish name specifies a particular type of an ingredient, the ingredients list must use that exact type, not a different or more generic one - and name the specific variety of anything that genuinely has meaningfully different common types, rather than defaulting to a generic term.
+METHOD SPECIFICITY - required: every cooking step involving heat must state an actual temperature and time, never vague terms like "cook until done" on their own.
+Reply ONLY with valid JSON: {"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"servings":1,"ingredients_uk":"","ingredients_us":"","method":[],"micronutrients":"","bulk_cook":false}`;
+}
+
+// Replaces every flagged recipe with a new one written for the current rules,
+// one at a time, saving the plan at the end (or at the point it stopped).
+async function replaceFlaggedMeals(){
+  const flags=planFlags();
+  const names=flags?Object.keys(flags):[];
+  if(!names.length||foodCheckRunning)return;
+  if(!CU.api_key){alert('No API key found. Please add your Anthropic API key in Profile.');return;}
+  if(!confirm(`Replace ${names.length} flagged meal${names.length>1?'s':''} with new recipes that follow your current rules? This takes about half a minute per meal.`))return;
+  foodCheckRunning=true;
+  let done=0,failed='';
+  try{
+    for(const name of names){
+      const found=allPlanRecipes().find(x=>x.meal.name===name);
+      if(!found){delete userMealPlan.meals.flagged.items[name];continue;}
+      showLoad(`Replacing Meals (${done+1} of ${names.length})`,`Writing a new recipe in place of ${name}...`);
+      const taken=allPlanRecipes().map(x=>x.meal.name).join(', ');
+      const intro=`Write a full recipe for a DIFFERENT dish to replace "${name}" as a ${found.cat.replace(/_/g,' ')} meal. It must follow every dietary rule below exactly. Do not reuse any of these names: ${taken}.`;
+      const recipe=await callAI(CU.api_key,mealRecipePrompt(intro,found.cat),'You write single recipes as strict JSON for a meal planning app.',6000);
+      if(!recipe||!recipe.name||!recipe.ingredients_uk)throw new Error('the replacement for '+name+' came back incomplete');
+      applyMealSwapInMemory(name,recipe,found.cat);
+      done++;
+    }
+  }catch(e){console.error('Replace flagged meals:',e);failed=describeAiError(e,'it timed out')||e.message;}
+  let saveError='';
+  if(done){try{await saveMealPlanJson();}catch(e){saveError=e.message;}}
+  hideLoad();
+  foodCheckRunning=false;
+  renderMealPlan();renderDashboard();
+  const left=Object.keys(planFlags()||{}).length;
+  if(saveError){alert('The new recipes were written but could not be saved, so they may not survive a refresh. Please try again: '+saveError);return;}
+  showInfo('Meals Replaced',`<p style="margin-bottom:12px"><strong>${done} meal${done===1?'':'s'} replaced</strong> with recipes written for your current rules.</p>${failed?`<p style="margin-bottom:12px;color:var(--warn)">It stopped early (${escapeHtml(failed)}). ${left} still need swapping - tap "Replace all flagged meals" again to carry on.</p>`:left?`<p style="margin-bottom:12px;color:var(--warn)">${left} recipe${left===1?' is':'s are'} still marked. Have a look at ${left===1?'it':'them'} on your Meal Plan.</p>`:''}<p>Please still read the ingredients before you cook - no check is perfect.</p>`);
 }
 // ---- CALORIE TARGET RULES ----
 // The lowest daily target the app will ever set: 1500 kcal for men, 1200 for
@@ -4776,6 +4998,7 @@ function renderWeekDaysInline(wk,recipeMap){
             <div style="flex:1;min-width:0">
               <div style="font-size:10px;color:var(--tx3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:2px">${slotLabel[slot]||slot}</div>
               <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${mealName}${isDisliked?' <span style="font-size:10px;color:var(--danger);font-weight:400;letter-spacing:.5px">DISLIKED</span>':''}</div>
+              ${flagLabelHtml(mealName)}
               ${recipe?`<div style="font-size:11px;color:var(--tx2);margin-top:2px">${scaledMacro(recipe.calories)}kcal &nbsp;P:${scaledMacro(recipe.protein)}g &nbsp;C:${scaledMacro(recipe.carbs)}g &nbsp;F:${scaledMacro(recipe.fats)}g</div>`:''}
             </div>
             ${recipe?.bulk_cook?'<span class="badge badge-bulk" style="font-size:9px">Batch</span>':''}
@@ -4799,6 +5022,7 @@ function renderRecipeDetail(recipe,mealName,slot){
   const cat=slotCatMap[slot]||'breakfasts';
   return`
     ${recipe.micronutrients?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">${recipe.micronutrients}</div>`:''}
+    ${planFlagFor(mealName)?`<div class="alert" style="border:1px solid var(--danger);color:var(--danger);font-size:12px;margin-bottom:10px">⚠ <strong>${escapeHtml(planFlagFor(mealName))}.</strong> This recipe was written before you changed your food rules. Use Swap Meal below to replace it.</div>`:''}
     ${portionNoteHtml(recipe)}
     ${ingredientsHtml(recipe)}
     ${recipe.method?`<div class="det-lbl">Method</div><div class="method">${fmtMethod(recipe.method)}</div>`:''}
@@ -4923,20 +5147,7 @@ async function confirmMealSwap(btn){
   if(resEl)resEl.innerHTML=`<div style="font-size:13px;color:var(--tx2)">Getting full recipe for ${newName}...</div>`;
 
   try{
-    // Get the macro targets from the category to pass to recipe generation
-    const mt=getMealTargets();
-    const catTargetMap={breakfasts:mt.breakfast,snacks:mt.snack,lunches:mt.lunch,dinners:mt.dinner,evening_snacks:mt.evening};
-    const target=catTargetMap[cat]||mt.lunch;
-
-    const prompt=`You are E=MC-HENCH. Generate a full recipe for "${newName}" as a ${cat.replace(/_/g,' ')} meal.
-Macro targets: ${target.calories}kcal, ${target.protein}g protein, ${target.carbs}g carbs, ${target.fats}g fats (within 5%).
-Dietary: ${CU.dietary_type||'any'}. Allergies: ${CU.allergies?.join(',')||'none'}. Dislikes: ${CU.ingredient_dislikes||'none'}.${getHealthDietLine()}
-Kitchen: ${CU.kitchen||'standard'}. Cook time max: ${CU.cook_time||'20 mins'}. Budget: ${CU.weekly_budget||'mid-range'}. Spice: ${CU.spice_level||'Medium'}.${regionPromptLine()}
-INGREDIENT QUANTITY RULE - required: every ingredient, including every spice and seasoning, must have a specific measured quantity (tsp, tbsp, g, ml, or a count) - never list a spice by name alone with no amount. This applies even when several vegetables get blended or cooked together - give each one its own quantity, not one shared total for the group.
-INGREDIENT STATE RULE - required: list every ingredient in its raw, as-purchased state, and make sure the method actually cooks or prepares every ingredient listed - never list something as an ingredient without a step that uses it.
-DISH NAME CONSISTENCY - required: if the dish name specifies a particular type of an ingredient, the ingredients list must use that exact type, not a different or more generic one - and name the specific variety of anything that genuinely has meaningfully different common types, rather than defaulting to a generic term.
-METHOD SPECIFICITY - required: every cooking step involving heat must state an actual temperature and time, never vague terms like "cook until done" on their own.
-Reply ONLY with valid JSON: {"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"servings":1,"ingredients_uk":"","ingredients_us":"","method":[],"micronutrients":"","bulk_cook":false}`;
+    const prompt=mealRecipePrompt(`Generate a full recipe for "${newName}" as a ${cat.replace(/_/g,' ')} meal.`,cat);
 
     const controller=new AbortController();
     const timeout=setTimeout(()=>controller.abort(),60000);
@@ -4959,25 +5170,7 @@ Reply ONLY with valid JSON: {"name":"","calories":0,"protein":0,"carbs":0,"fats"
     }
     if(!newRecipe.name)newRecipe.name=newName;
 
-    // Swap in the meal plan - replace in the recipe pool for this category
-    if(!userMealPlan?.meals?.meals?.[cat])userMealPlan.meals.meals[cat]=userMealPlan?.meals?.[cat]||[];
-    const mealPool=userMealPlan.meals?.meals?.[cat]||userMealPlan.meals?.[cat]||[];
-    const oldIdx=mealPool.findIndex(m=>m.name===oldName);
-    if(oldIdx>=0){mealPool[oldIdx]=newRecipe;}else{mealPool.push(newRecipe);}
-
-    // Swap in all 4 weeks of rotation wherever oldName appears
-    if(userMealPlan.meals?.weekly_rotation){
-      for(const week of userMealPlan.meals.weekly_rotation){
-        const days=week.days||week;
-        for(const day of Object.values(days)){
-          if(typeof day==='object'){
-            for(const slot of Object.keys(day)){
-              if(day[slot]===oldName)day[slot]=newName;
-            }
-          }
-        }
-      }
-    }
+    applyMealSwapInMemory(oldName,newRecipe,cat);
 
     // Persist to database
     let persistFailed=false;
@@ -5008,7 +5201,7 @@ function renderMealCard(meal,cat){
   const diffClass={'easy':'badge-diff-e','medium':'badge-diff-m','hard':'badge-diff-h'}[meal.difficulty]||'badge-diff-e';
   return`<div class="meal-card ${meal.bulk_cook?'bulk':''} ${isDisliked?'disliked':''}">
     <div class="meal-hd">
-      <div class="meal-name">${meal.name||''}</div>
+      <div class="meal-name">${meal.name||''}${flagLabelHtml(meal.name)}</div>
       <div style="display:flex;gap:5px;flex-wrap:wrap">
         ${meal.bulk_cook?'<span class="badge badge-bulk">🍳 Batch Cook</span>':''}
         ${meal.difficulty?`<span class="badge ${diffClass}">${meal.difficulty}</span>`:''}
@@ -6107,7 +6300,7 @@ function renderMealLog(){
     const mid='ml_'+m.name.replace(/\W+/g,'_');
     html+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--b1)">
       <div>
-        <div style="font-weight:500;font-size:14px">${m.name}</div>
+        <div style="font-weight:500;font-size:14px">${m.name}</div>${flagLabelHtml(m.name)}
         <div style="font-size:12px;color:var(--tx2);font-family:'JetBrains Mono',monospace">${scaledMacro(m.calories)} kcal P:${scaledMacro(m.protein)}g</div>
       </div>
       <label class="toggle"><input type="checkbox" id="${mid}"><div class="tslider"></div></label>
@@ -7232,8 +7425,9 @@ async function saveFoodSetup(){
     renderProfile();renderDashboard();
     if(userMealPlan)renderMealPlan();
     try{if(userMealPlan||userTrainingPlan)renderSupps();}catch(e){console.error('Supplements redraw:',e);}
-    if(foodChanged&&userMealPlan){
-      showInfo('Food Rules Updated','<p style="margin-bottom:12px">Saved. Your current plan was written before this change, so its recipes may still contain foods you now avoid.</p><p style="margin-bottom:12px"><strong>Generate a new plan before relying on it.</strong> Until then, check each recipe yourself.</p><p>Meal swaps already follow your new rules.</p>');
+    if(foodChanged&&userMealPlan?.meals?.built_for&&planRuleChanges().length){
+      // Read every recipe against the new rules and mark the ones to swap
+      await runFoodCheck();
     }else{
       celebrateMsg('foodPrefsSaved','✅','Food and Kit Saved!');
     }
