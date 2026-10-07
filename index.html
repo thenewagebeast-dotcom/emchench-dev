@@ -604,7 +604,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
   <!-- TRACKER -->
   <div class="tab" id="tab-tracker">
     <div class="pg-title">Log Workout</div>
-    <div class="pg-sub">Track sets, reps and weight - PBs detected automatically</div>
+    <div class="pg-sub">Track sets, reps and weight - tick the box when you hit a personal best</div>
     <div id="tracker-content"><div class="empty"><div class="empty-icon">📋</div><div class="empty-title">No Session Loaded</div><div class="empty-text">Generate your plan first</div></div></div>
   </div>
 
@@ -1294,7 +1294,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='06 Oct 17:51';
+const APP_BUILD='07 Oct 17:36';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -4644,6 +4644,27 @@ function renderMealPlan(){
         </div>
       </div>`;
     }
+    // Recipes that are in the plan but never on the schedule (ticked goal extras,
+    // spare desserts). Without this they could not be seen at all.
+    const scheduled=new Set();
+    for(const wk of m.weekly_rotation){
+      for(const d of Object.values(wk.days||wk)){
+        if(d&&typeof d==='object')for(const n of Object.values(d))if(n)scheduled.add(n);
+      }
+    }
+    const spare=allCats.flatMap(cat=>(m.meals?.[cat]||[]).filter(meal=>meal&&meal.name&&!scheduled.has(meal.name)).map(meal=>({meal,cat})));
+    if(spare.length){
+      html+=`<div class="pblock">
+        <div class="pblock-hd" onclick="toggleBlock(this)">
+          <div class="pblock-title">EXTRA RECIPES (${spare.length})</div>
+          <div style="color:var(--tx3);font-size:12px">▼</div>
+        </div>
+        <div class="pblock-body">
+          <div style="font-size:12px;color:var(--tx2);margin-bottom:10px">In your plan but not on the weekly schedule. Yours to use whenever you fancy a change.</div>
+          ${spare.map(x=>renderMealCard(x.meal,x.cat)).join('')}
+        </div>
+      </div>`;
+    }
   } else {
     // Fallback: no rotation yet, show recipe cards grouped by category
     const cats=[{k:'breakfasts',l:'🌅 Breakfasts'},{k:'snacks',l:'🍎 Snacks'},{k:'lunches',l:'🥗 Lunches'},{k:'dinners',l:'🍽️ Dinners'},{k:'protein_desserts',l:'🍮 Protein Desserts'},{k:'low_calorie_meals',l:'🥦 Low Calorie Meals'},{k:'bulking_meals',l:'💪 Bulking Meals'}];
@@ -5806,7 +5827,7 @@ function loadTrackerSess(){
     </div>`;
   }
 
-  html+=`<div class="alert alert-info" style="font-size:12px;margin-bottom:14px">📈 <strong>Your next week's weights are calculated from what you log today.</strong> The more accurately you record each set, the more precisely your plan adapts. This is how the double progression model works - log it or it cannot improve.</div>`;
+  html+=`<div class="alert alert-info" style="font-size:12px;margin-bottom:14px">📈 <strong>Log every set as you actually did it.</strong> What you log decides your points for this session and feeds your next monthly plan. When you can hit the top of the rep range comfortably, add weight next time - that is double progression.</div>`;
   html+=`<div class="frow"><label class="flbl">Session Rating (1=rough 5=smashed it)</label><div class="rating-row" id="sess-rating">${[1,2,3,4,5].map(n=>`<button class="rbtn" onclick="setSessRating(${n},this)">${n}</button>`).join('')}</div></div>
   <div class="frow" style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
     <input type="checkbox" id="pb-checkbox" style="width:18px;height:18px;accent-color:var(--ac)">
