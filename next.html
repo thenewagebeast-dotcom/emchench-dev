@@ -469,7 +469,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
     <div class="login-wrap">
       <div class="brand-logo">E=MC<span>-</span>HENCH</div>
       <div class="brand-tag">Your PT in your pocket</div>
-      <div class="alert alert-warn" style="font-size:12px">Backend preview - testers only. Moving across in steps: your account, profile, plans and logging work here now; the wall, competitions and AI features follow.</div>
+      <div class="alert alert-warn" style="font-size:12px">Backend preview - testers only. Moving across in steps: your account, profile, plans, logging, the wall, shops and the leaderboard work here now; competitions and AI features follow.</div>
       <div id="v-loading" class="view"><div style="color:var(--tx2);font-size:13px">Loading...</div></div>
 
       <!-- LOG IN -->
@@ -700,7 +700,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
   <!-- COMPETE -->
   <div class="tab" id="tab-compete">
     <div class="pg-title">Compete</div>
-    <div class="pg-sub">First to 1500 season points wins</div>
+    <div class="pg-sub" id="compete-rule">First to 1500 season points wins</div>
     <div class="card"><div class="card-lbl">Live Leaderboard</div><div id="compete-lb"></div><div id="hof-section"></div></div>
     <div class="card"><div class="card-lbl">Active Challenges</div><div id="active-comps"></div><button class="btn btn-ghost btn-sm" style="margin-top:12px" onclick="openModal('comp-modal')">+ Start a Challenge</button></div>
   </div>
@@ -1338,7 +1338,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='22 Oct water pts';
+const APP_BUILD='22 Oct social 1';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -2888,7 +2888,7 @@ function renderDashboard(){
   const aEl=document.getElementById('dash-alerts');
   aEl.innerHTML='';
   if(!userMealPlan&&!userTrainingPlan)aEl.innerHTML+=`<div class="alert alert-info">👋 Welcome! Hit "Generate Plan" to get your personalised programme.</div>`;
-  if(userPoints.season_points>=1500)aEl.innerHTML+=`<div class="alert alert-ok">🏆 SEASON WIN! You hit 1500 points! Absolute legend.</div>`;
+  aEl.innerHTML+=seasonAlertHtml();
   if(userMealPlan)aEl.innerHTML+=planRuleWarningHtml();
   if(CU.goal_updated==='true')aEl.innerHTML+=`<div class="alert alert-warn">⚡ Goal updated. Generate a new plan to reflect your changes.</div>`;
   // 4 week progress photo prompt. Remembered on this device, so it shows once
@@ -3012,6 +3012,22 @@ async function saveWaterLog(){
 // ============================================================
 let _lbSortMode='season_points';
 
+// Season, wall and shop extras. This is the Sheets version: first to 1500 season
+// points wins, and there is no reporting or shop approval. The new backend
+// (next.html) replaces these with monthly seasons, badges, Report and approval.
+const SEASON_TARGET=1500;
+function seasonBarPct(pts){return Math.min(((pts||0)/SEASON_TARGET)*100,100);}
+function seasonTargetLabel(pts){return'/ '+SEASON_TARGET;}
+function seasonBadgeHtml(pts){return'';}
+function seasonRuleText(){return'First to 1500 season points wins';}
+function hofQualifies(p){return(p.season_wins||0)>0||(p.season_points||0)>=SEASON_TARGET;}
+function hofLeaderText(p){return(p.season_points||0)>=SEASON_TARGET?'⚡ Current season leader':'';}
+function hofEmptyText(){return'The first person to reach 1500 season points will be remembered here forever.';}
+function seasonAlertHtml(){return(userPoints.season_points||0)>=SEASON_TARGET?`<div class="alert alert-ok">🏆 SEASON WIN! You hit 1500 points! Absolute legend.</div>`:'';}
+function canDeleteWallPost(p){return p.user_id===CU.user_id||p.post_type==='auto';}
+function wallPostExtraHtml(p){return'';}
+function shopExtraHtml(s){return'';}
+
 function renderLeaderboard(id){
   const el=document.getElementById(id);
   if(!el)return;
@@ -3028,10 +3044,10 @@ function renderLeaderboard(id){
       <div class="lb-av">${allUsers.find(u=>u.user_id===p.user_id)?.avatar||'💪'}</div>
       <div class="lb-info">
         <div class="lb-name">${escapeHtml(p.username)}${p.user_id===CU.user_id?' (you)':''}</div>
-        <div class="lb-meta">${p.sessions_logged} sessions · 🔥${p.current_streak||0}w · ${p.pbs_logged} PBs</div>
-        <div class="prog-bar"><div class="prog-fill" style="width:${Math.min((p.season_points/1500)*100,100)}%"></div></div>
+        <div class="lb-meta">${p.sessions_logged||0} sessions · 🔥${p.current_streak||0}w · ${p.pbs_logged||0} PBs${seasonBadgeHtml(p.season_points)}</div>
+        <div class="prog-bar"><div class="prog-fill" style="width:${seasonBarPct(p.season_points)}%"></div></div>
       </div>
-      <div class="lb-pts-w"><div class="lb-pts">${p.season_points}</div><div class="lb-pts-l">/ 1500</div></div>
+      <div class="lb-pts-w"><div class="lb-pts">${p.season_points}</div><div class="lb-pts-l">${seasonTargetLabel(p.season_points)}</div></div>
     </div>`).join('');
 }
 
@@ -3107,7 +3123,7 @@ function renderCompeteLeaderboard(){
       :'';
 
     const progressBar=_lbSortMode==='season_points'
-      ?`<div class="prog-bar" style="margin-top:5px"><div class="prog-fill" style="width:${Math.min(((p.season_points||0)/1500)*100,100)}%"></div></div>`
+      ?`<div class="prog-bar" style="margin-top:5px"><div class="prog-fill" style="width:${seasonBarPct(p.season_points)}%"></div></div>`
       :'';
 
     return`<div class="lb-row-full ${isMe?'me':''}">
@@ -3116,13 +3132,13 @@ function renderCompeteLeaderboard(){
       <div class="lb-info" style="flex:1;min-width:0">
         <div class="lb-name">${escapeHtml(p.username)}${isMe?' <span style="font-size:11px;color:var(--tx3)">(you)</span>':''}</div>
         <div class="lb-secondary-stats">${secondaryStats.join('')}</div>
-        ${seasonWinBadge}
+        ${seasonWinBadge}${seasonBadgeHtml(p.season_points)}
         ${progressBar}
       </div>
       <div class="lb-primary-stat">
         <div class="lb-primary-val" style="color:${cfg.color}">${cfg.primaryUnit}${primaryVal}</div>
         <div class="lb-primary-lbl">${cfg.primaryLabel}</div>
-        ${_lbSortMode==='season_points'?`<div style="font-size:10px;color:var(--tx3);margin-top:2px">/ 1500</div>`:''}
+        ${_lbSortMode==='season_points'?`<div style="font-size:10px;color:var(--tx3);margin-top:2px">${seasonTargetLabel(p.season_points)}</div>`:''}
       </div>
     </div>`;
   }).join('');
@@ -3143,17 +3159,17 @@ function renderHallOfFame(){
   const activeUserIds=new Set(allUsers.map(u=>u.user_id));
 
   const hofEntries=[...allPoints]
-    .filter(p=>activeUserIds.has(p.user_id)&&((p.season_wins||0)>0||(p.season_points||0)>=1500))
+    .filter(p=>activeUserIds.has(p.user_id)&&hofQualifies(p))
     .sort((a,b)=>(b.season_wins||0)-(a.season_wins||0)||(b.total_points||0)-(a.total_points||0));
 
   if(!hofEntries.length){
     el.innerHTML=`
       <div class="hof-section">
         <div class="hof-title">🏆 Hall of Fame</div>
-        <div class="hof-sub">Season champions are immortalised here. First to 1500 points wins the season.</div>
+        <div class="hof-sub">Season champions are immortalised here. ${seasonRuleText()}.</div>
         <div class="hof-empty">
           <div class="hof-empty-title">No champions yet</div>
-          <div class="hof-empty-sub">The first person to reach 1500 season points will be remembered here forever. Log sessions, hit PBs, win challenges. The throne is empty. Someone has to take it.</div>
+          <div class="hof-empty-sub">${hofEmptyText()} Log sessions, hit PBs, win challenges. The throne is empty. Someone has to take it.</div>
         </div>
       </div>`;
     return;
@@ -3166,7 +3182,7 @@ function renderHallOfFame(){
       <div class="hof-av">${u?.avatar||'💪'}</div>
       <div class="hof-info">
         <div class="hof-name">${escapeHtml(p.username)}${isMe?' (you)':''}</div>
-        <div class="hof-wins">${(p.season_wins||0)>0?`${p.season_wins} season win${p.season_wins>1?'s':''}`:''} ${(p.season_points||0)>=1500?'⚡ Current season leader':''}</div>
+        <div class="hof-wins">${(p.season_wins||0)>0?`${p.season_wins} season win${p.season_wins>1?'s':''}`:''} ${hofLeaderText(p)}</div>
       </div>
       <div class="hof-total">${p.total_points||0}<div style="font-size:10px;color:var(--tx3);letter-spacing:1px">ALL TIME</div></div>
     </div>`;
@@ -3175,7 +3191,7 @@ function renderHallOfFame(){
   el.innerHTML=`
     <div class="hof-section">
       <div class="hof-title">🏆 Hall of Fame</div>
-      <div class="hof-sub">Season champions. First to 1500 points wins the season. All-time points track the true legend.</div>
+      <div class="hof-sub">Season champions. ${seasonRuleText()}. All-time points track the true legend.</div>
       ${rows}
     </div>`;
 }
@@ -7019,6 +7035,7 @@ function renderSupps(){
 // COMPETE
 // ============================================================
 function renderCompete(){
+  const ruleEl=document.getElementById('compete-rule');if(ruleEl)ruleEl.textContent=seasonRuleText();
   renderCompeteLeaderboard();
   const el=document.getElementById('active-comps');
   const mine=competitions.filter(c=>c.participant_1===CU.username||c.participant_2===CU.username);
@@ -7092,7 +7109,7 @@ function renderWall(){
   const el=document.getElementById('wall-feed');
   if(!wallPosts.length){el.innerHTML=`<div class="empty"><div class="empty-icon">💬</div><div class="empty-title">Wall is Empty</div><div class="empty-text">Be first to say something</div></div>`;return;}
   el.innerHTML=[...wallPosts].reverse().map(p=>{
-    const canDelete=p.user_id===CU.user_id||p.post_type==='auto';
+    const canDelete=canDeleteWallPost(p);
     return`<div class="wall-post ${p.post_type==='auto'?'auto':''}" id="wp-${p.post_id}">
     <div class="wall-ph">
       <div class="wall-poster">${p.post_type==='auto'?'🤖 ':''}${escapeHtml(p.username)}</div>
@@ -7101,7 +7118,7 @@ function renderWall(){
         ${canDelete?`<button onclick="deleteWallPost('${p.post_id}')" style="background:none;border:none;color:var(--tx3);cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px" title="Delete post">✕</button>`:''}
       </div>
     </div>
-    <div class="wall-msg">${escapeHtml(p.message)}</div>
+    <div class="wall-msg">${escapeHtml(p.message)}</div>${wallPostExtraHtml(p)}
   </div>`;
   }).join('');
 }
@@ -7169,7 +7186,7 @@ function renderShop(){
       <div class="stars">${[1,2,3,4,5].map(n=>`<span class="star ${n<=(s.avg_rating||0)?'on':''}" onclick="rateShop('${s.shop_id}',${n})">★</span>`).join('')}<span class="star-cnt">(${s.total_ratings||0})</span></div>
     </div>
     <div class="shop-for">Best for: ${escapeHtml(s.best_for)}</div>
-    <div class="shop-desc">${escapeHtml(s.description)}</div>
+    <div class="shop-desc">${escapeHtml(s.description)}</div>${shopExtraHtml(s)}
   </div>`).join('');
 }
 
@@ -9139,7 +9156,11 @@ function saveSession(){}
 function clearSavedSession(){}
 async function tryResumeSession(){return false;}
 function renderUserGrid(){}
-async function loadUsers(){allUsers=CU?[CU]:[];}
+// You (the full record) plus everyone else's name and avatar, from the leaderboard
+async function loadUsers(){
+  if(!CU){allUsers=[];return;}
+  try{await loadLeaderboard();}catch(e){allUsers=[CU];console.error('Leaderboard:',e);}
+}
 
 // ============================================================
 // PROFILE: the app's fields <-> the profiles table
@@ -9319,6 +9340,7 @@ async function loginUser(u){
     waterMl=0;
     await loadUserData();
     renderDashboard();renderBody();renderProfile();
+    loadShopList();
     checkWeighInDay();
     // The how-to guide saved with the plan (it cannot be regenerated until the AI moves across)
     const guide=userMealPlan?.how_to_guide||getCachedHowTo();
@@ -9515,7 +9537,8 @@ async function refreshPointsAndStreaks(myId){
     pbs_logged:pbCount||0,challenges_won:(ledger||[]).filter(l=>l.reason==='challenge').length,
     current_streak:0,longest_streak:0,season_wins:0,meal_streak:0,water_streak:0};
   refreshStreaks();
-  allPoints=[userPoints];
+  try{await loadLeaderboard();}catch(e){allPoints=[userPoints];console.error('Leaderboard:',e);}
+  if(CU?.user_id!==myId)return;
   const {error:sErr}=await sb.from('streaks').upsert({user_id:myId,workout_weeks:userPoints.current_streak||0,longest_workout_weeks:userPoints.longest_streak||0,
     meal_days:userPoints.meal_streak||0,water_days:userPoints.water_streak||0,updated_at:nowIso()},{onConflict:'user_id'});
   if(sErr)console.error('Streak save:',sErr);
@@ -9524,14 +9547,203 @@ async function refreshPointsAndStreaks(myId){
   renderLeaderboard('dash-lb');renderCompeteLeaderboard();
 }
 
-// Profile, plans and logs have moved. The social side (wall, competitions,
-// leaderboard of other people) still starts empty until its slice arrives.
+// ---- social: leaderboard, seasons and badges, wall, shops (slice 2d part 1) ----
+let lastSeasonWinners=[];  // last month's season winner(s)
+let wallReportCounts={};   // admin only: post id -> number of reports
+let myShopRatings={};      // shop id -> your own rating
+// A leaderboard row in the shape the leaderboard code has always used
+function lbRowToPoints(r){return{record_id:'lb',user_id:r.user_id,username:r.username,
+  total_points:r.total_points||0,season_points:r.season_points||0,sessions_logged:r.sessions_logged||0,pbs_logged:r.pbs_logged||0,
+  current_streak:r.workout_weeks||0,longest_streak:r.longest_workout_weeks||0,meal_streak:r.meal_days||0,water_streak:r.water_days||0,season_wins:r.season_wins||0};}
+async function loadLeaderboard(){
+  const myId=CU?.user_id;if(!myId)return;
+  const {data,error}=await sb.from('leaderboard').select('*');
+  if(error)throw new Error(friendlyDbError(error));
+  if(CU?.user_id!==myId)return;
+  const rows=data||[];
+  allUsers=[CU,...rows.filter(r=>r.user_id!==myId).map(r=>({user_id:r.user_id,username:r.username,avatar:r.avatar||'💪',meal_sync_with:''}))];
+  // Your own row is the fresh one worked out from your ledger and logs
+  const own=userPoints.user_id===myId;
+  const mine=rows.find(r=>r.user_id===myId);
+  if(own&&mine)userPoints.season_wins=mine.season_wins||0;
+  allPoints=rows.map(r=>r.user_id===myId&&own?userPoints:lbRowToPoints(r));
+}
+// Records any finished month's winner, then reads last month's
+async function loadSeasons(){
+  try{const {error}=await sb.rpc('close_seasons');if(error)throw error;}catch(e){console.error('Close seasons:',e);}
+  const last=new Date();last.setDate(1);last.setMonth(last.getMonth()-1);
+  const {data,error}=await sb.from('seasons').select('month,winner_user_id,winner_points').eq('month',dayKey(last));
+  if(error)throw new Error(friendlyDbError(error));
+  lastSeasonWinners=data||[];
+}
+// Monthly badges (agreed 22 Oct 2026). These replace the Sheets "first to 1500" helpers.
+const BADGES=[{name:'Bronze',icon:'🥉',pts:500},{name:'Silver',icon:'🥈',pts:900},{name:'Gold',icon:'🥇',pts:1300}];
+function badgeFor(pts){return[...BADGES].reverse().find(b=>(pts||0)>=b.pts)||null;}
+function nextBadge(pts){return BADGES.find(b=>(pts||0)<b.pts)||null;}
+function seasonBarPct(pts){const n=nextBadge(pts);return n?Math.min(((pts||0)/n.pts)*100,100):100;}
+function seasonTargetLabel(pts){const n=nextBadge(pts);return n?n.icon+' at '+n.pts:'🥇 Gold';}
+function seasonBadgeHtml(pts){const b=badgeFor(pts);return b?`<span style="color:var(--gold)"> · ${b.icon} ${b.name}</span>`:'';}
+function seasonRuleText(){return'Top scorer each month wins the season. Badges at 500, 900 and 1,300 points';}
+function hofQualifies(p){return(p.season_wins||0)>0;}
+function hofLeaderText(p){
+  const top=Math.max(0,...allPoints.map(x=>x.season_points||0));
+  return top>0&&(p.season_points||0)===top?'⚡ Leading this month':'';
+}
+function hofEmptyText(){return'Each month\'s top scorer is remembered here forever.';}
+function seasonAlertHtml(){
+  let html='';
+  const won=lastSeasonWinners.find(w=>w.winner_user_id===CU.user_id);
+  if(won&&new Date().getDate()<=7)html+=`<div class="alert alert-ok">🏆 You won last month's season with ${won.winner_points} points! Absolute legend.</div>`;
+  const pts=userPoints.season_points||0,b=badgeFor(pts),n=nextBadge(pts);
+  if(b)html+=`<div class="alert alert-ok">${b.icon} ${b.name} badge this month!${n?` ${n.name} at ${n.pts}.`:' The top badge.'}</div>`;
+  return html;
+}
+
+// Wall: no links, 20 posts a day, Report, own posts only (the server enforces all of it)
+function nameOf(uid){return allUsers.find(u=>u.user_id===uid)?.username||'Someone';}
+const WALL_COLS='id,user_id,message,post_type,hidden,created_at';
+function wallRowToPost(r){return{post_id:r.id,user_id:r.user_id,username:nameOf(r.user_id),posted_at:r.created_at,message:r.message,post_type:r.post_type,hidden:!!r.hidden};}
+async function loadWall(){
+  const myId=CU?.user_id;
+  const {data,error}=await sb.from('wall_posts').select(WALL_COLS).order('created_at',{ascending:false}).limit(100);
+  if(error)throw new Error(friendlyDbError(error));
+  const counts={};
+  if(CU?.is_admin){
+    const {data:reps,error:rErr}=await sb.from('wall_reports').select('post_id');
+    if(rErr)console.error('Wall reports:',rErr);
+    (reps||[]).forEach(x=>{counts[x.post_id]=(counts[x.post_id]||0)+1;});
+  }
+  if(CU?.user_id!==myId)return;
+  wallPosts=(data||[]).reverse().map(wallRowToPost);wallReportCounts=counts;
+}
+function canDeleteWallPost(p){return p.user_id===CU.user_id||!!CU.is_admin;}
+function wallPostExtraHtml(p){
+  const notes=[];
+  if(p.hidden)notes.push(CU.is_admin?'Hidden after 2 reports':'Hidden after reports - the admin will look at it');
+  const n=wallReportCounts[p.post_id]||0;
+  if(CU.is_admin&&n)notes.push(n+' report'+(n>1?'s':''));
+  const linkStyle='background:none;border:none;color:var(--tx3);cursor:pointer;font-size:11px;padding:2px 0;margin-right:12px';
+  const btns=[];
+  if(p.user_id!==CU.user_id)btns.push(`<button style="${linkStyle}" data-post-id="${p.post_id}" onclick="reportWallPost(this)">Report</button>`);
+  if(CU.is_admin&&(p.hidden||n))btns.push(`<button style="${linkStyle};color:var(--ok)" data-post-id="${p.post_id}" onclick="restoreWallPost(this)">Restore and clear reports</button>`);
+  return(notes.length?`<div style="font-size:11px;color:var(--warn);margin-top:6px">${notes.join(' · ')}</div>`:'')
+    +(btns.length?`<div style="margin-top:4px">${btns.join('')}</div>`:'');
+}
+async function postWall(){
+  const inp=document.getElementById('wall-inp');
+  const msg=inp.value.trim();
+  if(!msg)return;
+  try{
+    const {data,error}=await sb.from('wall_posts').insert({message:msg,post_type:'user'}).select(WALL_COLS).single();
+    if(error)throw new Error(friendlyDbError(error));
+    wallPosts.push(wallRowToPost(data));inp.value='';renderWall();
+  }catch(e){alert(e.message);}
+}
+// Automatic posts belong to the person they are about. They never stop what triggered them.
+async function postAutoWall(msg){
+  try{
+    const {data,error}=await sb.from('wall_posts').insert({message:msg,post_type:'auto'}).select(WALL_COLS).single();
+    if(error)throw error;
+    wallPosts.push(wallRowToPost(data));
+  }catch(e){console.error('Auto wall post:',e);}
+}
+async function deleteWallPost(postId){
+  if(!confirm('Delete this post?'))return;
+  try{
+    const {error}=await sb.from('wall_posts').delete().eq('id',postId);
+    if(error)throw new Error(friendlyDbError(error));
+    wallPosts=wallPosts.filter(p=>p.post_id!==postId);renderWall();
+  }catch(e){alert('Could not delete the post: '+e.message);}
+}
+async function reportWallPost(btn){
+  const postId=btn.dataset.postId;
+  if(!confirm('Report this post? It will be hidden for you, and the admin will look at it.'))return;
+  try{
+    const {error}=await sb.from('wall_reports').insert({post_id:postId});
+    // Already reported is fine
+    if(error&&error.code!=='23505')throw new Error(friendlyDbError(error));
+    wallPosts=wallPosts.filter(p=>p.post_id!==postId);renderWall();
+  }catch(e){alert('Could not report the post: '+e.message);}
+}
+async function restoreWallPost(btn){
+  const postId=btn.dataset.postId;
+  try{
+    const {error}=await sb.from('wall_posts').update({hidden:false}).eq('id',postId);
+    if(error)throw new Error(friendlyDbError(error));
+    const {error:rErr}=await sb.from('wall_reports').delete().eq('post_id',postId);
+    if(rErr)throw new Error(friendlyDbError(rErr));
+    await loadWall();renderWall();
+  }catch(e){alert('Could not restore the post: '+e.message);}
+}
+
+// Shops: new ones wait for the admin; one rating per person per shop
+async function loadShopList(){
+  const myId=CU?.user_id;
+  try{
+    const [sh,ra]=await Promise.all([sb.from('shops').select('*').order('created_at',{ascending:true}),sb.from('shop_ratings').select('shop_id,user_id,rating')]);
+    if(sh.error||ra.error)throw new Error(friendlyDbError(sh.error||ra.error));
+    if(CU?.user_id!==myId)return;
+    const by={};myShopRatings={};
+    for(const r of ra.data||[]){(by[r.shop_id]=by[r.shop_id]||[]).push(r.rating);if(r.user_id===myId)myShopRatings[r.shop_id]=r.rating;}
+    shopList=(sh.data||[]).map(x=>{const rs=by[x.id]||[];return{shop_id:x.id,added_by:x.added_by,shop_name:x.name,best_for:x.best_for,url:x.url||'',
+      description:x.description||'',status:x.status,total_ratings:rs.length,avg_rating:rs.length?Math.round(rs.reduce((a,b)=>a+b,0)/rs.length*10)/10:0};});
+  }catch(e){console.error('Shops:',e);shopList=[];}
+  renderShop();
+}
+async function rateShop(sid,rating){
+  const shop=shopList.find(x=>x.shop_id===sid);
+  if(!shop)return;
+  if(shop.status!=='approved'){alert('You can rate this shop once the admin has approved it.');return;}
+  try{
+    const {error}=await sb.from('shop_ratings').upsert({shop_id:sid,user_id:CU.user_id,rating},{onConflict:'shop_id,user_id'});
+    if(error)throw new Error(friendlyDbError(error));
+    await loadShopList();
+  }catch(e){alert('Could not save your rating: '+e.message);}
+}
+function shopExtraHtml(x){
+  const bits=[];
+  if(myShopRatings[x.shop_id])bits.push(`<div style="font-size:11px;color:var(--tx3);margin-top:6px">Your rating: ${myShopRatings[x.shop_id]} ★ (tap the stars to change it)</div>`);
+  if(x.status!=='approved'){
+    bits.push(CU.is_admin
+      ?`<div style="margin-top:8px"><span style="font-size:11px;color:var(--warn)">Waiting for approval</span> <button class="btn btn-ghost btn-sm" data-shop-id="${x.shop_id}" onclick="approveShop(this)">Approve</button></div>`
+      :`<div style="font-size:11px;color:var(--warn);margin-top:6px">Waiting for the admin to approve it - only you can see it for now.</div>`);
+  }
+  return bits.join('');
+}
+async function approveShop(btn){
+  try{
+    const {error}=await sb.from('shops').update({status:'approved'}).eq('id',btn.dataset.shopId);
+    if(error)throw new Error(friendlyDbError(error));
+    await loadShopList();
+  }catch(e){alert('Could not approve the shop: '+e.message);}
+}
+async function addShop(){
+  const name=document.getElementById('shop-name')?.value.trim();
+  const bestFor=document.getElementById('shop-for')?.value.trim();
+  let url=document.getElementById('shop-url')?.value.trim()||'';
+  const desc=document.getElementById('shop-desc')?.value.trim()||'';
+  if(!name||!bestFor){alert('Please fill in store name and best for');return;}
+  if(url&&!/^https?:\/\//i.test(url))url='https://'+url;
+  showLoad('Adding','Saving store...');
+  try{
+    const {error}=await sb.from('shops').insert({name,best_for:bestFor,url:url||null,description:desc,...(CU.is_admin?{status:'approved'}:{})});
+    if(error)throw new Error(friendlyDbError(error));
+    closeModal('shop-modal');hideLoad();
+    await loadShopList();
+    if(!CU.is_admin)alert('Thanks - '+name+' will show for everyone once the admin approves it.');
+  }catch(e){hideLoad();alert('Error adding store: '+e.message);}
+}
+
+// Profile, plans, logs and the social side (except competitions) have moved.
 async function loadUserData(){
   allPoints=[];userPoints={};userMealPlan=null;userTrainingPlan=null;
   wallPosts=[];competitions=[];measurements=[];dislikedMeals=[];socialEvents=[];activeEvent=null;waterMl=0;
   activityLogs={meals:[],workouts:[],water:[],pauses:[],loaded:false};
+  lastSeasonWinners=[];wallReportCounts={};myShopRatings={};
   const pts=document.getElementById('app-pts');if(pts)pts.textContent='0 PTS';
   showStreakHeader();
+  // Before points are read, so last month's winner is already recorded
+  await loadSeasons().catch(e=>console.error('Seasons:',e));
   const [mealRows,trainRows]=await Promise.all([fetchMyPlans('meal_plans'),fetchMyPlans('training_plans')]);
   const m=mealRows[mealRows.length-1];
   if(m)userMealPlan={plan_id:m.id,month:m.month_number,created_at:m.created_at,meals:planRowToMeals(m),how_to_guide:m.how_to_guide||''};
@@ -9553,13 +9765,15 @@ async function loadUserData(){
     // Streaks are never worked out from part of the picture (Part 4 rule)
     activityLogs.loaded=false;console.error('Load logs:',e);
   }
+  // Names on the wall come from the leaderboard, so this goes last
+  await loadWall().catch(e=>console.error('Wall:',e));
 }
 
 function signOut(){
   const wasIn=!!sbUser;sbUser=null;
   if(sb&&wasIn)sb.auth.signOut({scope:'local'}).catch(e=>console.error('Log out:',e));
   sheetsSignOut();
-  allUsers=[];
+  allUsers=[];lastSeasonWinners=[];wallReportCounts={};myShopRatings={};
   document.querySelectorAll('#login-screen input').forEach(i=>i.value='');
   showAuthScreen();showAuthView('v-login');
 }

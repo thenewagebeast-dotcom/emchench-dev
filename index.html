@@ -651,7 +651,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
   <!-- COMPETE -->
   <div class="tab" id="tab-compete">
     <div class="pg-title">Compete</div>
-    <div class="pg-sub">First to 1500 season points wins</div>
+    <div class="pg-sub" id="compete-rule">First to 1500 season points wins</div>
     <div class="card"><div class="card-lbl">Live Leaderboard</div><div id="compete-lb"></div><div id="hof-section"></div></div>
     <div class="card"><div class="card-lbl">Active Challenges</div><div id="active-comps"></div><button class="btn btn-ghost btn-sm" style="margin-top:12px" onclick="openModal('comp-modal')">+ Start a Challenge</button></div>
   </div>
@@ -1289,7 +1289,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='22 Oct water pts';
+const APP_BUILD='22 Oct social 1';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -2839,7 +2839,7 @@ function renderDashboard(){
   const aEl=document.getElementById('dash-alerts');
   aEl.innerHTML='';
   if(!userMealPlan&&!userTrainingPlan)aEl.innerHTML+=`<div class="alert alert-info">👋 Welcome! Hit "Generate Plan" to get your personalised programme.</div>`;
-  if(userPoints.season_points>=1500)aEl.innerHTML+=`<div class="alert alert-ok">🏆 SEASON WIN! You hit 1500 points! Absolute legend.</div>`;
+  aEl.innerHTML+=seasonAlertHtml();
   if(userMealPlan)aEl.innerHTML+=planRuleWarningHtml();
   if(CU.goal_updated==='true')aEl.innerHTML+=`<div class="alert alert-warn">⚡ Goal updated. Generate a new plan to reflect your changes.</div>`;
   // 4 week progress photo prompt. Remembered on this device, so it shows once
@@ -2963,6 +2963,22 @@ async function saveWaterLog(){
 // ============================================================
 let _lbSortMode='season_points';
 
+// Season, wall and shop extras. This is the Sheets version: first to 1500 season
+// points wins, and there is no reporting or shop approval. The new backend
+// (next.html) replaces these with monthly seasons, badges, Report and approval.
+const SEASON_TARGET=1500;
+function seasonBarPct(pts){return Math.min(((pts||0)/SEASON_TARGET)*100,100);}
+function seasonTargetLabel(pts){return'/ '+SEASON_TARGET;}
+function seasonBadgeHtml(pts){return'';}
+function seasonRuleText(){return'First to 1500 season points wins';}
+function hofQualifies(p){return(p.season_wins||0)>0||(p.season_points||0)>=SEASON_TARGET;}
+function hofLeaderText(p){return(p.season_points||0)>=SEASON_TARGET?'⚡ Current season leader':'';}
+function hofEmptyText(){return'The first person to reach 1500 season points will be remembered here forever.';}
+function seasonAlertHtml(){return(userPoints.season_points||0)>=SEASON_TARGET?`<div class="alert alert-ok">🏆 SEASON WIN! You hit 1500 points! Absolute legend.</div>`:'';}
+function canDeleteWallPost(p){return p.user_id===CU.user_id||p.post_type==='auto';}
+function wallPostExtraHtml(p){return'';}
+function shopExtraHtml(s){return'';}
+
 function renderLeaderboard(id){
   const el=document.getElementById(id);
   if(!el)return;
@@ -2979,10 +2995,10 @@ function renderLeaderboard(id){
       <div class="lb-av">${allUsers.find(u=>u.user_id===p.user_id)?.avatar||'💪'}</div>
       <div class="lb-info">
         <div class="lb-name">${escapeHtml(p.username)}${p.user_id===CU.user_id?' (you)':''}</div>
-        <div class="lb-meta">${p.sessions_logged} sessions · 🔥${p.current_streak||0}w · ${p.pbs_logged} PBs</div>
-        <div class="prog-bar"><div class="prog-fill" style="width:${Math.min((p.season_points/1500)*100,100)}%"></div></div>
+        <div class="lb-meta">${p.sessions_logged||0} sessions · 🔥${p.current_streak||0}w · ${p.pbs_logged||0} PBs${seasonBadgeHtml(p.season_points)}</div>
+        <div class="prog-bar"><div class="prog-fill" style="width:${seasonBarPct(p.season_points)}%"></div></div>
       </div>
-      <div class="lb-pts-w"><div class="lb-pts">${p.season_points}</div><div class="lb-pts-l">/ 1500</div></div>
+      <div class="lb-pts-w"><div class="lb-pts">${p.season_points}</div><div class="lb-pts-l">${seasonTargetLabel(p.season_points)}</div></div>
     </div>`).join('');
 }
 
@@ -3058,7 +3074,7 @@ function renderCompeteLeaderboard(){
       :'';
 
     const progressBar=_lbSortMode==='season_points'
-      ?`<div class="prog-bar" style="margin-top:5px"><div class="prog-fill" style="width:${Math.min(((p.season_points||0)/1500)*100,100)}%"></div></div>`
+      ?`<div class="prog-bar" style="margin-top:5px"><div class="prog-fill" style="width:${seasonBarPct(p.season_points)}%"></div></div>`
       :'';
 
     return`<div class="lb-row-full ${isMe?'me':''}">
@@ -3067,13 +3083,13 @@ function renderCompeteLeaderboard(){
       <div class="lb-info" style="flex:1;min-width:0">
         <div class="lb-name">${escapeHtml(p.username)}${isMe?' <span style="font-size:11px;color:var(--tx3)">(you)</span>':''}</div>
         <div class="lb-secondary-stats">${secondaryStats.join('')}</div>
-        ${seasonWinBadge}
+        ${seasonWinBadge}${seasonBadgeHtml(p.season_points)}
         ${progressBar}
       </div>
       <div class="lb-primary-stat">
         <div class="lb-primary-val" style="color:${cfg.color}">${cfg.primaryUnit}${primaryVal}</div>
         <div class="lb-primary-lbl">${cfg.primaryLabel}</div>
-        ${_lbSortMode==='season_points'?`<div style="font-size:10px;color:var(--tx3);margin-top:2px">/ 1500</div>`:''}
+        ${_lbSortMode==='season_points'?`<div style="font-size:10px;color:var(--tx3);margin-top:2px">${seasonTargetLabel(p.season_points)}</div>`:''}
       </div>
     </div>`;
   }).join('');
@@ -3094,17 +3110,17 @@ function renderHallOfFame(){
   const activeUserIds=new Set(allUsers.map(u=>u.user_id));
 
   const hofEntries=[...allPoints]
-    .filter(p=>activeUserIds.has(p.user_id)&&((p.season_wins||0)>0||(p.season_points||0)>=1500))
+    .filter(p=>activeUserIds.has(p.user_id)&&hofQualifies(p))
     .sort((a,b)=>(b.season_wins||0)-(a.season_wins||0)||(b.total_points||0)-(a.total_points||0));
 
   if(!hofEntries.length){
     el.innerHTML=`
       <div class="hof-section">
         <div class="hof-title">🏆 Hall of Fame</div>
-        <div class="hof-sub">Season champions are immortalised here. First to 1500 points wins the season.</div>
+        <div class="hof-sub">Season champions are immortalised here. ${seasonRuleText()}.</div>
         <div class="hof-empty">
           <div class="hof-empty-title">No champions yet</div>
-          <div class="hof-empty-sub">The first person to reach 1500 season points will be remembered here forever. Log sessions, hit PBs, win challenges. The throne is empty. Someone has to take it.</div>
+          <div class="hof-empty-sub">${hofEmptyText()} Log sessions, hit PBs, win challenges. The throne is empty. Someone has to take it.</div>
         </div>
       </div>`;
     return;
@@ -3117,7 +3133,7 @@ function renderHallOfFame(){
       <div class="hof-av">${u?.avatar||'💪'}</div>
       <div class="hof-info">
         <div class="hof-name">${escapeHtml(p.username)}${isMe?' (you)':''}</div>
-        <div class="hof-wins">${(p.season_wins||0)>0?`${p.season_wins} season win${p.season_wins>1?'s':''}`:''} ${(p.season_points||0)>=1500?'⚡ Current season leader':''}</div>
+        <div class="hof-wins">${(p.season_wins||0)>0?`${p.season_wins} season win${p.season_wins>1?'s':''}`:''} ${hofLeaderText(p)}</div>
       </div>
       <div class="hof-total">${p.total_points||0}<div style="font-size:10px;color:var(--tx3);letter-spacing:1px">ALL TIME</div></div>
     </div>`;
@@ -3126,7 +3142,7 @@ function renderHallOfFame(){
   el.innerHTML=`
     <div class="hof-section">
       <div class="hof-title">🏆 Hall of Fame</div>
-      <div class="hof-sub">Season champions. First to 1500 points wins the season. All-time points track the true legend.</div>
+      <div class="hof-sub">Season champions. ${seasonRuleText()}. All-time points track the true legend.</div>
       ${rows}
     </div>`;
 }
@@ -6970,6 +6986,7 @@ function renderSupps(){
 // COMPETE
 // ============================================================
 function renderCompete(){
+  const ruleEl=document.getElementById('compete-rule');if(ruleEl)ruleEl.textContent=seasonRuleText();
   renderCompeteLeaderboard();
   const el=document.getElementById('active-comps');
   const mine=competitions.filter(c=>c.participant_1===CU.username||c.participant_2===CU.username);
@@ -7043,7 +7060,7 @@ function renderWall(){
   const el=document.getElementById('wall-feed');
   if(!wallPosts.length){el.innerHTML=`<div class="empty"><div class="empty-icon">💬</div><div class="empty-title">Wall is Empty</div><div class="empty-text">Be first to say something</div></div>`;return;}
   el.innerHTML=[...wallPosts].reverse().map(p=>{
-    const canDelete=p.user_id===CU.user_id||p.post_type==='auto';
+    const canDelete=canDeleteWallPost(p);
     return`<div class="wall-post ${p.post_type==='auto'?'auto':''}" id="wp-${p.post_id}">
     <div class="wall-ph">
       <div class="wall-poster">${p.post_type==='auto'?'🤖 ':''}${escapeHtml(p.username)}</div>
@@ -7052,7 +7069,7 @@ function renderWall(){
         ${canDelete?`<button onclick="deleteWallPost('${p.post_id}')" style="background:none;border:none;color:var(--tx3);cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px" title="Delete post">✕</button>`:''}
       </div>
     </div>
-    <div class="wall-msg">${escapeHtml(p.message)}</div>
+    <div class="wall-msg">${escapeHtml(p.message)}</div>${wallPostExtraHtml(p)}
   </div>`;
   }).join('');
 }
@@ -7120,7 +7137,7 @@ function renderShop(){
       <div class="stars">${[1,2,3,4,5].map(n=>`<span class="star ${n<=(s.avg_rating||0)?'on':''}" onclick="rateShop('${s.shop_id}',${n})">★</span>`).join('')}<span class="star-cnt">(${s.total_ratings||0})</span></div>
     </div>
     <div class="shop-for">Best for: ${escapeHtml(s.best_for)}</div>
-    <div class="shop-desc">${escapeHtml(s.description)}</div>
+    <div class="shop-desc">${escapeHtml(s.description)}</div>${shopExtraHtml(s)}
   </div>`).join('');
 }
 
