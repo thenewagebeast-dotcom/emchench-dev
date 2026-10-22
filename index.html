@@ -1289,7 +1289,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='07 Oct 18:43';
+const APP_BUILD='22 Oct water pts';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -2929,13 +2929,16 @@ function logWater(ml){
   // The water streak is worked out from the water log, so just record today's total
   setWaterDay(dayKey(new Date()),waterMl);
   refreshStreaks();
-  if(waterMl>=adjTarget&&waterMl-ml<adjTarget){
-    celebrate('water','💧');
-    // Save the updated streak to the points row (no points for water)
-    addPoints({pts:0}).catch(e=>console.error('Water streak save:',e));
-  }
+  // Crossing the target happens once a day (the total only goes up)
+  const hitNow=waterMl>=adjTarget&&waterMl-ml<adjTarget;
+  if(hitNow)celebrate('water','💧');
   renderDashboard();
-  saveWaterLog().catch(e=>console.error('Water log save:',e));
+  // Save the water first, then claim the points: the new backend checks the
+  // saved total has reached the target before it gives them
+  const today=dayKey(new Date());
+  saveWaterLog()
+    .then(()=>hitNow?addPoints({pts:WATER_POINTS,water_day:today}).then(()=>{if(CU)renderDashboard();}):null)
+    .catch(e=>console.error('Water log save:',e));
 }
 async function saveWaterLog(){
   // Capture synchronously before any await - signOut() nulls CU and resets waterMl
@@ -6841,7 +6844,7 @@ SECTION: A Note Just for You
 
 For the logging section, cover BOTH training sessions and meals - the plan cannot adapt without data from either. Explicitly clarify that the Meal Plan tab shows what to eat, while the Meal Log tab is a separate tab where you log what you actually ate each day - make clear these are two different places, not the same screen. Every session and every meal logged = next week's plan calculated correctly. Missed logs = the system is working blind. Make this feel important, not like admin.
 For the progression section, explain double progression in plain language: you are given a rep range, when you can hit the top of that range comfortably the weight goes up, you drop back to the bottom of the range with the new weight, and repeat. This is the most evidence-backed system for natural lifters.
-For the streaks and points section, use these exact rules and no others: the workout streak counts weeks - a week counts when every planned session is logged with at least half of its sets, Monday to Sunday. The meal streak counts days - a day counts when at least 80 percent of that day's meals are ticked in the Meal Log. The water streak counts days the water target is hit. One missed day in any 7 is forgiven for meals and water; a second resets that streak. Points reward following your own plan: a full week of planned sessions is worth about 100 points for everyone, shared across the sessions, with full points for logging 90 percent or more of a session's sets, three quarters for 80 to 89 percent, half for 50 to 79 percent and none below that. Logging meals earns 10 points once a day, a personal best 15, body stats 5 once a week, and optional light cardio 5 up to three times a week.
+For the streaks and points section, use these exact rules and no others: the workout streak counts weeks - a week counts when every planned session is logged with at least half of its sets, Monday to Sunday. The meal streak counts days - a day counts when at least 80 percent of that day's meals are ticked in the Meal Log. The water streak counts days the water target is hit. One missed day in any 7 is forgiven for meals and water; a second resets that streak. Points reward following your own plan: a full week of planned sessions is worth about 100 points for everyone, shared across the sessions, with full points for logging 90 percent or more of a session's sets, three quarters for 80 to 89 percent, half for 50 to 79 percent and none below that. Logging meals earns 10 points once a day, hitting the water target 20 once a day, a personal best 15, body stats 5 once a week, and optional light cardio 5 up to three times a week.
 For the shop section, briefly explain: the Shop tab is a directory of trusted places to buy supplements, protein and meal prep basics, rated by the people actually using this app, and anyone can add a new store to it.
 For the modes section, briefly explain two things: Pause (found in Body Stats) freezes your streaks for a holiday, illness or injury for up to 30 days instead of resetting them, and picks up exactly where it left off when you're back - meals and workouts can still be logged as normal. Calorie banking (set up when planning ahead for a social event) reduces your calories slightly on the days leading up to the event, so you have more room to enjoy it on the day itself, then returns to normal straight after.
 
@@ -7732,7 +7735,7 @@ async function executeAccountDeletion(){
 // ---- streak engine start ----
 const PAUSE_MAX_DAYS=30;          // longest pause (holiday, illness, injury)
 const MEAL_DAY_SHARE=0.8;         // share of the day's meals that must be ticked
-const MEAL_LOG_POINTS=10,PB_POINTS=15,BODY_STATS_POINTS=5,EXTRA_SESSION_POINTS=5;
+const MEAL_LOG_POINTS=10,PB_POINTS=15,BODY_STATS_POINTS=5,EXTRA_SESSION_POINTS=5,WATER_POINTS=20;
 const EXTRA_SESSIONS_PER_WEEK=3;  // rewarded cardio sessions, and rewarded ab sessions, per week
 const WEEK_POINTS=100;            // a full week of planned sessions, whatever the plan size
 
