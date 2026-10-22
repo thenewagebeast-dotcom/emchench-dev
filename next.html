@@ -469,7 +469,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
     <div class="login-wrap">
       <div class="brand-logo">E=MC<span>-</span>HENCH</div>
       <div class="brand-tag">Your PT in your pocket</div>
-      <div class="alert alert-warn" style="font-size:12px">Backend preview - testers only. Moving across in steps: your account, profile, plans, logging, the wall, shops and the leaderboard work here now; competitions and AI features follow.</div>
+      <div class="alert alert-warn" style="font-size:12px">Backend preview - testers only. Moving across in steps: everything except the AI features works here now (account, profile, plans, logging, wall, shops, leaderboard and challenges).</div>
       <div id="v-loading" class="view"><div style="color:var(--tx2);font-size:13px">Loading...</div></div>
 
       <!-- LOG IN -->
@@ -702,7 +702,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
     <div class="pg-title">Compete</div>
     <div class="pg-sub" id="compete-rule">First to 1500 season points wins</div>
     <div class="card"><div class="card-lbl">Live Leaderboard</div><div id="compete-lb"></div><div id="hof-section"></div></div>
-    <div class="card"><div class="card-lbl">Active Challenges</div><div id="active-comps"></div><button class="btn btn-ghost btn-sm" style="margin-top:12px" onclick="openModal('comp-modal')">+ Start a Challenge</button></div>
+    <div class="card"><div class="card-lbl">Active Challenges</div><div id="active-comps"></div><button class="btn btn-ghost btn-sm" style="margin-top:12px" onclick="openCompModal()">+ Start a Challenge</button></div>
   </div>
 
   <!-- WALL -->
@@ -1207,12 +1207,33 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 <div class="modal-bg" id="comp-modal">
   <div class="modal">
     <div class="modal-title">Start a Challenge</div>
-    <div class="frow"><label class="flbl">Type</label><select class="fsel" id="comp-type" onchange="compTypeChange()"><option value="solo">Solo - Personal goal</option><option value="h2h">Head to Head</option></select></div>
-    <div class="frow" id="comp-opp-row"><label class="flbl">Opponent</label><select class="fsel" id="comp-opp"></select></div>
-    <div class="frow"><label class="flbl">Challenge</label><select class="fsel" id="comp-ch" onchange="compChChange()"><option value="sessions">Most sessions logged</option><option value="streak">Longest streak</option><option value="pb">Hit a new PB</option><option value="calories">Hit calorie target 14 days</option><option value="meals">Log all meals 2 weeks</option><option value="custom">Custom challenge</option></select></div>
-    <div class="frow" id="comp-custom-row" style="display:none"><label class="flbl">Describe Challenge</label><input class="finput" id="comp-custom" placeholder="e.g. Squat 100kg for 5 reps"></div>
+    <div class="frow"><label class="flbl">Type</label><select class="fsel" id="comp-type" onchange="compFormChange()"><option value="solo">Solo - Personal goal</option><option value="h2h">Head to Head</option></select></div>
+    <div class="frow" id="comp-opp-row" style="display:none"><label class="flbl">Opponent</label><select class="fsel" id="comp-opp"></select></div>
+    <div class="frow"><label class="flbl">Challenge</label><select class="fsel" id="comp-ch" onchange="compFormChange()">
+      <optgroup label="From your logs (checked automatically)">
+        <option value="sessions">Most sessions logged</option>
+        <option value="streak">Longest workout streak (head to head)</option>
+        <option value="pb">Hit a new PB</option>
+        <option value="calories">Hit calorie target 14 days</option>
+        <option value="meals">Log meals every day for 2 weeks</option>
+      </optgroup>
+      <optgroup label="Strength (video proof)">
+        <option value="p4p">Pound for pound - best lift for your body weight</option>
+        <option value="rep_test">Rep test - most reps at a % of your own max</option>
+        <option value="improved">Most improved - biggest % gain on your own best</option>
+      </optgroup>
+      <optgroup label="Your own (video proof)">
+        <option value="custom">Custom challenge</option>
+      </optgroup>
+    </select></div>
+    <div class="frow" id="comp-ex-row" style="display:none"><label class="flbl">Exercise</label><select class="fsel" id="comp-ex" onchange="compFormChange()"></select><div id="comp-ex-note" style="font-size:11px;color:var(--tx3);margin-top:4px"></div></div>
+    <div class="frow" id="comp-pct-row" style="display:none"><label class="flbl">Weight for the rep test</label><select class="fsel" id="comp-pct" onchange="compFormChange()"><option value="60">60% of your own max</option><option value="70" selected>70% of your own max</option><option value="80">80% of your own max</option></select></div>
+    <div class="frow" id="comp-custom-row" style="display:none"><label class="flbl">Describe Challenge</label><input class="finput" id="comp-custom" maxlength="200" placeholder="e.g. Max push-ups in 2 minutes"></div>
+    <div class="frow" id="comp-goal-row" style="display:none"><label class="flbl" id="comp-goal-lbl">Goal to beat</label><input class="finput" id="comp-goal" type="number" min="0" step="any"></div>
+    <div class="frow"><label class="flbl">Length</label><select class="fsel" id="comp-len"><option value="session">One session (can finish today)</option><option value="1week" selected>1 week</option><option value="2weeks">2 weeks</option></select></div>
     <div class="frow"><label class="flbl">Difficulty</label><select class="fsel" id="comp-diff"><option value="30">Easy - 30 pts</option><option value="50">Medium - 50 pts</option><option value="75">Hard - 75 pts</option><option value="100">Extreme - 100 pts</option></select></div>
-    <div style="display:flex;gap:10px"><button class="btn btn-ghost" onclick="closeModal('comp-modal')">Cancel</button><button class="btn" style="flex:1" onclick="createComp()">Start Challenge ⚡</button></div>
+    <div id="comp-note" class="alert alert-info" style="font-size:12px;display:none"></div>
+    <div style="display:flex;gap:10px"><button class="btn btn-ghost" onclick="closeModal('comp-modal')">Cancel</button><button class="btn" style="flex:1" id="comp-go" onclick="createComp()">Start Challenge ⚡</button></div>
   </div>
 </div>
 
@@ -1338,7 +1359,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='22 Oct social 1';
+const APP_BUILD='22 Oct challenges';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -9734,12 +9755,412 @@ async function addShop(){
   }catch(e){hideLoad();alert('Error adding store: '+e.message);}
 }
 
-// Profile, plans, logs and the social side (except competitions) have moved.
+// ---- competitions (slice 2d part 2, rules in SOCIAL-SPEC-2026-10-22.md) ----
+// The server decides every result and pays the points (supabase/011_competitions.sql).
+// The safety checks before a strength challenge (assessment week, pause, injuries,
+// exercises to avoid, logged numbers) run here in the app, before joining.
+const LOG_CHALLENGES=['sessions','streak','pb','calories','meals'];
+const STRENGTH_CHALLENGES=['p4p','rep_test','improved'];
+const CHALLENGE_NAMES={sessions:'Most sessions',streak:'Longest workout streak',pb:'New PB',calories:'Calorie target 14 days',meals:'Meals logged every day',
+  p4p:'Pound for pound',rep_test:'Rep test',improved:'Most improved',custom:'Custom'};
+const VIDEO_BUCKET='challenge-videos',VIDEO_MAX_MB=50,VIDEO_MAX_SECS=60,VIDEO_KEEP_DAYS=14;
+let compMembers=[],compResults=[];
+
+// Estimated max from your own logged sets (Epley, sets of 1 to 12 reps) - the same sum the server uses
+function epley(w,r){return Math.round(w*(1+r/30)*10)/10;}
+function loggedMaxes(){
+  const out={};
+  for(const w of activityLogs.workouts){
+    if(w.cardio||!Array.isArray(w.exercises))continue;
+    for(const e of w.exercises){
+      const name=String(e.name||'').trim();if(!name)continue;
+      for(const s of e.sets||[]){
+        const kg=parseFloat(s.weight_kg),reps=parseInt(s.reps);
+        if(!(kg>0&&reps>=1&&reps<=12))continue;
+        const est=epley(kg,reps),k=name.toLowerCase();
+        if(!out[k]||est>out[k].e1rm)out[k]={name,e1rm:est};
+      }
+    }
+  }
+  return out;
+}
+// Lifts that load an injured area. A shoulder injury rules out all upper-body pressing
+// (the same UPPER_PRESS_RE the training plan uses) plus overhead and hanging work.
+const CHALLENGE_INJURY_RULES={
+  'Bad shoulder':/overhead|military|raise|\bfly|flye|pull.?up|chin.?up|upright|snatch|clean|jerk/i,
+  'Bad knee':/squat|lunge|leg press|leg extension|step.?up|jump|split|pistol/i,
+  'Lower back':/deadlift|good morning|squat|bent.?over|row|clean|snatch|hyperextension|swing/i,
+  'Bad hip':/squat|deadlift|lunge|hip thrust|step.?up|split|swing/i,
+  'Elbow / tennis elbow':/curl|press|dip|push.?up|extension|skull|pull.?up|chin.?up/i,
+  'Wrist':/press|curl|push.?up|dip|clean|front squat/i,
+  'Neck':/shrug|overhead|military|deadlift|squat|jerk/i,
+  'Ankle / foot':/squat|lunge|calf|jump|step.?up|run|sprint/i
+};
+function challengeClash(exercise){
+  const ex=String(exercise||'');
+  for(const k of matchInjuryKeys(CU.injuries)){
+    if((k==='Bad shoulder'&&UPPER_PRESS_RE.test(ex))||CHALLENGE_INJURY_RULES[k]?.test(ex))return'your '+k.toLowerCase().replace('bad ','')+' injury';
+  }
+  const low=ex.toLowerCase();
+  const avoid=String(CU.avoided_exercises||'').toLowerCase().split(/[,;\n]+/).map(x=>x.trim()).filter(x=>x.length>2);
+  if(avoid.some(a=>low.includes(a)||a.includes(low)))return'your exercises to avoid';
+  return'';
+}
+// Still on the assessment week: the plan has assessment sessions not logged yet
+function onAssessmentWeek(){
+  const idx=(userTrainingPlan?.sessions||[]).map((s,i)=>String(s.name||'').toLowerCase().includes('assessment')?String(i):null).filter(x=>x!==null);
+  if(!idx.length)return false;
+  const done=new Set(activityLogs.workouts.map(w=>String(w.key)));
+  return idx.some(i=>!done.has(i));
+}
+// Can you take on this strength challenge? Returns {error} or {baseline} (your starting numbers)
+function strengthReady(type,exercise,pct){
+  if(onAssessmentWeek())return{error:'Strength challenges open once your assessment week is done - the app needs your numbers first.'};
+  if(currentPause())return{error:'You are on a pause - strength challenges wait until it ends.'};
+  const clash=challengeClash(exercise);
+  if(clash)return{error:exercise+' clashes with '+clash+', so you cannot take this one on.'};
+  const m=loggedMaxes()[String(exercise||'').trim().toLowerCase()];
+  if(!m)return{error:'Log '+exercise+' in a normal session first, so the app has your numbers for it.'};
+  if(type==='p4p'&&!(parseFloat(CU.weight_kg)>0))return{error:'Your body weight is missing - do a weigh-in first.'};
+  const baseline={e1rm:m.e1rm};
+  if(type==='rep_test')baseline.target_kg=Math.max(2.5,Math.round(m.e1rm*(parseInt(pct)||70)/100/2.5)*2.5);
+  return{baseline};
+}
+
+// ---- the Start a Challenge form ----
+function openCompModal(){
+  const opp=document.getElementById('comp-opp');
+  if(opp)opp.innerHTML=allUsers.filter(u=>u.user_id!==CU.user_id).map(u=>`<option value="${u.user_id}">${escapeHtml(u.username)}</option>`).join('');
+  const maxes=Object.values(loggedMaxes()).sort((a,b)=>a.name.localeCompare(b.name));
+  const safe=maxes.filter(m=>!challengeClash(m.name));
+  const ex=document.getElementById('comp-ex');
+  ex.innerHTML=safe.length?safe.map(m=>`<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join(''):'<option value="">No logged lifts yet</option>';
+  document.getElementById('comp-ex-note').textContent=maxes.length>safe.length?`${maxes.length-safe.length} of your lifts are hidden because they clash with your injuries or exercises to avoid.`:'';
+  compFormChange();
+  openModal('comp-modal');
+}
+function compFormChange(){
+  const v=id=>document.getElementById(id)?.value||'';
+  const show=(id,on)=>{const el=document.getElementById(id);if(el)el.style.display=on?'block':'none';};
+  const type=v('comp-type'),ch=v('comp-ch');
+  const strength=STRENGTH_CHALLENGES.includes(ch),logs=LOG_CHALLENGES.includes(ch);
+  show('comp-opp-row',type==='h2h');
+  show('comp-ex-row',strength);
+  show('comp-pct-row',ch==='rep_test');
+  show('comp-custom-row',ch==='custom');
+  const goalOn=type==='solo'&&(strength||ch==='custom');
+  show('comp-goal-row',goalOn);
+  document.getElementById('comp-goal-lbl').textContent={p4p:'Goal: times your body weight (e.g. 1.5)',rep_test:'Goal: reps to beat',improved:'Goal: % gain to beat (e.g. 5)',custom:'Goal (optional): the number to beat'}[ch]||'Goal to beat';
+  // Length: from-the-logs challenges need at least a week; calories and meals are always 2 weeks
+  const len=document.getElementById('comp-len');
+  len.querySelector('option[value="session"]').disabled=logs;
+  len.querySelector('option[value="1week"]').disabled=ch==='calories'||ch==='meals';
+  if(len.selectedOptions[0]?.disabled)len.value=(ch==='calories'||ch==='meals')?'2weeks':'1week';
+  let note='',ok=true;
+  if(ch==='streak'&&type!=='h2h'){note='A streak challenge is head to head only.';ok=false;}
+  else if(strength){
+    const r=strengthReady(ch,v('comp-ex'),v('comp-pct'));
+    if(!v('comp-ex')){note='Log a lift in a normal session first, so the app has your numbers.';ok=false;}
+    else if(r.error){note=r.error;ok=false;}
+    else{
+      note=`Your estimated max on ${escapeHtml(v('comp-ex'))}: ${r.baseline.e1rm} kg.`;
+      if(ch==='rep_test')note+=` Your rep test weight: ${r.baseline.target_kg} kg. ${type==='h2h'?'Your opponent gets the same % of their own max.':''}`;
+      if(ch==='p4p')note+=' Scored as your estimated max divided by your body weight. Use a set of 3 to 12 reps - no one-rep max attempts.';
+      if(ch==='improved')note+=' Scored as your % gain on this. Use a set of 12 reps or fewer.';
+      note+=' A short video (up to 60 seconds) is needed as proof.';
+    }
+  }
+  else if(ch==='custom')note='A short video (up to 60 seconds) is needed as proof.'+(type==='h2h'?' The highest number wins.':'');
+  else if(logs)note='Worked out from your logs when the time is up - nothing to enter.';
+  const n=document.getElementById('comp-note');n.innerHTML=note;n.style.display=note?'block':'none';
+  n.className='alert '+(ok?'alert-info':'alert-warn');
+  document.getElementById('comp-go').disabled=!ok;
+}
+async function createComp(){
+  const v=id=>document.getElementById(id)?.value||'';
+  const type=v('comp-type'),ch=v('comp-ch'),opp=type==='h2h'?v('comp-opp'):'';
+  const pts=parseInt(v('comp-diff'))||50;
+  const diffSel=document.getElementById('comp-diff');
+  const difficulty=diffSel.options[diffSel.selectedIndex].text.split(' - ')[0];
+  if(type==='h2h'&&!opp){alert('Pick who to challenge.');return;}
+  if(ch==='custom'&&!v('comp-custom').trim()){alert('Describe the challenge.');return;}
+  const strength=STRENGTH_CHALLENGES.includes(ch);
+  const exercise=strength?v('comp-ex'):null;
+  const goalTxt=v('comp-goal').trim(),goal=goalTxt?parseFloat(goalTxt):null;
+  if(type==='solo'&&strength&&!(goal>0)){alert('Set a goal to beat.');return;}
+  let baseline={};
+  if(strength){const r=strengthReady(ch,exercise,v('comp-pct'));if(r.error){alert(r.error);return;}baseline=r.baseline;}
+  const label=ch==='custom'?v('comp-custom').trim():CHALLENGE_NAMES[ch]+(exercise?' - '+exercise:'');
+  showLoad('Creating','Starting challenge...');
+  try{
+    const {data:c,error}=await sb.from('competitions').insert({type,challenge:label,challenge_type:ch,length:v('comp-len'),points_value:pts,difficulty,
+      exercise,rep_pct:ch==='rep_test'?parseInt(v('comp-pct')):null,goal:type==='solo'?goal:null}).select('*').single();
+    if(error)throw new Error(friendlyDbError(error));
+    const {error:e1}=await sb.from('competition_members').insert({competition_id:c.id,user_id:CU.user_id,baseline});
+    if(e1)throw new Error(friendlyDbError(e1));
+    if(opp){const {error:e2}=await sb.from('competition_members').insert({competition_id:c.id,user_id:opp});if(e2)throw new Error(friendlyDbError(e2));}
+    closeModal('comp-modal');hideLoad();
+    postAutoWall(type==='h2h'?`⚔️ ${CU.username} challenged ${nameOf(opp)} to: "${label}" - ${pts} pts on the line!`:`🎯 ${CU.username} set a challenge: "${label}" - ${pts} pts to win!`);
+    await loadCompetitions();renderCompete();
+  }catch(e){hideLoad();alert('Error creating challenge: '+e.message);}
+}
+
+// ---- loading and showing challenges ----
+async function loadCompetitions(){
+  const myId=CU?.user_id;if(!myId)return;
+  const [c,m,r]=await Promise.all([
+    sb.from('competitions').select('*').order('created_at',{ascending:false}).limit(100),
+    sb.from('competition_members').select('*'),
+    sb.from('competition_results').select('*')]);
+  const err=c.error||m.error||r.error;
+  if(err)throw new Error(friendlyDbError(err));
+  if(CU?.user_id!==myId)return;
+  compMembers=m.data||[];compResults=r.data||[];
+  // Yours, plus (for the admin) any disputed challenge waiting for a decision
+  competitions=(c.data||[]).filter(x=>x.created_by===myId||compMembers.some(mm=>mm.competition_id===x.id&&mm.user_id===myId)||(CU.is_admin&&x.status==='disputed'));
+  cleanOldVideos();
+}
+function compScoreText(c,score){
+  const n=Number(score);
+  return{p4p:n+'x body weight',rep_test:n+' reps',improved:(n>0?'+':'')+n+'%'}[c.challenge_type]||String(n);
+}
+function compVideoGone(c){return c.status!=='active'&&c.status!=='disputed'&&Date.now()-new Date(c.completed_at||c.ends_at).getTime()>VIDEO_KEEP_DAYS*864e5;}
+function compResultHtml(c,r,mine){
+  if(!r)return`<div style="font-size:12px;color:var(--tx3);margin-top:6px">${mine?'You have':escapeHtml(nameOf(c._other))+' has'} not entered a result yet</div>`;
+  const who=mine?'You':escapeHtml(nameOf(r.user_id));
+  const d=r.detail||{};
+  const lift=d.weight_kg?` (${d.weight_kg} kg x ${d.reps})`:'';
+  let status='';
+  if(c.type==='h2h')status=r.disputed_by?` · <span style="color:var(--warn)">disputed${r.dispute_note?': '+escapeHtml(r.dispute_note):''}</span>`:r.confirmed_by?' · <span style="color:var(--ok)">confirmed ✓</span>':' · waiting to be confirmed';
+  const video=!r.video_path?' · <span style="color:var(--warn)">no video yet</span>'
+    :compVideoGone(c)?' · video deleted after 14 days'
+    :` · <button style="background:none;border:none;color:var(--ac3);cursor:pointer;font-size:12px;padding:0" data-video="${escapeHtml(r.video_path)}" onclick="watchCompVideo(this)">Watch video</button>`;
+  let review='';
+  if(!mine&&c.type==='h2h'&&c.status==='active'&&!r.confirmed_by&&r.video_path)
+    review=`<div style="display:flex;gap:8px;margin-top:6px"><button class="btn btn-ghost btn-sm" data-comp-id="${c.id}" data-user-id="${r.user_id}" onclick="reviewCompResult(this,true)">Confirm ✓</button><button class="btn btn-ghost btn-sm" data-comp-id="${c.id}" data-user-id="${r.user_id}" onclick="reviewCompResult(this,false)">Dispute</button></div>`;
+  return`<div style="font-size:12px;margin-top:6px">${who}: <strong>${compScoreText(c,r.score)}</strong>${lift}${status}${video}</div>${review}`;
+}
+function compEntryFormHtml(c,myM,mine){
+  const t=c.challenge_type,strength=STRENGTH_CHALLENGES.includes(t);
+  const d=mine?.detail||{};
+  const fields=strength
+    ?`<div style="display:flex;gap:8px"><input class="finput comp-w" type="number" min="0" step="0.5" placeholder="Weight (kg)" value="${d.weight_kg||(t==='rep_test'?myM.baseline?.target_kg||'':'')}"><input class="finput comp-r" type="number" min="1" step="1" placeholder="Reps" value="${d.reps||''}"></div>`
+    :`<input class="finput comp-v" type="number" min="0" step="any" placeholder="Your number (reps, seconds...) - blank if it is just done" value="${d.value??''}">`;
+  const hint=t==='rep_test'?`Your weight: ${myM.baseline?.target_kg||'?'} kg (${c.rep_pct}% of your own max). As many clean reps as you can.`
+    :t==='p4p'?`One set of 3 to 12 reps. Your body weight used: ${parseFloat(CU.weight_kg)||'?'} kg.`
+    :t==='improved'?`One set of 12 reps or fewer. Your starting estimate: ${myM.baseline?.e1rm||'?'} kg.`:'';
+  return`<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--ac)">${mine?'Change your result':'Enter your result'}</summary>
+    <div style="margin-top:8px">${hint?`<div style="font-size:11px;color:var(--tx3);margin-bottom:6px">${hint}</div>`:''}${fields}
+    <div style="font-size:11px;color:var(--tx3);margin:8px 0 4px">Video proof, up to ${VIDEO_MAX_SECS} seconds${mine?.video_path?' (leave empty to keep the one you sent)':''}</div>
+    <input type="file" class="comp-file" accept="video/*" style="font-size:12px;color:var(--tx2)">
+    <button class="btn btn-sm" style="margin-top:8px" data-comp-id="${c.id}" onclick="saveCompResult(this)">Save result</button></div></details>`;
+}
+function compCardHtml(c){
+  const me=CU.user_id;
+  const mem=compMembers.filter(m=>m.competition_id===c.id);
+  const myM=mem.find(m=>m.user_id===me),other=mem.find(m=>m.user_id!==me);
+  c._other=other?.user_id||'';
+  const res=uid=>compResults.find(r=>r.competition_id===c.id&&r.user_id===uid);
+  const entry=!LOG_CHALLENGES.includes(c.challenge_type);
+  const ended=new Date(c.ends_at)<=new Date();
+  const btn=(label,fn,extra='')=>`<button class="btn btn-ghost btn-sm" style="margin-top:10px;margin-right:6px" data-comp-id="${c.id}" ${extra} onclick="${fn}(this)">${label}</button>`;
+  const lines=[];
+  const kind=[CHALLENGE_NAMES[c.challenge_type],c.exercise?escapeHtml(c.exercise):'',c.challenge_type==='rep_test'?c.rep_pct+'% of your own max':'',
+    c.goal?'goal '+compScoreText(c,c.goal):''].filter(Boolean).join(' · ');
+  if(c.challenge!==CHALLENGE_NAMES[c.challenge_type]+(c.exercise?' - '+c.exercise:''))lines.push(`<div style="font-size:12px;color:var(--tx2)">${kind}</div>`);
+  if(c.type==='h2h'&&!myM){
+    lines.push(`<div style="font-size:13px;margin:6px 0">${mem.map(m=>escapeHtml(nameOf(m.user_id))).join(' vs ')}</div>`);
+  }else if(c.type==='h2h'){
+    const them=other?escapeHtml(nameOf(other.user_id))+(other.accepted?'':' (not accepted yet)'):'nobody (they said no)';
+    lines.push(`<div style="font-size:13px;margin:6px 0">${myM?'You':escapeHtml(nameOf(c.created_by))} vs <strong>${them}</strong></div>`);
+  }
+  let actions='';
+  if(c.status==='active'){
+    if(myM&&!myM.accepted){
+      actions+=btn('Accept ✓','acceptComp')+btn('Say no','declineComp');
+    }else if(myM){
+      if(entry){
+        lines.push(compResultHtml(c,res(me),true));
+        if(c.type==='h2h'&&other)lines.push(compResultHtml(c,res(other.user_id),false));
+        actions+=compEntryFormHtml(c,myM,res(me));
+      }else lines.push(`<div style="font-size:12px;color:var(--tx3);margin-top:6px">Worked out from the logs when the time is up.</div>`);
+      if(ended)actions+=btn('Finish and see who won','settleComp');
+    }
+    if(c.created_by===me&&!compResults.some(r=>r.competition_id===c.id))actions+=btn('Cancel challenge','cancelComp');
+  }else if(c.status==='disputed'){
+    lines.push(`<div style="font-size:12px;color:var(--warn);margin-top:6px">Disputed - waiting for the admin to decide.</div>`);
+    for(const m of mem){const r=res(m.user_id);if(r)lines.push(compResultHtml(c,r,m.user_id===me));}
+    if(CU.is_admin){
+      actions+=mem.map(m=>btn(escapeHtml(nameOf(m.user_id))+' wins','adminSettleComp',`data-winner="${m.user_id}"`)).join('')
+        +btn('Nobody wins','adminSettleComp','data-winner=""')+btn('Cancel it','adminSettleComp','data-cancel="1"');
+    }
+  }else if(c.status==='completed'){
+    const w=c.winner_ids||[];
+    const txt=!w.length?(c.type==='solo'?'Goal not reached this time.':'No winner.'):w.includes(me)?`🏆 You won! +${c.points_value} pts`:`🏆 ${w.map(id=>escapeHtml(nameOf(id))).join(' and ')} won`;
+    lines.push(`<div style="font-size:12px;margin-top:6px">${txt}${w.length>1?' (a tie)':''}</div>`);
+  }else lines.push(`<div style="font-size:12px;color:var(--tx3);margin-top:6px">Cancelled</div>`);
+  const when=c.status==='active'?(ended?'Time is up':'Ends '+fmtTime(c.ends_at)):'';
+  return`<div class="comp-card">
+    <div class="comp-hd"><div class="comp-title">${escapeHtml(c.challenge)}</div><span class="ctype ${c.type==='h2h'?'ctype-h2h':'ctype-solo'}">${c.type==='h2h'?'Head to Head':'Solo'}</span></div>
+    ${lines.join('')}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+      <div style="font-size:12px;color:var(--tx2)">${escapeHtml(c.difficulty||'')}${when?' - '+when:''}</div>
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:900;color:var(--ac)">${c.points_value} pts</div>
+    </div>${actions}</div>`;
+}
+function renderCompete(){
+  const ruleEl=document.getElementById('compete-rule');if(ruleEl)ruleEl.textContent=seasonRuleText();
+  renderCompeteLeaderboard();
+  const el=document.getElementById('active-comps');
+  // Open ones first, then anything finished in the last 14 days
+  const recent=c=>c.status==='active'||c.status==='disputed'||Date.now()-new Date(c.completed_at||c.ends_at).getTime()<VIDEO_KEEP_DAYS*864e5;
+  const rank=c=>c.status==='active'?0:c.status==='disputed'?1:2;
+  const list=competitions.filter(recent).sort((a,b)=>rank(a)-rank(b));
+  if(!list.length){el.innerHTML=`<div style="font-size:13px;color:var(--tx2);padding:10px 0">No active challenges. Start one!</div>`;return;}
+  el.innerHTML=list.map(compCardHtml).join('');
+}
+
+// ---- actions ----
+const compById=id=>competitions.find(c=>c.id===id);
+async function compAction(fn){
+  try{await fn();await loadCompetitions();renderCompete();}
+  catch(e){hideLoad();alert(e.message);}
+}
+async function acceptComp(btn){
+  const c=compById(btn.dataset.compId);if(!c)return;
+  let baseline={};
+  if(STRENGTH_CHALLENGES.includes(c.challenge_type)){
+    const r=strengthReady(c.challenge_type,c.exercise,c.rep_pct);
+    if(r.error){alert(r.error);return;}
+    baseline=r.baseline;
+  }
+  await compAction(async()=>{
+    const {error}=await sb.from('competition_members').update({accepted:true,baseline}).eq('competition_id',c.id).eq('user_id',CU.user_id);
+    if(error)throw new Error(friendlyDbError(error));
+  });
+}
+async function declineComp(btn){
+  if(!confirm('Say no to this challenge?'))return;
+  await compAction(async()=>{
+    const {error}=await sb.from('competition_members').delete().eq('competition_id',btn.dataset.compId).eq('user_id',CU.user_id);
+    if(error)throw new Error(friendlyDbError(error));
+  });
+}
+async function cancelComp(btn){
+  if(!confirm('Cancel this challenge?'))return;
+  await compAction(async()=>{
+    const {error}=await sb.from('competitions').update({status:'cancelled'}).eq('id',btn.dataset.compId);
+    if(error)throw new Error(friendlyDbError(error));
+  });
+}
+function videoSeconds(file){
+  return new Promise(res=>{const v=document.createElement('video');v.preload='metadata';
+    const url=URL.createObjectURL(file);
+    v.onloadedmetadata=()=>{URL.revokeObjectURL(url);res(v.duration);};v.onerror=()=>{URL.revokeObjectURL(url);res(null);};v.src=url;});
+}
+async function saveCompResult(btn){
+  const c=compById(btn.dataset.compId);if(!c)return;
+  const box=btn.closest('.comp-card');
+  const mine=compResults.find(r=>r.competition_id===c.id&&r.user_id===CU.user_id);
+  const strength=STRENGTH_CHALLENGES.includes(c.challenge_type);
+  let detail;
+  if(strength){
+    const w=parseFloat(box.querySelector('.comp-w')?.value),r=parseInt(box.querySelector('.comp-r')?.value);
+    if(!(w>0)||!(r>=1)){alert('Enter the weight and the reps.');return;}
+    if(c.challenge_type==='p4p'&&(r<3||r>12)){alert('Pound for pound uses one set of 3 to 12 reps - no one-rep max attempts.');return;}
+    if(c.challenge_type==='improved'&&r>12){alert('Use a set of 12 reps or fewer.');return;}
+    detail={weight_kg:w,reps:r};
+    if(c.challenge_type==='p4p')detail.body_kg=parseFloat(CU.weight_kg)||null;
+  }else{
+    const raw=box.querySelector('.comp-v')?.value.trim();
+    detail=raw?{value:parseFloat(raw)}:{};
+  }
+  const file=box.querySelector('.comp-file')?.files?.[0]||null;
+  if(!file&&!mine?.video_path){alert('Add a short video as proof.');return;}
+  if(file){
+    if(file.size>VIDEO_MAX_MB*1024*1024){alert(`That video is over ${VIDEO_MAX_MB} MB. Trim it or record a shorter one.`);return;}
+    const secs=await videoSeconds(file);
+    if(secs&&secs>VIDEO_MAX_SECS+1){alert(`That video is ${Math.round(secs)} seconds - keep it to ${VIDEO_MAX_SECS} seconds or less.`);return;}
+  }
+  showLoad('Saving','Saving your result...');
+  await compAction(async()=>{
+    let path=mine?.video_path||null;
+    if(file){
+      const ext=(String(file.name).split('.').pop()||'mp4').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,5)||'mp4';
+      path=`${c.id}/${CU.user_id}/${Date.now()}.${ext}`;
+      const {error:upErr}=await sb.storage.from(VIDEO_BUCKET).upload(path,file,{contentType:file.type||'video/mp4',upsert:false});
+      if(upErr)throw new Error('The video could not be uploaded: '+(upErr.message||upErr));
+    }
+    const {error}=await sb.from('competition_results').upsert({competition_id:c.id,user_id:CU.user_id,detail,video_path:path},{onConflict:'competition_id,user_id'});
+    if(error)throw new Error(friendlyDbError(error));
+    // The old video is no longer needed once a new one is saved
+    if(file&&mine?.video_path&&mine.video_path!==path)sb.storage.from(VIDEO_BUCKET).remove([mine.video_path]).catch(e=>console.error('Old video:',e));
+    hideLoad();
+  });
+}
+async function watchCompVideo(btn){
+  try{
+    const {data,error}=await sb.storage.from(VIDEO_BUCKET).createSignedUrl(btn.dataset.video,3600);
+    if(error)throw error;
+    const v=document.createElement('video');v.controls=true;v.playsInline=true;v.src=data.signedUrl;
+    v.style.cssText='width:100%;max-height:360px;margin-top:8px;border-radius:8px;background:#000';
+    btn.replaceWith(v);
+  }catch(e){alert('Could not open the video: '+(e.message||e));}
+}
+async function reviewCompResult(btn,ok){
+  let note=null;
+  if(!ok){note=prompt('What is wrong with it? The admin will see this.');if(note===null)return;}
+  await compAction(async()=>{
+    const {error}=await sb.rpc('review_result',{p_competition:btn.dataset.compId,p_user:btn.dataset.userId,p_ok:ok,p_note:note});
+    if(error)throw new Error(friendlyDbError(error));
+  });
+}
+const SETTLE_MESSAGES={not_finished:'Not finished yet - try again when the time is up.',not_accepted:'The other person has not accepted yet.',
+  waiting_for_results:'Waiting for both results.',waiting_for_video:'Waiting for the video proof.',waiting_for_confirmation:'Waiting for each result to be confirmed by the other person.',
+  disputed:'This one is disputed - the admin will decide.',already_settled:'Already finished.',not_active:'This challenge is closed.'};
+async function settleComp(btn){
+  const c=compById(btn.dataset.compId);if(!c)return;
+  showLoad('Checking','Working out who won...');
+  await compAction(async()=>{
+    const {data:outcome,error}=await sb.rpc('settle_competition',{p_competition:c.id});
+    if(error)throw new Error(friendlyDbError(error));
+    hideLoad();
+    if(outcome==='won'){
+      celebrateMsg('challengeComplete','🏆','Challenge Complete!',{pts:c.points_value});
+      postAutoWall(`🏆 ${CU.username} won: "${c.challenge}"!`);
+      refreshPointsAndStreaks(CU.user_id).catch(e=>console.error('Points refresh:',e));
+    }else if(outcome==='tie'){alert('A tie - you both win the points (up to 2 challenge wins a week).');refreshPointsAndStreaks(CU.user_id).catch(e=>console.error('Points refresh:',e));}
+    else if(outcome==='lost')alert(nameOf(c._other)+' won this one.');
+    else if(outcome==='not_reached')alert('Goal not reached this time.');
+    else if(outcome==='no_winner')alert('Nobody scored, so nobody wins.');
+    else alert(SETTLE_MESSAGES[outcome]||outcome);
+  });
+}
+async function adminSettleComp(btn){
+  const cancel=btn.dataset.cancel==='1',w=btn.dataset.winner||'';
+  if(!confirm(cancel?'Cancel this challenge? Nobody gets points.':w?`${nameOf(w)} wins - pay the points?`:'Nobody wins this one?'))return;
+  await compAction(async()=>{
+    const {error}=await sb.rpc('admin_settle',{p_competition:btn.dataset.compId,p_winners:w?[w]:[],p_cancel:cancel});
+    if(error)throw new Error(friendlyDbError(error));
+  });
+}
+// Videos are kept 14 days after a challenge closes, then removed. Each person removes their
+// own; the admin removes any. Nothing else needs them by then.
+async function cleanOldVideos(){
+  try{
+    const paths=compResults.filter(r=>r.video_path&&(r.user_id===CU.user_id||CU.is_admin)).filter(r=>{const c=competitions.find(x=>x.id===r.competition_id);return c&&compVideoGone(c);}).map(r=>r.video_path);
+    if(!paths.length)return;
+    const {error}=await sb.storage.from(VIDEO_BUCKET).remove(paths);
+    if(error)throw error;
+  }catch(e){console.error('Old videos:',e);}
+}
+
+// Profile, plans, logs and the social side have all moved.
 async function loadUserData(){
   allPoints=[];userPoints={};userMealPlan=null;userTrainingPlan=null;
   wallPosts=[];competitions=[];measurements=[];dislikedMeals=[];socialEvents=[];activeEvent=null;waterMl=0;
   activityLogs={meals:[],workouts:[],water:[],pauses:[],loaded:false};
-  lastSeasonWinners=[];wallReportCounts={};myShopRatings={};
+  lastSeasonWinners=[];wallReportCounts={};myShopRatings={};compMembers=[];compResults=[];
   const pts=document.getElementById('app-pts');if(pts)pts.textContent='0 PTS';
   showStreakHeader();
   // Before points are read, so last month's winner is already recorded
@@ -9767,13 +10188,14 @@ async function loadUserData(){
   }
   // Names on the wall come from the leaderboard, so this goes last
   await loadWall().catch(e=>console.error('Wall:',e));
+  await loadCompetitions().catch(e=>console.error('Challenges:',e));
 }
 
 function signOut(){
   const wasIn=!!sbUser;sbUser=null;
   if(sb&&wasIn)sb.auth.signOut({scope:'local'}).catch(e=>console.error('Log out:',e));
   sheetsSignOut();
-  allUsers=[];lastSeasonWinners=[];wallReportCounts={};myShopRatings={};
+  allUsers=[];lastSeasonWinners=[];wallReportCounts={};myShopRatings={};compMembers=[];compResults=[];
   document.querySelectorAll('#login-screen input').forEach(i=>i.value='');
   showAuthScreen();showAuthView('v-login');
 }
