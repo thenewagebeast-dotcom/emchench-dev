@@ -469,7 +469,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
     <div class="login-wrap">
       <div class="brand-logo">E=MC<span>-</span>HENCH</div>
       <div class="brand-tag">Your PT in your pocket</div>
-      <div class="alert alert-warn" style="font-size:12px">Backend preview - testers only. Moving across in steps: your account and profile work here now; plans, logs and the rest follow.</div>
+      <div class="alert alert-warn" style="font-size:12px">Backend preview - testers only. Moving across in steps: your account, profile and plans work here now; logging and the rest follow.</div>
       <div id="v-loading" class="view"><div style="color:var(--tx2);font-size:13px">Loading...</div></div>
 
       <!-- LOG IN -->
@@ -9317,19 +9317,83 @@ async function loginUser(u){
     waterMl=0;
     await loadUserData();
     renderDashboard();renderBody();renderProfile();
+    // The how-to guide saved with the plan (it cannot be regenerated until the AI moves across)
+    const guide=userMealPlan?.how_to_guide||getCachedHowTo();
+    if(guide)renderHowToGuideText(guide);
     hideLoad();
     if(pendingDeepLink){const t=pendingDeepLink;pendingDeepLink='';goTab(t);}else goTab('dashboard');
   }catch(e){hideLoad();console.error('Login:',e);alert('Could not load your account: '+e.message);}
 }
 
-// Slice 2a: only the profile has moved. Everything else starts empty, the way
-// it does for a brand new person, until its slice arrives.
+// ============================================================
+// PLANS (slice 2b, 22 Oct 2026)
+// The app's existing plan saves - weigh-in targets, recipe flags, meal and
+// exercise swaps, the how-to guide - all "read the sheet, find the plan row,
+// write it back". So meal_plans and training_plans are served here in the old
+// sheet layout, and each write goes back to the right Supabase row by its id.
+// Every other sheet still says it moves in a later step.
+// ============================================================
+function planRowToMeals(r){
+  const meals={...(r.plan||{}),daily_targets:r.daily_targets||{}};
+  if(r.built_for)meals.built_for=r.built_for;
+  if(r.flagged)meals.flagged=r.flagged;
+  return meals;
+}
+function mealRowToSheet(r){
+  const dt=r.daily_targets||{};
+  return writeMealsJson([r.id,r.user_id,r.created_at,r.month_number,CU?.goal||'',dt.calories||0,dt.protein||0,dt.carbs||0,dt.fats||0,'',r.how_to_guide||'','3month','progressive'],JSON.stringify(planRowToMeals(r)));
+}
+function sheetToMealPatch(row){
+  const {daily_targets,built_for,flagged,...plan}=JSON.parse(readMealsJson(row)||'{}');
+  return{plan,daily_targets:daily_targets||{},built_for:built_for||null,flagged:flagged||null,how_to_guide:String(row[10]||'')};
+}
+function trainingRowToSheet(r){
+  return[r.id,r.user_id,r.created_at,r.month_number,CU?.goal||'',CU?.experience||'',(CU?.equipment||[]).join(','),CU?.training_days||'',
+    JSON.stringify(r.sessions||[]),JSON.stringify(r.cardio||[]),r.notes||'',JSON.stringify(r.ab_sessions||[]),'3month','progressive',
+    r.built_for?.injuries||'',r.built_for?.avoided_exercises||''];
+}
+function sheetToTrainingPatch(row){
+  return{sessions:JSON.parse(row[8]||'[]'),cardio:JSON.parse(row[9]||'[]'),notes:String(row[10]||''),ab_sessions:JSON.parse(row[11]||'[]')};
+}
+const PLAN_SHEETS={
+  meal_plans:{table:'meal_plans',toSheet:mealRowToSheet,toPatch:sheetToMealPatch},
+  training_plans:{table:'training_plans',toSheet:trainingRowToSheet,toPatch:sheetToTrainingPatch}
+};
+// This person's finished plans, oldest first (row level security already limits it to them)
+async function fetchMyPlans(table){
+  const {data,error}=await sb.from(table).select('*').eq('user_id',CU.user_id).eq('status','ready').order('created_at',{ascending:true});
+  if(error)throw new Error(friendlyDbError(error));
+  return data||[];
+}
+async function dbGet(sheet){
+  const a=PLAN_SHEETS[sheet];
+  if(!a)throw new Error(NOT_MOVED);
+  const rows=await fetchMyPlans(a.table);
+  return{values:[['plan_id'],...rows.map(a.toSheet)]};
+}
+// The row number is ignored: the plan is found by its id (column 0), which cannot move
+async function dbUpdate(sheet,rowIndex,values){
+  const a=PLAN_SHEETS[sheet];
+  if(!a)throw new Error(NOT_MOVED);
+  const {data,error}=await sb.from(a.table).update(a.toPatch(values)).eq('id',values[0]).select('id').maybeSingle();
+  if(error)throw new Error(friendlyDbError(error));
+  if(!data)throw new Error('That plan could not be found to update.');
+  return{updated:true};
+}
+
+// Profile and plans have moved. Logs, points and the social side still start
+// empty, the way they do for a brand new person, until their slice arrives.
 async function loadUserData(){
   allPoints=[];userPoints={};userMealPlan=null;userTrainingPlan=null;
   wallPosts=[];competitions=[];measurements=[];dislikedMeals=[];socialEvents=[];activeEvent=null;waterMl=0;
   activityLogs={meals:[],workouts:[],water:[],pauses:[],loaded:false};
   const pts=document.getElementById('app-pts');if(pts)pts.textContent='0 PTS';
   showStreakHeader();
+  const [mealRows,trainRows]=await Promise.all([fetchMyPlans('meal_plans'),fetchMyPlans('training_plans')]);
+  const m=mealRows[mealRows.length-1];
+  if(m)userMealPlan={plan_id:m.id,month:m.month_number,created_at:m.created_at,meals:planRowToMeals(m),how_to_guide:m.how_to_guide||''};
+  const t=trainRows[trainRows.length-1];
+  if(t)userTrainingPlan={plan_id:t.id,month:t.month_number,sessions:t.sessions||[],cardio:t.cardio||[],notes:t.notes||'',ab_sessions:t.ab_sessions||[]};
 }
 function renderPauseStatus(){
   const st=document.getElementById('pause-status'),form=document.getElementById('pause-form');
