@@ -469,7 +469,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
     <div class="login-wrap">
       <div class="brand-logo">E=MC<span>-</span>HENCH</div>
       <div class="brand-tag">Your PT in your pocket</div>
-      <div class="alert alert-warn" style="font-size:12px">Backend preview - testers only. Moving across in steps: your account, profile and plans work here now; logging and the rest follow.</div>
+      <div class="alert alert-warn" style="font-size:12px">Backend preview - testers only. Moving across in steps: your account, profile, plans and logging work here now; the wall, competitions and AI features follow.</div>
       <div id="v-loading" class="view"><div style="color:var(--tx2);font-size:13px">Loading...</div></div>
 
       <!-- LOG IN -->
@@ -6379,7 +6379,7 @@ async function logWorkout(sidx){
   const lid='wl_'+Date.now();
   showLoad('Logging Session','Saving your workout...');
   try{
-    await dbAppend('workout_logs',[lid,CU.user_id,new Date().toISOString(),new Date().toDateString(),userTrainingPlan.plan_id,sidx,JSON.stringify(exercises),notes,award.total,JSON.stringify({}),sessRating,JSON.stringify({pct:Math.round(pct*100)/100,stop:stopReason})]);
+    await dbAppend('workout_logs',[lid,CU.user_id,new Date().toISOString(),new Date().toDateString(),userTrainingPlan.plan_id,sidx,JSON.stringify(exercises),notes,award.total,JSON.stringify({}),sessRating,JSON.stringify({pct:Math.round(pct*100)/100,stop:stopReason,pb:award.pb>0})]);
   }catch(e){hideLoad();alert('Error saving session: '+e.message);console.error(e);return;}
   // The session is saved - say so now. The rating, points, assessment capture and
   // deload check need several more trips to the sheet, so they finish in the
@@ -9136,7 +9136,6 @@ function saveSession(){}
 function clearSavedSession(){}
 async function tryResumeSession(){return false;}
 function renderUserGrid(){}
-async function checkWeighInDay(){}
 async function loadUsers(){allUsers=CU?[CU]:[];}
 
 // ============================================================
@@ -9317,6 +9316,7 @@ async function loginUser(u){
     waterMl=0;
     await loadUserData();
     renderDashboard();renderBody();renderProfile();
+    checkWeighInDay();
     // The how-to guide saved with the plan (it cannot be regenerated until the AI moves across)
     const guide=userMealPlan?.how_to_guide||getCachedHowTo();
     if(guide)renderHowToGuideText(guide);
@@ -9365,24 +9365,161 @@ async function fetchMyPlans(table){
   if(error)throw new Error(friendlyDbError(error));
   return data||[];
 }
-async function dbGet(sheet){
-  const a=PLAN_SHEETS[sheet];
-  if(!a)throw new Error(NOT_MOVED);
-  const rows=await fetchMyPlans(a.table);
-  return{values:[['plan_id'],...rows.map(a.toSheet)]};
-}
-// The row number is ignored: the plan is found by its id (column 0), which cannot move
-async function dbUpdate(sheet,rowIndex,values){
-  const a=PLAN_SHEETS[sheet];
-  if(!a)throw new Error(NOT_MOVED);
-  const {data,error}=await sb.from(a.table).update(a.toPatch(values)).eq('id',values[0]).select('id').maybeSingle();
+// ============================================================
+// LOGS (slice 2c, 22 Oct 2026)
+// Same idea as the plans: each log sheet the app reads and writes is served in
+// its old sheet layout and saved to its own table. Column 0 (the id the app
+// makes, e.g. "wl_1729...") is stored as client_ref, so a retried save cannot
+// double up and the app can find its rows again. Points go through the
+// server's award_points check (supabase/005_logging.sql) - never written directly.
+// ============================================================
+const isUuid=v=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v||''));
+const rowRef=r=>r.client_ref||r.id;
+const numOrNull=v=>{if(v===''||v==null)return null;const n=parseFloat(v);return isNaN(n)?null:n;};
+const intOrNull=v=>{if(v===''||v==null)return null;const n=parseInt(v);return isNaN(n)?null:n;};
+const blankIfNull=v=>v==null?'':v;
+function parseJsonSafe(v,fallback){try{return v==null||v===''?fallback:(typeof v==='string'?JSON.parse(v):v);}catch(e){return fallback;}}
+// A calendar day as a time the app's date code reads back as that same day, wherever the phone is
+const atNoon=day=>day?day+'T12:00:00':'';
+const nowIso=()=>new Date().toISOString();
+const LOG_SHEETS={
+  workout_logs:{table:'workout_logs',order:'logged_at',
+    toSheet:r=>[rowRef(r),r.user_id,r.logged_at,atNoon(r.day),r.plan_id||'',r.session_key,JSON.stringify(r.exercises||[]),r.notes||'',r.points||0,'{}',blankIfNull(r.rating),
+      JSON.stringify(r.session_key==='cardio'?{cardio:true}:{pct:r.share_logged==null?null:Number(r.share_logged),stop:r.stop_reason||'',pb:!!r.pb})],
+    fromSheet:v=>{const d=parseJsonSafe(v[11],{});const rating=intOrNull(v[10]);return{client_ref:String(v[0]),logged_at:v[2]||nowIso(),day:dayKey(v[2])||dayKey(new Date()),
+      plan_id:isUuid(v[4])?v[4]:null,session_key:String(v[5]),exercises:parseJsonSafe(v[6],[]),notes:String(v[7]||''),points:parseInt(v[8])||0,
+      rating:rating>=1&&rating<=5?rating:null,share_logged:typeof d.pct==='number'?d.pct:null,stop_reason:d.stop||null,pb:!!d.pb};},
+    award:r=>r.session_key==='cardio'?'cardio':String(r.session_key).startsWith('ab')?'ab_session':'session'},
+  meal_logs:{table:'meal_logs',order:'logged_at',
+    toSheet:r=>[rowRef(r),r.user_id,r.logged_at,atNoon(r.day),r.plan_id||'',JSON.stringify(r.meals_eaten||[]),r.calories,r.protein,r.carbs,r.fats,'',r.points||0,JSON.stringify(r.outside_food||[]),'',JSON.stringify({planned:r.planned_count==null?null:r.planned_count})],
+    fromSheet:v=>({client_ref:String(v[0]),logged_at:v[2]||nowIso(),day:dayKey(v[2])||dayKey(new Date()),plan_id:isUuid(v[4])?v[4]:null,meals_eaten:parseJsonSafe(v[5],[]),
+      calories:parseInt(v[6])||0,protein:parseInt(v[7])||0,carbs:parseInt(v[8])||0,fats:parseInt(v[9])||0,points:parseInt(v[11])||0,outside_food:parseJsonSafe(v[12],[]),
+      planned_count:parseInt(parseJsonSafe(v[14],{}).planned)||null}),
+    award:()=>'meal_log'},
+  // One row per day: saved with "upsert", so adding water twice in a day updates the same row
+  water_log:{table:'water_days',order:'day',upsert:'user_id,day',
+    toSheet:r=>['wd_'+r.day,r.user_id,atNoon(r.day),r.ml,r.updated_at],
+    fromSheet:v=>({day:dayKey(v[2])||dayKey(new Date()),ml:Math.max(0,parseInt(v[3])||0),updated_at:nowIso()})},
+  weigh_in_log:{table:'weigh_ins',order:'logged_at',
+    toSheet:r=>[rowRef(r),r.user_id,r.logged_at,blankIfNull(r.weight_kg),blankIfNull(r.energy),blankIfNull(r.hunger),blankIfNull(r.training_feel),r.notes||'',r.adjustment||0,r.confirmed?'confirmed':'pending'],
+    fromSheet:v=>({client_ref:String(v[0]),logged_at:v[2]||nowIso(),weight_kg:numOrNull(v[3]),energy:intOrNull(v[4]),hunger:intOrNull(v[5]),training_feel:intOrNull(v[6]),
+      notes:String(v[7]||''),adjustment:parseInt(v[8])||0,confirmed:String(v[9])==='confirmed'})},
+  measurements:{table:'measurements',order:'logged_at',
+    toSheet:r=>[rowRef(r),r.user_id,r.logged_at,...['weight_kg','waist','chest','biceps','shoulders','quads','calves','forearms'].map(k=>blankIfNull(r[k])),r.notes||''],
+    fromSheet:v=>({client_ref:String(v[0]),logged_at:v[2]||nowIso(),weight_kg:numOrNull(v[3]),waist:numOrNull(v[4]),chest:numOrNull(v[5]),biceps:numOrNull(v[6]),
+      shoulders:numOrNull(v[7]),quads:numOrNull(v[8]),calves:numOrNull(v[9]),forearms:numOrNull(v[10]),notes:String(v[11]||'')}),
+    award:()=>'body_stats'},
+  holiday_log:{table:'pauses',order:'created_at',
+    toSheet:r=>[rowRef(r),r.user_id,'D'+r.start_day,'D'+r.end_day,r.status,r.reason],
+    fromSheet:v=>({client_ref:String(v[0]),start_day:dayKey(v[2]),end_day:dayKey(v[3]),status:String(v[4]||'active'),reason:String(v[5]||'Holiday')})},
+  social_events:{table:'social_events',order:'created_at',
+    toSheet:r=>[rowRef(r),r.user_id,atNoon(r.event_day),r.name,r.calories_banked,r.daily_reduction,r.reduced_daily_cals,r.guide||'',r.day_total,r.lead_up_days,r.status],
+    fromSheet:v=>({client_ref:String(v[0]),event_day:dayKey(v[2]),name:String(v[3]||''),calories_banked:parseInt(v[4])||0,daily_reduction:parseInt(v[5])||0,
+      reduced_daily_cals:parseInt(v[6])||0,guide:String(v[7]||''),day_total:parseInt(v[8])||0,lead_up_days:parseInt(v[9])||14,status:String(v[10]||'active')})},
+  disliked_meals:{table:'disliked_meals',order:'created_at',
+    toSheet:r=>[rowRef(r),r.user_id,r.meal_name,r.category,r.created_at],
+    fromSheet:v=>({client_ref:String(v[0]),meal_name:String(v[2]||''),category:String(v[3]||'rotation')})},
+  rapport_answers:{table:'rapport_answers',order:'created_at',
+    toSheet:r=>[r.id,r.user_id,r.round,r.created_at,JSON.stringify(r.answers||{})],
+    fromSheet:v=>({round:parseInt(v[2])||0,answers:parseJsonSafe(v[4],{})})}
+};
+// The rows behind the last read of each sheet, so a delete by row number finds the right row
+const lastSheetRows={};
+let pendingAward=null;   // the log just saved, waiting for addPoints to claim its points
+async function fetchMine(table,order){
+  const {data,error}=await sb.from(table).select('*').eq('user_id',CU.user_id).order(order,{ascending:true});
   if(error)throw new Error(friendlyDbError(error));
-  if(!data)throw new Error('That plan could not be found to update.');
+  return data||[];
+}
+async function dbGet(sheet){
+  const p=PLAN_SHEETS[sheet];
+  if(p){const rows=await fetchMyPlans(p.table);return{values:[['plan_id'],...rows.map(p.toSheet)]};}
+  const a=LOG_SHEETS[sheet];
+  if(!a)throw new Error(NOT_MOVED);
+  const rows=await fetchMine(a.table,a.order);
+  lastSheetRows[sheet]=rows;
+  return{values:[['id'],...rows.map(a.toSheet)]};
+}
+async function dbAppend(sheet,values){
+  // Session ratings now live on the workout log itself
+  if(sheet==='session_ratings')return{};
+  const a=LOG_SHEETS[sheet];
+  if(!a)throw new Error(NOT_MOVED);
+  const row=a.fromSheet(values);
+  const {error}=a.upsert
+    ?await sb.from(a.table).upsert(row,{onConflict:a.upsert})
+    :await sb.from(a.table).insert(row);
+  // Already saved by an earlier attempt: that is the save we wanted, not an error
+  if(error&&error.code!=='23505')throw new Error(friendlyDbError(error));
+  if(a.award&&row.client_ref)pendingAward={reason:a.award(row),ref:row.client_ref};
+  return{};
+}
+// The row number is ignored: the row is found by its id (column 0), which cannot move
+async function dbUpdate(sheet,rowIndex,values){
+  const p=PLAN_SHEETS[sheet];
+  if(p){
+    const {data,error}=await sb.from(p.table).update(p.toPatch(values)).eq('id',values[0]).select('id').maybeSingle();
+    if(error)throw new Error(friendlyDbError(error));
+    if(!data)throw new Error('That plan could not be found to update.');
+    return{updated:true};
+  }
+  const a=LOG_SHEETS[sheet];
+  if(!a)throw new Error(NOT_MOVED);
+  if(a.upsert){const {error}=await sb.from(a.table).upsert(a.fromSheet(values),{onConflict:a.upsert});if(error)throw new Error(friendlyDbError(error));return{updated:true};}
+  const {client_ref,...patch}=a.fromSheet(values);
+  const {data,error}=await sb.from(a.table).update(patch).eq(isUuid(values[0])?'id':'client_ref',String(values[0])).select('id').maybeSingle();
+  if(error)throw new Error(friendlyDbError(error));
+  if(!data)throw new Error('That entry could not be found to update.');
   return{updated:true};
 }
+async function dbDelete(sheet,rowIndex){
+  const a=LOG_SHEETS[sheet];
+  if(!a)throw new Error(NOT_MOVED);
+  // Row numbers count the header as row 1, so data row n sits at rows[n-2]
+  const row=(lastSheetRows[sheet]||[])[rowIndex-2];
+  if(!row)throw new Error('That entry could not be found to delete.');
+  const {error}=await sb.from(a.table).delete().eq('id',row.id);
+  if(error)throw new Error(friendlyDbError(error));
+  return{deleted:true};
+}
 
-// Profile and plans have moved. Logs, points and the social side still start
-// empty, the way they do for a brand new person, until their slice arrives.
+// ---- points and streaks ----
+// Totals are sums of the ledger; streaks are worked out from the logs (Part 4
+// rules) and a copy saved so the leaderboard can show them.
+async function ensurePointsRow(){}
+async function addPoints({pts=0}={}){
+  const myId=CU?.user_id;if(!myId)return;
+  const award=pendingAward;pendingAward=null;
+  if(pts>0&&award){
+    try{const {error}=await sb.rpc('award_points',{p_reason:award.reason,p_ref:award.ref,p_points:pts});if(error)throw error;}
+    catch(e){console.error('Award points:',e);}
+  }
+  try{await refreshPointsAndStreaks(myId);}catch(e){console.error('Points refresh:',e);}
+}
+async function refreshPointsAndStreaks(myId){
+  const {data:ledger,error}=await sb.from('points_ledger').select('points,reason,at').eq('user_id',myId);
+  if(error)throw new Error(friendlyDbError(error));
+  const {count:pbCount}=await sb.from('workout_logs').select('id',{count:'exact',head:true}).eq('user_id',myId).eq('pb',true);
+  if(CU?.user_id!==myId)return;
+  const monthStart=new Date();monthStart.setDate(1);monthStart.setHours(0,0,0,0);
+  const sum=list=>list.reduce((n,l)=>n+(parseInt(l.points)||0),0);
+  userPoints={record_id:'ledger',user_id:myId,username:CU.username,
+    total_points:sum(ledger||[]),season_points:sum((ledger||[]).filter(l=>new Date(l.at)>=monthStart)),
+    sessions_logged:activityLogs.workouts.filter(w=>!w.cardio).length,meals_logged:activityLogs.meals.length,
+    pbs_logged:pbCount||0,challenges_won:(ledger||[]).filter(l=>l.reason==='challenge').length,
+    current_streak:0,longest_streak:0,season_wins:0,meal_streak:0,water_streak:0};
+  refreshStreaks();
+  allPoints=[userPoints];
+  const {error:sErr}=await sb.from('streaks').upsert({user_id:myId,workout_weeks:userPoints.current_streak||0,longest_workout_weeks:userPoints.longest_streak||0,
+    meal_days:userPoints.meal_streak||0,water_days:userPoints.water_streak||0,updated_at:nowIso()},{onConflict:'user_id'});
+  if(sErr)console.error('Streak save:',sErr);
+  const ptsEl=document.getElementById('app-pts');if(ptsEl)ptsEl.textContent=(userPoints.season_points||0)+' PTS';
+  showStreakHeader();
+  renderLeaderboard('dash-lb');renderCompeteLeaderboard();
+}
+
+// Profile, plans and logs have moved. The social side (wall, competitions,
+// leaderboard of other people) still starts empty until its slice arrives.
 async function loadUserData(){
   allPoints=[];userPoints={};userMealPlan=null;userTrainingPlan=null;
   wallPosts=[];competitions=[];measurements=[];dislikedMeals=[];socialEvents=[];activeEvent=null;waterMl=0;
@@ -9394,11 +9531,22 @@ async function loadUserData(){
   if(m)userMealPlan={plan_id:m.id,month:m.month_number,created_at:m.created_at,meals:planRowToMeals(m),how_to_guide:m.how_to_guide||''};
   const t=trainRows[trainRows.length-1];
   if(t)userTrainingPlan={plan_id:t.id,month:t.month_number,sessions:t.sessions||[],cardio:t.cardio||[],notes:t.notes||'',ab_sessions:t.ab_sessions||[]};
-}
-function renderPauseStatus(){
-  const st=document.getElementById('pause-status'),form=document.getElementById('pause-form');
-  if(st)st.innerHTML=`<div class="alert alert-info" style="margin-bottom:10px">${NOT_MOVED}</div>`;
-  if(form)form.style.display='none';
+  try{
+    // Read in the old sheet layout, so the parsing code from Parts 1 to 4 is reused unchanged
+    const sheet=async name=>(await dbGet(name)).values.slice(1);
+    const [wl,ml,wd,hol,meas,dis,se]=await Promise.all(['workout_logs','meal_logs','water_log','holiday_log','measurements','disliked_meals','social_events'].map(sheet));
+    measurements=meas.map(r=>({logged_at:r[2],weight:r[3],waist:r[4],chest:r[5],biceps:r[6],shoulders:r[7],quads:r[8],calves:r[9],forearms:r[10]}));
+    dislikedMeals=dis.map(r=>({name:r[2],category:r[3]}));
+    socialEvents=se.map(r=>({event_id:r[0],user_id:r[1],event_date:r[2],event_name:r[3],calories_banked:parseInt(r[4])||0,daily_reduction:parseInt(r[5])||0,
+      reduced_daily_cals:parseInt(r[6])||0,guide:r[7]||'',day_total:parseInt(r[8])||0,lead_up_days:parseInt(r[9])||14,status:r[10]||'active'}));
+    activeEvent=getActiveEvent();
+    const today=wd.find(r=>isSameCalendarDay(r[2]));waterMl=today?parseInt(today[3])||0:0;
+    activityLogs={meals:ml.map(parseMealLogRow),workouts:wl.map(parseWorkoutLogRow),water:wd.map(r=>({day:dayKey(r[2]),ml:parseInt(r[3])||0})),pauses:hol.map(parsePauseRow),loaded:true};
+    await refreshPointsAndStreaks(CU.user_id);
+  }catch(e){
+    // Streaks are never worked out from part of the picture (Part 4 rule)
+    activityLogs.loaded=false;console.error('Load logs:',e);
+  }
 }
 
 function signOut(){

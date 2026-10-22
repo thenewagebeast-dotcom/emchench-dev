@@ -6330,7 +6330,7 @@ async function logWorkout(sidx){
   const lid='wl_'+Date.now();
   showLoad('Logging Session','Saving your workout...');
   try{
-    await dbAppend('workout_logs',[lid,CU.user_id,new Date().toISOString(),new Date().toDateString(),userTrainingPlan.plan_id,sidx,JSON.stringify(exercises),notes,award.total,JSON.stringify({}),sessRating,JSON.stringify({pct:Math.round(pct*100)/100,stop:stopReason})]);
+    await dbAppend('workout_logs',[lid,CU.user_id,new Date().toISOString(),new Date().toDateString(),userTrainingPlan.plan_id,sidx,JSON.stringify(exercises),notes,award.total,JSON.stringify({}),sessRating,JSON.stringify({pct:Math.round(pct*100)/100,stop:stopReason,pb:award.pb>0})]);
   }catch(e){hideLoad();alert('Error saving session: '+e.message);console.error(e);return;}
   // The session is saved - say so now. The rating, points, assessment capture and
   // deload check need several more trips to the sheet, so they finish in the
