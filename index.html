@@ -1289,7 +1289,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct AI timings';
+const APP_BUILD='23 Oct prompts lifted';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -3962,6 +3962,19 @@ let foodCheckRunning=false;
 
 // Reads every recipe against the current rules and stores the result on the plan.
 // Returns {flagged, total, aiRan, aiError}. Throws only if the result cannot be saved.
+const FOOD_CHECK_SYS='You are a careful food safety checker for a meal planning app. You only report what is in the ingredient lists you are given.';
+function foodCheckPrompt(rules,recipes){
+  return`Check each recipe below against this person's food rules.
+RULES NOW - Diet: ${rules.dietary_type||'not set'}. Allergies and intolerances: ${normAllergies(rules.allergies)||'none'}.
+Decide whether ANY ingredient breaks a rule. Include hidden sources: pesto contains nuts and cheese, soy sauce contains gluten and soy, Worcestershire sauce contains fish, mayonnaise contains egg, stock and gravy often contain gluten, many protein powders contain milk. Be strict - if an ingredient commonly contains a ruled-out food and the recipe does not say a free-from version, flag it. Do not flag an ingredient that is clearly a free-from or plant-based version.
+RECIPES:
+${recipes.map(({meal},i)=>`${i+1}. ${meal.name} :: ${String(meal.ingredients_uk||'').replace(/\s+/g,' ').slice(0,900)}`).join('\n')}
+Return ONLY this JSON, with one entry per recipe that breaks a rule and an empty list if none do:
+\`\`\`json
+{"flagged":[{"n":1,"reason":"Contains dairy: Greek yogurt"}]}
+\`\`\`
+"n" is the recipe's number above. "reason" is under 12 words and names the ingredient.`;
+}
 async function checkPlanFoodRules(){
   const rules=currentFoodRules();
   const recipes=allPlanRecipes();
@@ -3974,17 +3987,8 @@ async function checkPlanFoodRules(){
   if(!CU.api_key){aiError='no API key on this profile';}
   else if(recipes.length){
     try{
-      const prompt=`Check each recipe below against this person's food rules.
-RULES NOW - Diet: ${rules.dietary_type||'not set'}. Allergies and intolerances: ${normAllergies(rules.allergies)||'none'}.
-Decide whether ANY ingredient breaks a rule. Include hidden sources: pesto contains nuts and cheese, soy sauce contains gluten and soy, Worcestershire sauce contains fish, mayonnaise contains egg, stock and gravy often contain gluten, many protein powders contain milk. Be strict - if an ingredient commonly contains a ruled-out food and the recipe does not say a free-from version, flag it. Do not flag an ingredient that is clearly a free-from or plant-based version.
-RECIPES:
-${recipes.map(({meal},i)=>`${i+1}. ${meal.name} :: ${String(meal.ingredients_uk||'').replace(/\s+/g,' ').slice(0,900)}`).join('\n')}
-Return ONLY this JSON, with one entry per recipe that breaks a rule and an empty list if none do:
-\`\`\`json
-{"flagged":[{"n":1,"reason":"Contains dairy: Greek yogurt"}]}
-\`\`\`
-"n" is the recipe's number above. "reason" is under 12 words and names the ingredient.`;
-      const res=await callAI(CU.api_key,prompt,'You are a careful food safety checker for a meal planning app. You only report what is in the ingredient lists you are given.',8000);
+      const prompt=foodCheckPrompt(rules,recipes);
+      const res=await callAI(CU.api_key,prompt,FOOD_CHECK_SYS,8000);
       for(const f of(res&&res.flagged)||[]){
         const hit=recipes[parseInt(f.n)-1];
         if(hit)items[hit.meal.name]=String(f.reason||items[hit.meal.name]||'Breaks one of your food rules').slice(0,90);
@@ -4060,6 +4064,11 @@ Reply ONLY with valid JSON: {"name":"","calories":0,"protein":0,"carbs":0,"fats"
 
 // Replaces every flagged recipe with a new one written for the current rules,
 // one at a time, saving the plan at the end (or at the point it stopped).
+const REPLACE_MEAL_SYS='You write single recipes as strict JSON for a meal planning app.';
+function replaceMealPrompt(name,cat,taken){
+  const intro=`Write a full recipe for a DIFFERENT dish to replace "${name}" as a ${cat.replace(/_/g,' ')} meal. It must follow every dietary rule below exactly. Do not reuse any of these names: ${taken}.`;
+  return mealRecipePrompt(intro,cat);
+}
 async function replaceFlaggedMeals(){
   const flags=planFlags();
   const names=flags?Object.keys(flags):[];
@@ -4074,8 +4083,7 @@ async function replaceFlaggedMeals(){
       if(!found){delete userMealPlan.meals.flagged.items[name];continue;}
       showLoad(`Replacing Meals (${done+1} of ${names.length})`,`Writing a new recipe in place of ${name}...`);
       const taken=allPlanRecipes().map(x=>x.meal.name).join(', ');
-      const intro=`Write a full recipe for a DIFFERENT dish to replace "${name}" as a ${found.cat.replace(/_/g,' ')} meal. It must follow every dietary rule below exactly. Do not reuse any of these names: ${taken}.`;
-      const recipe=await callAI(CU.api_key,mealRecipePrompt(intro,found.cat),'You write single recipes as strict JSON for a meal planning app.',6000);
+      const recipe=await callAI(CU.api_key,replaceMealPrompt(name,found.cat,taken),REPLACE_MEAL_SYS,6000);
       if(!recipe||!recipe.name||!recipe.ingredients_uk)throw new Error('the replacement for '+name+' came back incomplete');
       applyMealSwapInMemory(name,recipe,found.cat);
       done++;
@@ -4309,10 +4317,7 @@ User goal: ${CU.goal}. Use all of the above to inform calorie targets, meal freq
   }
 }
 
-async function genPatternAnalysis(weighIns, recentLogs){
-  const apiKey=CU.api_key;
-  if(!apiKey)return null;
-
+function patternAnalysisPrompt(weighIns,recentLogs){
   // Build the data summary to send to the AI
   const weights=weighIns.map(r=>parseFloat(r[3])||0).filter(w=>w>0);
   const energies=weighIns.map(r=>parseFloat(r[4])||0);
@@ -4343,7 +4348,7 @@ async function genPatternAnalysis(weighIns, recentLogs){
   const patternStyle=CU.mot_style||'Mix of Everything';
   const patternStyleVoice=getStyleVoice(patternStyle);
 
-  const prompt=`You are E=MC-HENCH, a personal trainer reviewing 3 weeks of data for ${CU.username}. Your job is to make a precise, data-driven calorie recommendation and explain it clearly.
+  return`You are E=MC-HENCH, a personal trainer reviewing 3 weeks of data for ${CU.username}. Your job is to make a precise, data-driven calorie recommendation and explain it clearly.
 
 MOTIVATIONAL STYLE - ${patternStyle}: ${patternStyleVoice}
 Write the explanation in this voice throughout, not just a closing line.
@@ -4385,6 +4390,12 @@ Return ONLY valid JSON in this exact format:
   "explanation": "3 to 5 sentences explaining exactly what the data shows and why this recommendation follows from it. Be specific about which numbers led to which conclusion. Write in the user's motivational style. Reference actual numbers from the data. End with one sentence about what to expect over the next 3 weeks if this recommendation is followed.",
   "composition_note": "Only populate this if recommendation is HOLD_ADJUST - specific guidance on which macros to shift and why. Otherwise empty string."
 }`;
+}
+async function genPatternAnalysis(weighIns, recentLogs){
+  const apiKey=CU.api_key;
+  if(!apiKey)return null;
+
+  const prompt=patternAnalysisPrompt(weighIns,recentLogs);
 
   try{
     const controller=new AbortController();
@@ -5101,6 +5112,24 @@ async function restoreMealInline(btn){
   celebrateMsg('mealRestored','↩','Restored!',{name});
 }
 
+// ---- AI instructions for the features below (Phase 4: these move to the server word for word) ----
+function mealSwapNamesPrompt(mealName,cat,targetCals,targetProtein){
+  const dislikes=CU.ingredient_dislikes||'none';
+  const dietary=CU.dietary_type||'any';
+  const allergies=CU.allergies?.join(',')||'none';
+  const slotCookMap={breakfasts:'Breakfast',snacks:'Snacks',lunches:'Lunch',dinners:'Dinner',evening_snacks:'Snacks'};
+  const slotKey=slotCookMap[cat]||'Lunch';
+  const slotCook=(CU.cook_time||'').match(new RegExp(slotKey+':[^,]+'))?.[0]?.split(':')[1]?.trim()||'20 mins';
+  return`You are E=MC-HENCH. The user wants to swap "${mealName}" (a ${cat.replace(/_/g,' ')} - ${targetCals} kcal, ${targetProtein}g protein).
+Find 2 completely different alternatives in the same category that hit similar macros (within 10% of ${targetCals} kcal and ${targetProtein}g protein).
+User dietary: ${dietary}. Allergies: ${allergies}. Ingredient dislikes - NEVER use these: ${dislikes}.${getHealthDietLine()}
+Cook time: ${slotCook}. Budget: ${CU.weekly_budget||'mid-range'}.
+Reply ONLY with valid JSON: {"alternatives":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy"},{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy"}]}`;
+}
+function mealSwapRecipePrompt(newName,cat){
+  return mealRecipePrompt(`Generate a full recipe for "${newName}" as a ${cat.replace(/_/g,' ')} meal.`,cat);
+}
+
 async function openMealSwap(btn){
   const mealName=btn.dataset.mealName;
   const cat=btn.dataset.mealCat;
@@ -5118,17 +5147,7 @@ async function openMealSwap(btn){
   btn.textContent='Finding...';btn.disabled=true;
 
   try{
-    const dislikes=CU.ingredient_dislikes||'none';
-    const dietary=CU.dietary_type||'any';
-    const allergies=CU.allergies?.join(',')||'none';
-    const slotCookMap={breakfasts:'Breakfast',snacks:'Snacks',lunches:'Lunch',dinners:'Dinner',evening_snacks:'Snacks'};
-    const slotKey=slotCookMap[cat]||'Lunch';
-    const slotCook=(CU.cook_time||'').match(new RegExp(slotKey+':[^,]+'))?.[0]?.split(':')[1]?.trim()||'20 mins';
-    const prompt=`You are E=MC-HENCH. The user wants to swap "${mealName}" (a ${cat.replace(/_/g,' ')} - ${targetCals} kcal, ${targetProtein}g protein).
-Find 2 completely different alternatives in the same category that hit similar macros (within 10% of ${targetCals} kcal and ${targetProtein}g protein).
-User dietary: ${dietary}. Allergies: ${allergies}. Ingredient dislikes - NEVER use these: ${dislikes}.${getHealthDietLine()}
-Cook time: ${slotCook}. Budget: ${CU.weekly_budget||'mid-range'}.
-Reply ONLY with valid JSON: {"alternatives":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy"},{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy"}]}`;
+    const prompt=mealSwapNamesPrompt(mealName,cat,targetCals,targetProtein);
 
     const controller=new AbortController();
     const timeout=setTimeout(()=>controller.abort(),60000);
@@ -5182,7 +5201,7 @@ async function confirmMealSwap(btn){
   if(resEl)resEl.innerHTML=`<div style="font-size:13px;color:var(--tx2)">Getting full recipe for ${newName}...</div>`;
 
   try{
-    const prompt=mealRecipePrompt(`Generate a full recipe for "${newName}" as a ${cat.replace(/_/g,' ')} meal.`,cat);
+    const prompt=mealSwapRecipePrompt(newName,cat);
 
     const controller=new AbortController();
     const timeout=setTimeout(()=>controller.abort(),60000);
@@ -5857,6 +5876,9 @@ function openSwapModal(sidx,eidx,name){
   openModal('swap-modal');
 }
 
+function exerciseSwapPrompt(exercise,equip,constraints,hasPhoto){
+  return`You are E=MC-HENCH. The user cannot do ${exercise} right now. Available equipment: ${equip}. Constraints: ${constraints}. User injuries: ${CU.injuries||'none'}. Avoided exercises: ${CU.avoided_exercises||'none'}.${hasPhoto?' The user has attached a photo of the equipment they actually have available right now - identify what is usable in the photo and base your suggestion on that, in addition to anything they typed above.':''} Suggest the single best alternative that hits the same primary muscle. Reply with ONLY: {"name":"","sets":"","reps":"","how_to":"Setup: X. Execution: X. Mistake: X."}`;
+}
 async function getSwap(){
   const equip=document.getElementById('swap-equip')?.value||'standard gym equipment';
   const constraints=document.getElementById('swap-constraints')?.value||'none';
@@ -5867,7 +5889,7 @@ async function getSwap(){
   try{
     const controller=new AbortController();
     const timeout=setTimeout(()=>controller.abort(),60000);
-    const promptText=`You are E=MC-HENCH. The user cannot do ${swapExercise} right now. Available equipment: ${equip}. Constraints: ${constraints}. User injuries: ${CU.injuries||'none'}. Avoided exercises: ${CU.avoided_exercises||'none'}.${swapEquipmentPhoto?' The user has attached a photo of the equipment they actually have available right now - identify what is usable in the photo and base your suggestion on that, in addition to anything they typed above.':''} Suggest the single best alternative that hits the same primary muscle. Reply with ONLY: {"name":"","sets":"","reps":"","how_to":"Setup: X. Execution: X. Mistake: X."}`;
+    const promptText=exerciseSwapPrompt(swapExercise,equip,constraints,!!swapEquipmentPhoto);
     const messageContent=swapEquipmentPhoto
       ?[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:swapEquipmentPhoto}},{type:'text',text:promptText}]
       :promptText;
@@ -6790,28 +6812,31 @@ function buildRecompSummary(){
   const weightPart=(!isNaN(wF)&&!isNaN(wL))?` Bodyweight over the same period: ${wL>wF?'+':''}${(wL-wF).toFixed(1)}kg.`:'';
   return `Measurement trend from ${(first.logged_at||'').split('T')[0]} to ${(latest.logged_at||'').split('T')[0]}: ${deltas.join(', ')}.${weightPart}`;
 }
+function progressReportPrompt(){
+  const style=CU.mot_style||'Mix of Everything';
+  const styleVoice=getStyleVoice(style);
+  const recompSummary=buildRecompSummary();
+  return`You are E=MC-HENCH. Write a progress report for ${CU.username} in ${style} motivational style.
+Stats: ${userPoints.sessions_logged} sessions, ${userPoints.current_streak||0} week workout streak, ${userPoints.pbs_logged} PBs, ${userPoints.season_points} season pts.
+Goal: ${CU.goal}, Experience: ${CU.experience}, Weight: ${CU.weight_kg}kg.
+${recompSummary?recompSummary+' If this shows body recomposition (e.g. waist down while other measurements hold or rise) even though bodyweight has barely moved, explicitly call this out as real progress the scale alone would not show.':''}
+Under 180 words. Direct. Give 3 specific action points for next 2 weeks.
+Voice for this style - ${style}: ${styleVoice}
+Write the ENTIRE report in this voice, not just a closing line.`;
+}
 async function genProgressReport(){
   renderProgressContent();
   showLoad('Generating Report','AI is analysing your progress...');
   try{
     const apiKey=CU.api_key;
     if(!apiKey){hideLoad();alert('No API key - add it in Profile');return;}
-    const style=CU.mot_style||'Mix of Everything';
-    const styleVoice=getStyleVoice(style);
-    const recompSummary=buildRecompSummary();
     const controller=new AbortController();
     const timeout=setTimeout(()=>controller.abort(),60000);
     const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       signal:controller.signal,
       headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
-      body:JSON.stringify({model:AI_MODEL,max_tokens:5000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:`You are E=MC-HENCH. Write a progress report for ${CU.username} in ${style} motivational style.
-Stats: ${userPoints.sessions_logged} sessions, ${userPoints.current_streak||0} week workout streak, ${userPoints.pbs_logged} PBs, ${userPoints.season_points} season pts.
-Goal: ${CU.goal}, Experience: ${CU.experience}, Weight: ${CU.weight_kg}kg.
-${recompSummary?recompSummary+' If this shows body recomposition (e.g. waist down while other measurements hold or rise) even though bodyweight has barely moved, explicitly call this out as real progress the scale alone would not show.':''}
-Under 180 words. Direct. Give 3 specific action points for next 2 weeks.
-Voice for this style - ${style}: ${styleVoice}
-Write the ENTIRE report in this voice, not just a closing line.`}]})
+      body:JSON.stringify({model:AI_MODEL,max_tokens:5000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:progressReportPrompt()}]})
     });
     clearTimeout(timeout);
     const data=await res.json();
@@ -6846,18 +6871,10 @@ function renderHowToGuideText(guide){
   }
 }
 
-async function genHowToGuide(){
-  if(!CU.api_key){showHowToError('No API key found on this account. Please add your Anthropic API key in Profile.');return false;}
-  const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),60000);
-  try{
-    const style=CU.mot_style||'Mix of Everything';
-    const styleVoice=getStyleVoice(style);
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':CU.api_key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
-      body:JSON.stringify({model:AI_MODEL,max_tokens:5000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:`You are E=MC-HENCH. Write a personalised how-to guide for ${CU.username} in ${style} motivational style.
+function howToGuidePrompt(){
+  const style=CU.mot_style||'Mix of Everything';
+  const styleVoice=getStyleVoice(style);
+  return`You are E=MC-HENCH. Write a personalised how-to guide for ${CU.username} in ${style} motivational style.
 Goal: ${CU.goal}, experience: ${CU.experience}, training ${CU.training_days} days/week.
 
 CRITICAL FORMAT RULES - follow exactly:
@@ -6884,7 +6901,18 @@ For the shop section, briefly explain: the Shop tab is a directory of trusted pl
 For the modes section, briefly explain two things: Pause (found in Body Stats) freezes your streaks for a holiday, illness or injury for up to 30 days instead of resetting them, and picks up exactly where it left off when you're back - meals and workouts can still be logged as normal. Calorie banking (set up when planning ahead for a social event) reduces your calories slightly on the days leading up to the event, so you have more room to enjoy it on the day itself, then returns to normal straight after.
 
 Voice for this style - ${style}: ${styleVoice}
-Write the ENTIRE guide in this voice, not just the closing section. Make it feel personal to ${CU.username}. Plain text only.`}]})
+Write the ENTIRE guide in this voice, not just the closing section. Make it feel personal to ${CU.username}. Plain text only.`;
+}
+async function genHowToGuide(){
+  if(!CU.api_key){showHowToError('No API key found on this account. Please add your Anthropic API key in Profile.');return false;}
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),60000);
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      signal:controller.signal,
+      headers:{'Content-Type':'application/json','x-api-key':CU.api_key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
+      body:JSON.stringify({model:AI_MODEL,max_tokens:5000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:howToGuidePrompt()}]})
     });
     clearTimeout(timeout);
     const data=await res.json();
@@ -8736,19 +8764,10 @@ function previewEventBank(){
   document.getElementById('ev-confirm-row').style.display='block';
 }
 
-async function confirmEventBank(){
-  if(!pendingEventBank)return;
-  const ev=pendingEventBank;
-  const apiKey=CU.api_key;
-  if(!apiKey){alert('No API key found in profile.');return;}
-
-  closeModal('event-modal');
-  showLoad('Planning Your Event','Getting your personalised event guide...');
-
-  try{
+function eventBankPrompt(ev){
     const eventStyle=CU.mot_style||'Mix of Everything';
     const eventStyleVoice=getStyleVoice(eventStyle);
-    const prompt=`You are E=MC-HENCH. The user has planned a social event called "${ev.name}" on ${new Date(ev.date).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}. They have banked ${ev.totalBank} calories by reducing their intake by ${ev.dailyReduction} kcal per day for ${ev.leadUpDays} days.
+  return`You are E=MC-HENCH. The user has planned a social event called "${ev.name}" on ${new Date(ev.date).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}. They have banked ${ev.totalBank} calories by reducing their intake by ${ev.dailyReduction} kcal per day for ${ev.leadUpDays} days.
 
 Their normal daily target is ${ev.currentCals} kcal. Their event day allowance is ${ev.currentCals+ev.totalBank} kcal.
 Their goal is: ${CU.goal}.
@@ -8761,6 +8780,18 @@ Write a short, warm, specific event day guide. Include:
 Voice for this style - ${eventStyle}: ${eventStyleVoice}
 Write the whole guide in this voice. Keep it under 5 sentences total. Do not use em dashes.
 Reply ONLY with valid JSON: {"guide":"...","day_total":${ev.currentCals+ev.totalBank}}`;
+}
+async function confirmEventBank(){
+  if(!pendingEventBank)return;
+  const ev=pendingEventBank;
+  const apiKey=CU.api_key;
+  if(!apiKey){alert('No API key found in profile.');return;}
+
+  closeModal('event-modal');
+  showLoad('Planning Your Event','Getting your personalised event guide...');
+
+  try{
+    const prompt=eventBankPrompt(ev);
 
     const controller=new AbortController();
     const timeout=setTimeout(()=>controller.abort(),60000);
