@@ -1359,7 +1359,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct 4d shopping list';
+const APP_BUILD='23 Oct 4e delete account';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -10680,8 +10680,58 @@ async function shopTicksClear(week){
   return !error;
 }
 
-// ---- not moved yet: say so plainly ----
-function deleteAccount(){showInfo('Delete Account','<p>Deleting an account needs the server, which arrives in a later phase of the new backend. Until then, ask Dom.</p>');}
+// ---- Delete my account (4e, 23 Oct 2026) ----
+// The password is checked by signing in again (as Change Password does), then the server
+// deletes the challenge videos and the login, and the database removes the rest
+// (supabase/026 proves it). One attempt, never retried. Replaces the Sheets PIN version.
+function deleteAccount(){
+  if(CU.is_admin){showInfo('Delete Account','<p>The admin account cannot be deleted from the app, so it is never left without an admin. Do it from the Supabase dashboard (Authentication > Users).</p>');return;}
+  const m=document.querySelector('#delete-pin-modal .modal');
+  m.innerHTML=`<div class="modal-title">Delete My Account</div>
+    <div style="font-size:13px;color:var(--tx2);line-height:1.55;margin-bottom:10px"><b style="color:var(--tx)">Removed for good:</b> your profile and sign-up answers, your plans, every log (workouts, meals, water, weigh-ins, body stats, sleep and soreness, pauses, social events), points, streaks and season wins, wall posts and reports, shop ratings, challenges you made (for everyone in them) and your challenge videos, shopping ticks, and your login.</div>
+    <div style="font-size:13px;color:var(--tx2);line-height:1.55;margin-bottom:14px"><b style="color:var(--tx)">What stays:</b> shops you added (without your name), points other people won in challenges with you, and the app's AI cost records (without your name).</div>
+    <div style="font-size:13px;color:var(--danger);margin-bottom:10px">This cannot be undone.</div>
+    <input class="finput" type="password" id="del-pass" placeholder="Your password" autocomplete="current-password">
+    <input class="finput" id="del-word" placeholder="Type DELETE" autocomplete="off" autocapitalize="characters" style="margin-top:8px" onkeydown="if(event.key==='Enter')executeAccountDeletion()">
+    <div id="delete-pin-err" style="color:var(--danger);font-size:13px;text-align:center;margin-top:8px;display:none"></div>
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('delete-pin-modal')">Cancel</button>
+      <button class="btn btn-danger" style="flex:1" id="del-go" onclick="executeAccountDeletion()">Delete forever</button>
+    </div>`;
+  openModal('delete-pin-modal');
+  setTimeout(()=>document.getElementById('del-pass')?.focus(),100);
+}
+async function executeAccountDeletion(){
+  const pass=document.getElementById('del-pass')?.value||'';
+  const word=(document.getElementById('del-word')?.value||'').trim();
+  const errEl=document.getElementById('delete-pin-err');
+  const err=t=>{errEl.textContent=t;errEl.style.display='block';};
+  errEl.style.display='none';
+  if(word!=='DELETE'){err('Type DELETE (in capitals) to confirm.');return;}
+  if(!pass){err('Enter your password.');return;}
+  const btn=document.getElementById('del-go');if(btn)btn.disabled=true;
+  showLoad('Checking','Checking your password...');
+  try{
+    const {error:passErr}=await sb.auth.signInWithPassword({email:sbUser.email,password:pass});
+    if(passErr){hideLoad();err('Password not right - account not deleted.');return;}
+    showLoad('Deleting','Permanently removing your account and everything in it...');
+    const r=await aiRequest('delete_account',{confirm:'DELETE'},60000);
+    hideLoad();
+    if(r.error){err(r.error.message+' Account not deleted.');return;}
+    closeModal('delete-pin-modal');
+    // This phone's own copies (training drafts, shopping ticks, the cached guide, notes like "plan seen")
+    const uid=CU.user_id;
+    for(const store of[localStorage,sessionStorage]){
+      try{for(let i=store.length-1;i>=0;i--){const k=store.key(i);if(k&&k.includes(uid))store.removeItem(k);}}catch(e){}
+    }
+    signOut();
+    alert('Your account and everything in it has been deleted.');
+  }catch(e){
+    hideLoad();
+    err('Something went wrong - account not deleted ('+e.message+').');
+  }finally{if(btn)btn.disabled=false;}
+}
+
 
 init();
 
