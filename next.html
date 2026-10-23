@@ -1359,7 +1359,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct recipe view';
+const APP_BUILD='23 Oct macro checker';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -4789,7 +4789,8 @@ shopping: every ingredient once, as bought - item (plain shop name, e.g. "red on
 }
 function recipeQualityRules(){
   return`FLAVOUR RULE - required: give every recipe as much flavour as this person's rules allow, built in layers - aromatics (onion, garlic, ginger, chilli to their spice level), browning or searing, toasting the spices, a marinade where the cook time allows, acid (citrus or vinegar) to lift it, fresh herbs, and a finishing touch (zest, toasted seeds, a drizzle). Never add more salt or sugar than their health line allows - get the flavour from herbs, garlic, citrus and spices instead.
-PRODUCT NAMES RULE - required: for any free-from or plant-based item, name the actual product type every time it appears - in ingredients_uk, ingredients_us, the method and shopping (e.g. "200g soya mince", "300ml oat milk", "150g lactose-free Greek-style yoghurt", "40g vegan cheddar-style cheese") - never "mince", "milk", "yoghurt" or "cheese" on its own for these. No brand names.`;
+PRODUCT NAMES RULE - required: for any free-from or plant-based item, name the actual product type every time it appears - in ingredients_uk, ingredients_us, the method and shopping (e.g. "200g soya mince", "300ml oat milk", "150g lactose-free Greek-style yoghurt", "40g vegan cheddar-style cheese") - never "mince", "milk", "yoghurt" or "cheese" on its own for these. No brand names.
+MACROS RULE - required: work out each recipe's calories, protein, carbs and fats from its own ingredients and amounts, per serving - never write the meal slot's target as the recipe's numbers. If the amounts do not reach the target, change the amounts, not the numbers.`;
 }
 
 function buildChosenRecipesPrompt(chosenMeals, batch){
@@ -5220,6 +5221,7 @@ function renderRecipeDetail(recipe,mealName,slot){
     ${recipe.method?`<div class="det-lbl">Method</div><div class="method">${fmtMethod(recipe.method)}</div>`:''}
     ${recipeAfterHtml(recipe)}
     ${whatToBuyHtml(recipe)}
+    ${macroNoteHtml(recipe)}
     ${recipe.bulk_cook?`<div class="alert alert-info" style="margin-top:10px">🍳 Batch cook - makes <strong>${escapeHtml(recipe.batch_portions||recipe.servings||2)} portions</strong>. Portion into containers. ${String(recipe.storage||'').trim()?escapeHtml(recipe.storage):'Refrigerate up to 5 days or freeze up to 3 months.'}</div>`:''}
     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
       ${!isDisliked
@@ -5408,6 +5410,7 @@ function renderMealCard(meal,cat){
       ${meal.method?`<div class="det-lbl">Method</div><div class="method">${fmtMethod(meal.method)}</div>`:''}
       ${recipeAfterHtml(meal)}
       ${whatToBuyHtml(meal)}
+      ${macroNoteHtml(meal)}
       ${meal.bulk_cook?`<div class="alert alert-info" style="margin-top:10px">🍳 Batch cook - makes <strong>${escapeHtml(meal.batch_portions||meal.servings||2)} portions</strong>. Portion into containers. ${String(meal.storage||'').trim()?escapeHtml(meal.storage):'Refrigerate up to 5 days or freeze up to 3 months.'}</div>`:''}
     </div>
   </div>`;
@@ -5507,6 +5510,14 @@ function whatToBuyHtml(meal){
   if(!found.length)return'';
   return`<div class="det-lbl">What to buy</div><div style="font-size:13px;line-height:1.6;margin-bottom:6px">${found.map(x=>`<div><b>${escapeHtml(x.type)}:</b> ${escapeHtml(brandLine(x))}</div>`).join('')}</div>
     <div style="font-size:11px;color:var(--tx3);margin-bottom:10px">Brands are examples only (seen on sale ${BRAND_LIST_CHECKED}) - always check the label, recipes change.</div>`;
+}
+// Recipes whose numbers were checked by the server's macro checker (MACRO-CHECK-SPEC): a short note,
+// which is also the credit the Open Government Licence asks for. An estimate, never called exact.
+function macroNoteHtml(meal){
+  const m=meal&&meal.macro_check;
+  if(!m||m.source!=='CoFID 2021')return'';
+  const changed=m.ai&&Number(m.ai.calories)!==Number(meal.calories);
+  return`<div style="font-size:11px;color:var(--tx3);margin:6px 0 10px">${changed?`Calories worked out from the ingredients (the first estimate was ${escapeHtml(m.ai.calories)} kcal).`:'Calories checked against the ingredients.'} An estimate - uses UK government food data (CoFID 2021, Open Government Licence v3.0) and typical label values.</div>`;
 }
 function recipeAfterHtml(meal){
   let html=recipeListHtml('Tips',meal.tips);
