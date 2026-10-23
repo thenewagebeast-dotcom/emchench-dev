@@ -1289,7 +1289,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct what to buy';
+const APP_BUILD='23 Oct recipe view';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -5120,15 +5120,15 @@ function renderWeekDaysInline(wk,recipeMap){
             <span style="font-size:16px">${slotEmoji[slot]||'🍽️'}</span>
             <div style="flex:1;min-width:0">
               <div style="font-size:10px;color:var(--tx3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:2px">${slotLabel[slot]||slot}</div>
-              <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${mealName}${isDisliked?' <span style="font-size:10px;color:var(--danger);font-weight:400;letter-spacing:.5px">DISLIKED</span>':''}</div>
+              <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(mealName)}${isDisliked?' <span style="font-size:10px;color:var(--danger);font-weight:400;letter-spacing:.5px">DISLIKED</span>':''}</div>
               ${flagLabelHtml(mealName)}
               ${recipe?`<div style="font-size:11px;color:var(--tx2);margin-top:2px">${scaledMacro(recipe.calories)}kcal &nbsp;P:${scaledMacro(recipe.protein)}g &nbsp;C:${scaledMacro(recipe.carbs)}g &nbsp;F:${scaledMacro(recipe.fats)}g</div>`:''}
             </div>
             ${recipe?.bulk_cook?'<span class="badge badge-bulk" style="font-size:9px">Batch</span>':''}
-            ${recipe?.difficulty?`<span class="badge ${ {'easy':'badge-diff-e','medium':'badge-diff-m','hard':'badge-diff-h'}[recipe.difficulty]||'badge-diff-e'}" style="font-size:9px">${recipe.difficulty}</span>`:''}
+            ${recipe?.difficulty?`<span class="badge ${ {'easy':'badge-diff-e','medium':'badge-diff-m','hard':'badge-diff-h'}[recipe.difficulty]||'badge-diff-e'}" style="font-size:9px">${escapeHtml(recipe.difficulty)}</span>`:''}
             <span style="color:var(--tx3);font-size:11px">▼</span>
           </div>
-          <div class="meal-det" id="${rid}" data-meal-name="${mealName.replace(/"/g,'&quot;')}" data-meal-cat="rotation" style="border-radius:0 0 10px 10px;margin-top:-4px;padding-top:14px">
+          <div class="meal-det" id="${rid}" data-meal-name="${escapeHtml(mealName)}" data-meal-cat="rotation" style="border-radius:0 0 10px 10px;margin-top:-4px;padding-top:14px">
             ${recipe?renderRecipeDetail(recipe,mealName,slot):`<div style="color:var(--tx2);font-size:13px;padding:8px">Recipe not found - try regenerating your plan.</div>`}
           </div>
         </div>`;
@@ -5139,17 +5139,20 @@ function renderWeekDaysInline(wk,recipeMap){
 
 function renderRecipeDetail(recipe,mealName,slot){
   const isDisliked=dislikedMeals.some(d=>d.name===mealName);
-  const safeName=mealName.replace(/"/g,'&quot;');
+  const safeName=escapeHtml(mealName);
   // Map slot name to meal category pool
   const slotCatMap={breakfast:'breakfasts',snack1:'snacks',snack2:'snacks',snack3:'snacks',lunch:'lunches',dinner:'dinners',evening:'evening_snacks'};
   const cat=slotCatMap[slot]||'breakfasts';
   return`
-    ${recipe.micronutrients?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">${recipe.micronutrients}</div>`:''}
+    ${recipe.micronutrients?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">${escapeHtml(recipe.micronutrients)}</div>`:''}
     ${planFlagFor(mealName)?`<div class="alert" style="border:1px solid var(--danger);color:var(--danger);font-size:12px;margin-bottom:10px">⚠ <strong>${escapeHtml(planFlagFor(mealName))}.</strong> This recipe was written before you changed your food rules. Use Swap Meal below to replace it.</div>`:''}
     ${portionNoteHtml(recipe)}
+    ${recipeBeforeHtml(recipe)}
     ${ingredientsHtml(recipe)}
     ${recipe.method?`<div class="det-lbl">Method</div><div class="method">${fmtMethod(recipe.method)}</div>`:''}
-    ${recipe.bulk_cook?`<div class="alert alert-info" style="margin-top:10px">🍳 Batch cook - makes <strong>${recipe.batch_portions||recipe.servings||2} portions</strong>. Portion into containers. Refrigerate up to 5 days or freeze up to 3 months.</div>`:''}
+    ${recipeAfterHtml(recipe)}
+    ${whatToBuyHtml(recipe)}
+    ${recipe.bulk_cook?`<div class="alert alert-info" style="margin-top:10px">🍳 Batch cook - makes <strong>${escapeHtml(recipe.batch_portions||recipe.servings||2)} portions</strong>. Portion into containers. ${String(recipe.storage||'').trim()?escapeHtml(recipe.storage):'Refrigerate up to 5 days or freeze up to 3 months.'}</div>`:''}
     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
       ${!isDisliked
         ?`<button class="dislike-btn" data-meal-name="${safeName}" onclick="dislikeMealInline(this)">👎 Dislike this meal</button>`
@@ -5337,7 +5340,7 @@ function renderMealCard(meal,cat){
       ${meal.method?`<div class="det-lbl">Method</div><div class="method">${fmtMethod(meal.method)}</div>`:''}
       ${recipeAfterHtml(meal)}
       ${whatToBuyHtml(meal)}
-      ${meal.bulk_cook?`<div class="alert alert-info" style="margin-top:10px">🍳 Batch cook - makes <strong>${meal.batch_portions||meal.servings||2} portions</strong>. Portion into containers. ${String(meal.storage||'').trim()?escapeHtml(meal.storage):'Refrigerate up to 5 days or freeze up to 3 months.'}</div>`:''}
+      ${meal.bulk_cook?`<div class="alert alert-info" style="margin-top:10px">🍳 Batch cook - makes <strong>${escapeHtml(meal.batch_portions||meal.servings||2)} portions</strong>. Portion into containers. ${String(meal.storage||'').trim()?escapeHtml(meal.storage):'Refrigerate up to 5 days or freeze up to 3 months.'}</div>`:''}
     </div>
   </div>`;
 }
@@ -7129,7 +7132,7 @@ function renderCompete(){
     </div>
     ${c.type==='h2h'?`<div style="font-size:13px;margin:6px 0"><strong>${escapeHtml(c.participant_1)}</strong> vs <strong>${escapeHtml(c.participant_2)||'TBC'}</strong></div>`:''}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
-      <div style="font-size:12px;color:var(--tx2)">${c.difficulty} - ${c.status}</div>
+      <div style="font-size:12px;color:var(--tx2)">${escapeHtml(c.difficulty)} - ${escapeHtml(c.status)}</div>
       <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:900;color:var(--ac)">${c.points_value} pts</div>
     </div>
     ${c.status==='active'&&c.created_by===CU.username?`<button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="completeComp('${c.competition_id}')">Mark Complete ✓</button>`:''}
