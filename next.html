@@ -1359,7 +1359,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct AI server 4b-1';
+const APP_BUILD='23 Oct UK clock';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -10408,8 +10408,9 @@ async function checkAiServer(){
   const r=await aiRequest('server_check',{},20000).catch(e=>({error:{message:e.message}}));
   if(!el)return;
   if(r.error){el.textContent='Not working: '+r.error.message;return;}
-  const ukOk=r.time_zone==='Europe/London'||(r.utc_offset_minutes===new Date().getTimezoneOffset()*-1);
-  el.innerHTML=(r.key_set?'Key set ✓':'<span style="color:var(--warn)">Key NOT set</span>')+' · '+(ukOk?'UK time ✓':'<span style="color:var(--warn)">Not on UK time ('+escapeHtml(String(r.time_zone))+')</span>');
+  // Supabase itself runs on UTC; the app's code on the server reads days and months from a UK clock
+  const ukOk=!!r.uk_clock&&r.uk_clock.utc_offset_minutes===-new Date().getTimezoneOffset();
+  el.innerHTML=(r.key_set?'Key set ✓':'<span style="color:var(--warn)">Key NOT set</span>')+' · '+(ukOk?'UK time ✓':'<span style="color:var(--warn)">UK clock not working ('+escapeHtml(JSON.stringify(r.uk_clock||r.time_zone))+')</span>');
 }
 
 function accountCardHtml(){
