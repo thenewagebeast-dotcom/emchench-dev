@@ -1359,7 +1359,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct 4c seed butter';
+const APP_BUILD='23 Oct no chest flies, DEV tab';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -1500,16 +1500,21 @@ if(IS_DEV){(function(){
 
   const panel=document.createElement('div');
   panel.id='dev-panel';
-  panel.style.cssText='position:fixed;left:8px;bottom:8px;z-index:9000;background:#1a0f00;border:1px solid #ffaa00;border-radius:8px;padding:6px 8px;font:11px/1.4 monospace;color:#ffaa00;max-width:230px';
-  panel.innerHTML='<div style="font-weight:700">DEV - test database</div><div style="margin-bottom:4px;color:#cc8800">build '+APP_BUILD+'</div>'
+  // A small "DEV" tab on the right edge, so it never covers buttons or the login boxes; tap it to open or close the full box
+  panel.style.cssText='position:fixed;right:0;top:45%;z-index:9000;background:#1a0f00;border:1px solid #ffaa00;border-right:none;border-radius:8px 0 0 8px;padding:6px 8px;font:11px/1.4 monospace;color:#ffaa00;max-width:230px';
+  panel.innerHTML='<div id="dev-tab" style="font-weight:700;cursor:pointer">DEV<span id="dev-tab-more"> - test database (tap to close)</span></div><div id="dev-body"><div style="margin-bottom:4px;color:#cc8800">build '+APP_BUILD+'</div>'
     +'<label>AI: <select id="dev-ai-mode" style="background:#000;color:#ffaa00;border:1px solid #ffaa00;border-radius:4px;font:11px monospace;padding:2px">'
     +'<option value="real">Real (costs)</option><option value="record">Record (costs, saves)</option><option value="replay">Replay (free)</option><option value="fill">Replay saved, record the rest</option></select></label>'
     +'<div id="dev-ai-totals" style="margin-top:4px;color:#cc8800"></div>'
     +'<div id="dev-ai-recs" style="margin-top:2px;color:#cc8800"></div>'
     +'<div id="dev-ai-times" style="margin-top:2px;max-height:120px;overflow:auto"></div>'
     +'<div style="margin-top:4px"><button id="dev-ai-reset" style="background:none;border:1px solid #664400;color:#cc8800;border-radius:4px;font:10px monospace;cursor:pointer;padding:1px 5px">reset totals</button> '
-    +'<button id="dev-ai-clear" style="background:none;border:1px solid #664400;color:#cc8800;border-radius:4px;font:10px monospace;cursor:pointer;padding:1px 5px">clear recordings</button></div>';
+    +'<button id="dev-ai-clear" style="background:none;border:1px solid #664400;color:#cc8800;border-radius:4px;font:10px monospace;cursor:pointer;padding:1px 5px">clear recordings</button></div></div>';
   document.body.appendChild(panel);
+  const OPEN_KEY='dev_panel_open';
+  const showPanel=open=>{document.getElementById('dev-body').style.display=open?'block':'none';document.getElementById('dev-tab-more').style.display=open?'inline':'none';};
+  showPanel(store.get(OPEN_KEY)==='1');
+  document.getElementById('dev-tab').addEventListener('click',()=>{const open=document.getElementById('dev-body').style.display==='none';store.set(OPEN_KEY,open?'1':'0');showPanel(open);});
   const sel=document.getElementById('dev-ai-mode');
   sel.value=mode;
   sel.addEventListener('change',()=>{mode=sel.value;store.set(MODE_KEY,mode);});
@@ -1821,7 +1826,7 @@ const INJURY_LIBRARY={
     modify:[
       {movement:'Pull-ups',modification:'Use assisted machine or resistance band. Neutral grip only. Stop before full hang if painful.'}
     ],
-    avoid:['All pressing movements - bench press, overhead press, landmine press, Arnold press, incline press, machine chest press, push-ups, dips','Behind the neck press','Upright rows','Overhead tricep extensions with barbell','Snatch or clean and jerk'],
+    avoid:['All pressing movements - bench press, overhead press, landmine press, Arnold press, incline press, machine chest press, push-ups, dips','Chest flies of any kind - dumbbell, floor, incline, cable, machine, pec deck (rear delt and reverse flies are fine)','Behind the neck press','Upright rows','Overhead tricep extensions with barbell','Snatch or clean and jerk'],
     warmup:[
       'Band pull-aparts - 2 sets of 20 before any upper body work',
       'Arm circles forward and backward - 10 each direction',
@@ -2031,6 +2036,12 @@ function matchInjuryKeys(text){
 // one is present these are stripped out of every other protocol's safe and
 // modify lists too. Does not match leg press or Pallof press.
 const UPPER_PRESS_RE=/bench press|overhead press|landmine press|arnold press|push-up|\bdips?\b|pressing/i;
+// Chest flies are out with a shoulder injury too (user decision 23 Oct 2026, after a
+// floor fly appeared in a real plan): dumbbell, floor, incline, cable, machine, pec deck.
+// Rear delt and reverse flies stay - they are the shoulder-friendly ones.
+const CHEST_FLY_RE=/pec deck|crossover|\bfl(?:y|ye|ies|yes)\b/i;
+// One test for "not allowed with a shoulder injury": pressing or a chest fly
+function shoulderUnsafe(name){const s=String(name||'');return UPPER_PRESS_RE.test(s)||(CHEST_FLY_RE.test(s)&&!/\b(rear|reverse)\b/i.test(s));}
 
 function getInjuryPromptBlock(){
   if(!CU.injuries||!CU.injuries.trim())return'';
@@ -2039,8 +2050,8 @@ function getInjuryPromptBlock(){
   const blocks=[];
   for(const key of keys){
     const lib=INJURY_LIBRARY[key];
-    const safeList=hasShoulder?lib.safe.filter(s=>!UPPER_PRESS_RE.test(s.movement)):lib.safe;
-    const modList=hasShoulder?lib.modify.filter(m=>!UPPER_PRESS_RE.test(m.movement)):lib.modify;
+    const safeList=hasShoulder?lib.safe.filter(s=>!shoulderUnsafe(s.movement)):lib.safe;
+    const modList=hasShoulder?lib.modify.filter(m=>!shoulderUnsafe(m.movement)):lib.modify;
     const safeMoves=safeList.map(s=>`${s.movement} (${s.sets} sets x ${s.reps} - ${s.notes})`).join(', ');
     const modMoves=modList.map(m=>`${m.movement}: ${m.modification}`).join(' | ');
     const avoidMoves=lib.avoid.join(', ');
@@ -2053,7 +2064,7 @@ WARM-UP REQUIREMENT: Always include in session notes: ${lib.warmup.join('; ')}.
 PROGRESSION RULE: ${lib.progression}`);
   }
   if(!blocks.length)return'';
-  const shoulderRule=hasShoulder?`\nSHOULDER RULE - ABSOLUTE, OVERRIDES EVERYTHING ELSE IN THIS PROMPT: zero pressing movements of any kind in any session. No bench press, overhead press, landmine press, Arnold press, incline press, machine press, push-ups or dips, and no modified or lighter versions of them. Train chest and triceps only through non-pressing movements.`:'';
+  const shoulderRule=hasShoulder?`\nSHOULDER RULE - ABSOLUTE, OVERRIDES EVERYTHING ELSE IN THIS PROMPT: zero pressing movements of any kind in any session. No bench press, overhead press, landmine press, Arnold press, incline press, machine press, push-ups or dips, and no modified or lighter versions of them. No chest flies of any kind either (dumbbell, floor, incline, cable or machine flies, pec deck) - rear delt and reverse flies are fine. Train chest and triceps only through movements that are neither pressing nor flies.`:'';
   return `\n\nINJURY LIBRARY PROTOCOLS - FOLLOW EXACTLY:\n${blocks.join('\n')}${shoulderRule}`;
 }
 
@@ -5932,8 +5943,8 @@ function renderInjuryModal(){
   }
   for(const key of keys){
     const lib=INJURY_LIBRARY[key];
-    const safeList=hasShoulder?lib.safe.filter(s=>!UPPER_PRESS_RE.test(s.movement)):lib.safe;
-    const modList=hasShoulder?lib.modify.filter(m=>!UPPER_PRESS_RE.test(m.movement)):lib.modify;
+    const safeList=hasShoulder?lib.safe.filter(s=>!shoulderUnsafe(s.movement)):lib.safe;
+    const modList=hasShoulder?lib.modify.filter(m=>!shoulderUnsafe(m.movement)):lib.modify;
     html+=`
     <div style="margin-bottom:20px">
       <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:900;color:var(--ac);margin-bottom:10px">${lib.icon} ${lib.label}</div>
@@ -9937,7 +9948,7 @@ const CHALLENGE_INJURY_RULES={
 function challengeClash(exercise){
   const ex=String(exercise||'');
   for(const k of matchInjuryKeys(CU.injuries)){
-    if((k==='Bad shoulder'&&UPPER_PRESS_RE.test(ex))||CHALLENGE_INJURY_RULES[k]?.test(ex))return'your '+k.toLowerCase().replace('bad ','')+' injury';
+    if((k==='Bad shoulder'&&shoulderUnsafe(ex))||CHALLENGE_INJURY_RULES[k]?.test(ex))return'your '+k.toLowerCase().replace('bad ','')+' injury';
   }
   const low=ex.toLowerCase();
   const avoid=String(CU.avoided_exercises||'').toLowerCase().split(/[,;\n]+/).map(x=>x.trim()).filter(x=>x.length>2);
