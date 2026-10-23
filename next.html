@@ -10689,7 +10689,7 @@ function deleteAccount(){
   const m=document.querySelector('#delete-pin-modal .modal');
   m.innerHTML=`<div class="modal-title">Delete My Account</div>
     <div style="font-size:13px;color:var(--tx2);line-height:1.55;margin-bottom:10px"><b style="color:var(--tx)">Removed for good:</b> your profile and sign-up answers, your plans, every log (workouts, meals, water, weigh-ins, body stats, sleep and soreness, pauses, social events), points, streaks and season wins, wall posts and reports, shop ratings, challenges you made (for everyone in them) and your challenge videos, shopping ticks, and your login.</div>
-    <div style="font-size:13px;color:var(--tx2);line-height:1.55;margin-bottom:14px"><b style="color:var(--tx)">What stays:</b> shops you added (without your name), points other people won in challenges with you, and the app's AI cost records (without your name).</div>
+    <div style="font-size:13px;color:var(--tx2);line-height:1.55;margin-bottom:14px"><b style="color:var(--tx)">What stays:</b> shops you added (without your name), and points other people won in challenges with you.</div>
     <div style="font-size:13px;color:var(--danger);margin-bottom:10px">This cannot be undone.</div>
     <input class="finput" type="password" id="del-pass" placeholder="Your password" autocomplete="current-password">
     <input class="finput" id="del-word" placeholder="Type DELETE" autocomplete="off" autocapitalize="characters" style="margin-top:8px" onkeydown="if(event.key==='Enter')executeAccountDeletion()">
