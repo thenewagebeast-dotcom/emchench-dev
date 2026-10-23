@@ -1359,10 +1359,8 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='22 Oct challenges';
-const API_URL=IS_LIVE
-  ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
-  :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
+const APP_BUILD='23 Oct 2e tidy';
+const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
 // Opus because that is where injury rules matter most. Both models think before
@@ -9171,6 +9169,10 @@ let inRecovery=false;  // opened from a password reset link
 // (In index.html these retry and time out. Here there is no Sheets session at all.)
 async function dbFetchWithRetry(){throw new Error(NOT_MOVED);}
 async function apiCall(){throw new Error(NOT_MOVED);}
+// The old PIN screens are hidden in the preview; these stop them reaching Sheets if ever opened
+async function checkPin(){}
+function changePin(){showInfo('Password','Your password is changed from the Account card on this page.');}
+function executeAccountDeletion(){closeModal('delete-pin-modal');deleteAccount();}
 function handleSessionExpired(){}
 async function refreshSyncState(){}
 function saveSession(){}
@@ -10146,6 +10148,8 @@ async function adminSettleComp(btn){
 }
 // Videos are kept 14 days after a challenge closes, then removed. Each person removes their
 // own; the admin removes any. Nothing else needs them by then.
+// The old "Mark Complete" button is gone - challenges are finished by the server
+function completeComp(){renderCompete();}
 async function cleanOldVideos(){
   try{
     const paths=compResults.filter(r=>r.video_path&&(r.user_id===CU.user_id||CU.is_admin)).filter(r=>{const c=competitions.find(x=>x.id===r.competition_id);return c&&compVideoGone(c);}).map(r=>r.video_path);
