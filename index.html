@@ -1289,7 +1289,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct no chest flies, DEV tab';
+const APP_BUILD='23 Oct 4d shopping list';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -2594,6 +2594,7 @@ function signOut(){
   swapExercise=null;swapSessionIdx=null;swapExIdx=null;
   pendingCalAdj=null;dislikedMeals=[];measurements=[];
   pendingPatternAdj=null;
+  shopBuy=null;shopTicked=new Set();shopTickWeek='';
   socialEvents=[];
   activeEvent=null;
   wallPosts=[];competitions=[];allPoints=[];userPoints={};
@@ -5385,36 +5386,280 @@ function toggleBlock(h){h.nextElementSibling?.classList.toggle('open');}
 // ============================================================
 // SHOPPING LIST GENERATOR
 // ============================================================
+// ---- shopping list engine start ----
+// The shopping list (rebuilt 23 Oct 2026, Phase 4d - SHOPPING-LIST-SPEC-2026-10-22.md). Plain functions
+// with no screen, so dev-seed/check-shopping.js can run them on real plans.
+// New recipes carry shopping data (item, amount, unit, aisle); older ones are read from ingredients_uk.
+// Each group of recipes is written in its own AI call, so the same thing arrives under different
+// names ("lemons" / "lemon", "raw peeled prawns, frozen" / "frozen raw peeled prawns"): shopKey()
+// makes them one item.
+const SHOP_AISLE_ORDER=['Fruit and veg','Meat and fish','Dairy and alternatives','Bakery','Rice, pasta and grains','Tins and jars','Frozen','Oils, sauces and condiments','Other'];
+const SHOP_SLOTS=['breakfast','snack1','snack','lunch','snack2','snack3','dinner','evening'];
+const SHOP_DAYS=['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+// Words that never change what you buy. Words that do (raw / cooked, frozen / tinned / dried,
+// wholegrain, light, unsweetened, vanilla) are kept, so those stay separate items.
+const SHOP_NOISE=new Set(['in','of','the','a','an','and','or','brine','carton','table','liquid','unflavoured','pack','packet','fresh','medium','large','small','plain','ripe','fortified','leaf','leave']);
+// Different names for the same thing
+const SHOP_SAME=[
+  [/\bsoya drink\b/g,'soya milk'],[/\bflat[- ]leaf parsley\b/g,'parsley'],[/\bsalad onions?\b/g,'spring onion'],
+  [/\bextra[- ]virgin olive oil\b/g,'olive oil'],[/\bground black pepper\b/g,'black pepper'],[/\breduced[- ]fat\b/g,'light'],
+  [/\bcoriander leaves\b/g,'coriander'],[/\b(rolled (porridge )?oats|rolled oats)\b/g,'porridge oats'],[/\bcayenne pepper\b/g,'cayenne'],[/\b(fine |flaked |table )?(sea )?salt\b/g,'salt'],[/\bdried chilli flakes\b/g,'chilli flakes'],[/\bin (spring )?water\b|\bin brine\b|\bin (olive |sunflower )?oil\b/g,' tinned '],[/\b(tins?|cans?)( of)?\b/g,'tinned'],[/\bcanned\b/g,'tinned'],
+  [/\blemon (juice|zest)\b/g,'lemon'],[/\blime (juice|zest)\b/g,'lime'],[/\bgarlic cloves?\b|\bcloves? (of )?garlic\b/g,'garlic'],
+];
+// Shown under "Probably in your cupboard", names only (user decision 23 Oct 2026)
+const SHOP_CUPBOARD_RE=/\b(oil|vinegar|soy sauce|tamari|salt|black pepper|white pepper|peppercorns?|sweetener|stock( cubes?| pots?)?|bouillon|baking powder|bicarbonate|vanilla extract|vanilla essence|cornflour|cooking spray|spray oil)\b/i;
+const SHOP_SPICE_RE=/\b(paprika|cumin|turmeric|garam masala|curry powder|chilli powder|chilli flakes|cinnamon|nutmeg|ground (ginger|coriander|cloves|allspice|cardamom)|cardamom|allspice|cayenne|oregano|thyme|rosemary|bay lea(f|ves)|mixed herbs|dried herbs|five spice|ras el hanout|za'?atar|sumac|fennel seeds|mustard seeds|cumin seeds|garlic powder|onion powder|saffron|gochugaru|smoked paprika|dried (basil|parsley|mint|dill|chilli))\b/i;
+const SHOP_WATER_RE=/^(boiling |cold |hot |warm |tap |filtered |ice[- ]cold )?water( for .*)?$/i;
+
+// Names for items whose amount is shown in a different form from some recipes' lines
+const SHOP_NAMES={lemon:'Lemons',lime:'Limes',garlic:'Garlic',egg:'Eggs','onion spring':'Spring onions'};
+function shopSingular(w){
+  if(w.length<4||/(ss|us|is)$/.test(w))return w;
+  if(/llies$/.test(w))return w.slice(0,-2);   // chillies -> chilli
+  if(/ies$/.test(w))return w.slice(0,-3)+'y';
+  if(/(oes|ches|shes|xes)$/.test(w))return w.slice(0,-2);
+  return w.replace(/s$/,'');
+}
+// The matching key: the words in any order, without plurals or noise words
+function shopKey(item){
+  let s=' '+String(item||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\(.*?\)/g,' ')+' ';
+  for(const [re,to] of SHOP_SAME)s=s.replace(re,to);
+  const words=s.replace(/[^a-z0-9\-' ]+/g,' ').split(/\s+/).filter(w=>w&&!SHOP_NOISE.has(w)).map(shopSingular).filter(w=>!SHOP_NOISE.has(w));
+  return [...new Set(words)].sort().join(' ');
+}
+// A best guess at the aisle, for older recipes that have no shopping data
+function shopGuessAisle(name){
+  const n=String(name||'').toLowerCase();
+  if(/\bfrozen\b/.test(n))return'Frozen';
+  if(/\b(tinned|canned|passata|chopped tomatoes|coconut milk|jar|in brine|in (spring )?water)\b/.test(n))return'Tins and jars';
+  if(/\b(soya mince|tofu|tempeh|quorn|seitan)\b/.test(n))return'Dairy and alternatives';
+  if(/\b(chicken|turkey|beef|pork|lamb|mince|steak|bacon|ham|gammon|salmon|tuna|cod|haddock|prawns?|mackerel|sardines?|pollock|fish|sea bass|trout)\b/.test(n))return'Meat and fish';
+  if(/\b(milk|yog(h)?urt|cheese|cream|kefir|skyr|quark|eggs?|egg whites?|butter)\b/.test(n)&&!/\b(peanut|nut|seed|almond|cocoa) butter\b/.test(n))return'Dairy and alternatives';
+  if(/\b(bread|wraps?|tortillas?|pittas?|bagels?|rolls?|naan|crumpets?|muffins?)\b/.test(n))return'Bakery';
+  if(/\b(rice|pasta|spaghetti|penne|noodles?|oats?|quinoa|couscous|bulgur|barley|flour|cereal|granola|crackers?|crispbreads?|rice cakes?|oatcakes?|lentils|chickpeas|beans)\b/.test(n))return /\b(chickpeas|beans|lentils)\b/.test(n)&&!/\bdried\b/.test(n)?'Tins and jars':'Rice, pasta and grains';
+  if(SHOP_CUPBOARD_RE.test(n)||/\b(sauce|ketchup|mustard|mayo|mayonnaise|honey|syrup|pesto|paste|puree|miso|gochujang|harissa|salsa)\b/.test(n))return'Oils, sauces and condiments';
+  if(SHOP_SPICE_RE.test(n))return'Herbs and spices';
+  if(/\b(apples?|bananas?|berr(y|ies)|lemons?|limes?|oranges?|onions?|garlic|peppers?|tomato(es)?|spinach|lettuce|kale|broccoli|carrots?|courgettes?|cucumbers?|mushrooms?|avocados?|potato(es)?|ginger|chillies|chilli|coriander|parsley|basil|mint|dill|chives|celery|leeks?|cabbage|cauliflower|pak choi|asparagus|beansprouts|rocket|grapes|melon|mango(es)?|pineapple|kiwi|pears?|peach(es)?|plums?|cherr(y|ies)|squash|aubergines?|beetroot|sprouts|spring onions?|lemongrass|green beans|edamame|sweetcorn|peas|raspberries|strawberries|blueberries)\b/.test(n))return'Fruit and veg';
+  return'Other';
+}
+// The ingredient lines of an older recipe (no shopping data), read from the readable list. Tidied
+// from the first version: cooking words removed, water dropped, and a line with no amount is kept
+// only if it is a cupboard item (names only there) - never shown as "(check amount)".
+const SHOP_COOK_WORDS=/(?<![\w-])(finely|thinly|roughly|coarsely|freshly|lightly|chopped|diced|sliced|minced|grated|crushed|halved|quartered|shredded|peeled|trimmed|drained|rinsed|zested|juiced|cubed|torn|deseeded|mashed|slit|soaked|warmed|melted|softened|beaten|whisked|cooked|to serve|to taste|optional|approx\.?|approximately|about|each|heaped|level|plus extra)(?![\w-])/gi;
+function shopReadIngredients(text){
+  const clean=String(text||'').replace(/\.?\s*(approx\.?|est\.?(imated)?)?\s*(cost\s*)?(per\s*serving|\/\s*serving)?:?\s*£[\d.]+\s*(\/\s*serving|per serving)?\.?/gi,'');
+  // Split into lines on commas, semicolons, new lines and full stops between sentences (not inside brackets)
+  const parts=[];let cur='',depth=0;
+  for(let i=0;i<clean.length;i++){
+    const ch=clean[i];
+    if(ch==='(')depth++;else if(ch===')')depth=Math.max(0,depth-1);
+    const stop=ch==='.'&&!/\d/.test(clean[i+1]||'')&&!/\d/.test(clean[i-1]||'');
+    if((ch===','||ch===';'||ch==='\n'||stop)&&depth===0){parts.push(cur);cur='';}else cur+=ch;
+  }
+  parts.push(cur);
+  const unitRe='kg|g|ml|l|litres?|tbsp|tsp|cloves?|slices?|cans?|tins?|sprigs?|sticks?|fillets?|bunch(?:es)?|handfuls?|pinch(?:es)?';
+  const num='(\\d+\\s+\\d+\\/\\d+|\\d+\\/\\d+|\\d+(?:\\.\\d+)?)';
+  const toNum=x=>x.trim().split(/\s+/).reduce((t,p)=>t+(p.includes('/')?p.split('/').reduce((a,b)=>a/b):parseFloat(p)),0);
+  const out=[];
+  for(let p of parts){
+    // Section labels ("TAHINI SAUCE:", "Dry-weight equivalent:") - keep what follows the last colon
+    p=p.replace(/\(.*?\)/g,' ').replace(/^.*:\s*/,'').trim();
+    if(p.length<2)continue;
+    let amount=null,unit='',item=p,m;
+    // "2 x 400g tins chickpeas"
+    if((m=p.match(/^(\d+)\s*x\s*(\d+)\s*(g|ml)\s+(?:tins?|cans?)?\s*(?:of\s+)?(.+)$/i))){amount=+m[1]*+m[2];unit=m[3];item='tinned '+m[4];}
+    else if((m=p.match(new RegExp('^'+num+'\\s*('+unitRe+')?(?![a-z])\\.?\\s*(?:of\\s+)?(.+)$','i')))){amount=toNum(m[1]);unit=m[2]||'';item=m[3];}
+    else if((m=p.match(new RegExp('^(.+?)\\s+'+num+'\\s*('+unitRe+')?$','i')))){amount=toNum(m[2]);unit=m[3]||'';item=m[1];}
+    // What the ingredient is for, or how it is used, is not part of its name
+    item=item.replace(/\s+(for|to|into|stirred|plus|mixed|divided|reserved|from|in the|on the|at room|cut|with|broken|snipped|no added)\b.*$/i,'')
+      .replace(SHOP_COOK_WORDS,' ').replace(/\s+/g,' ').replace(/^(and|or|of|a|pinch of|pinch)\s+/i,'').trim();
+    if(!item||!/[a-z]/i.test(item)||/^(for|to|into|plus)\b/i.test(item)||/^(frozen|fresh|tinned|dried|raw|cooked|chilled)$/i.test(item)||SHOP_WATER_RE.test(item)||/^(ice|ice cubes?)$/i.test(item)||(/\bwater\b/i.test(item)&&!/\b(coconut water|water chestnuts?|watercress)\b/i.test(item)))continue;
+    unit=unit.toLowerCase();
+    if(/^(tins?|cans?)$/.test(unit)){unit='';item='tinned '+item.replace(/^tinned\s+/i,'');}
+    if(/^(pinch|pinches|handful|handfuls)$/.test(unit)){amount=null;unit='';}
+    if(amount==null){
+      // Just the cupboard word itself - notes sometimes run on after it ("black pepper No feta or olives")
+      const said=item.replace(/\bsalt and pepper\b/i,'salt, black pepper');   // "pepper" alone could be a red pepper
+      for(const re of[SHOP_CUPBOARD_RE,SHOP_SPICE_RE])for(const cm of said.matchAll(new RegExp(re.source,'gi')))out.push({item:cm[0],amount:0,unit:'',aisle:'',cupboard:true});
+      continue;   // unreadable - left out rather than shown as junk
+    }
+    out.push({item,amount,unit,aisle:''});
+  }
+  return out;
+}
+// How much of a lemon or lime a recipe really uses, from its readable ingredients. The shopping
+// data says "1 lemon" even for a quarter teaspoon of zest (you can only buy a whole one), which
+// over a week added up to 18 lemons; this keeps the share (half a lemon, 15ml juice = half) and
+// the list rounds up only at the end. Juice and zest come from the same fruit, so the larger counts.
+function shopCitrusShare(text,fruit){
+  const t=String(text||'').toLowerCase().replace(/\(.*?\)/g,' ');
+  const perMl=fruit==='lemon'?30:20,zestTsp=fruit==='lemon'?3:2;
+  const n=x=>x.includes('/')?x.split('/').reduce((a,b)=>a/b):parseFloat(x);
+  const q='(\\d+\\/\\d+|\\d+(?:\\.\\d+)?)';
+  let whole=0,juice=0,zest=0,m;
+  const wholeRe=new RegExp('(?:zest(?: and juice)? of |juice of )?'+q+'\\s+(?:large |small |medium |unwaxed )?'+fruit+'s?\\b(?!\\s*(juice|zest))','g');
+  while((m=wholeRe.exec(t)))whole+=n(m[1]);
+  const juiceRe=new RegExp(q+'\\s*(ml|tbsp|tsp)\\s+(?:of\\s+)?(?:fresh(?:ly squeezed)?\\s+)?'+fruit+' juice','g');
+  while((m=juiceRe.exec(t)))juice+=n(m[1])*(m[2]==='ml'?1:m[2]==='tbsp'?15:5)/perMl;
+  const zestRe=new RegExp(q+'\\s*(tbsp|tsp)\\s+(?:of\\s+)?(?:finely grated\\s+)?'+fruit+' zest','g');
+  while((m=zestRe.exec(t)))zest+=n(m[1])*(m[2]==='tbsp'?3:1)/zestTsp;
+  return whole||Math.max(juice,zest);
+}
+// One recipe's lines: its shopping data when it has some, otherwise read from the ingredients
+function recipeShopLines(recipe){
+  if(Array.isArray(recipe?.shopping)&&recipe.shopping.some(s=>s&&s.item))
+    return recipe.shopping.filter(s=>s&&s.item&&!SHOP_WATER_RE.test(String(s.item).trim()))
+      .map(s=>{
+        const line={item:String(s.item),amount:Number(s.amount)||0,unit:String(s.unit||'').toLowerCase().trim(),aisle:String(s.aisle||'')};
+        const k=shopKey(line.item);
+        if(k==='lemon'||k==='lime'){const share=shopCitrusShare(recipe.ingredients_uk,k);if(share>0){line.amount=share;line.unit='';}}
+        return line;
+      });
+  return shopReadIngredients(recipe?.ingredients_uk);
+}
+// Units brought to one form per kind: g, ml, tsp, cloves or a count ('')
+function shopUnit(amount,unit,key){
+  let u=String(unit||'').toLowerCase().replace(/\.$/,'');
+  if(['kg'].includes(u))return[amount*1000,'g'];
+  if(['l','litre','litres','liter'].includes(u))return[amount*1000,'ml'];
+  if(['tbsp','tablespoon','tablespoons'].includes(u))return[amount*3,'tsp'];
+  if(['teaspoon','teaspoons'].includes(u))u='tsp';
+  if(['','unit','units','whole','item','items','piece','pieces','x'].includes(u))u='';
+  u=/^cloves?$/.test(u)?'clove':u.replace(/s$/,'');
+  // Juice and oil into what you buy
+  if(key==='lemon'&&['ml','tsp','g'].includes(u))return[(u==='tsp'?amount*5:amount)/30,''];
+  if(key==='lime'&&['ml','tsp','g'].includes(u))return[(u==='tsp'?amount*5:amount)/20,''];
+  if(/\boil\b/.test(key)&&u==='g')return[amount*1.1,'ml'];
+  if(key==='garlic'&&u==='')u='clove';
+  return[amount,u];
+}
+// Which rotation weeks to shop for. Week 1 of the rotation is the week (Monday to Sunday) the plan
+// was made; the rotation repeats after its last week. offset 0 = this week, 1 = next week.
+function shopWeekStart(d){const x=new Date(d);x.setHours(0,0,0,0);x.setDate(x.getDate()-((x.getDay()+6)%7));return x;}
+function shopWeekKey(d){const x=shopWeekStart(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');}
+function shopRotationWeek(planCreated,rotationLen,offset=0,now=new Date()){
+  if(!rotationLen)return 0;
+  const start=shopWeekStart(planCreated&&!isNaN(new Date(planCreated))?planCreated:now);
+  const n=Math.round((shopWeekStart(now)-start)/(7*864e5))+offset;
+  return((n%rotationLen)+rotationLen)%rotationLen;
+}
+// How many times each meal appears in the chosen weeks of a rotation (added into counts)
+function shopAddRotationCounts(counts,rotation,weekIdx){
+  for(const wi of weekIdx){
+    const wk=rotation?.[wi];if(!wk)continue;const d=wk.days||wk;
+    for(const day of SHOP_DAYS){if(!d[day])continue;for(const slot of SHOP_SLOTS){const n=d[day][slot];if(n)counts[n]=(counts[n]||0)+1;}}
+  }
+  return counts;
+}
+// The list. uses = [{recipe, count}] (count = times it appears in the chosen weeks); scale = portionScale().
+// A batch recipe is bought once per batch_portions appearances, as before; counts always round up.
+function buildShoppingList(uses,scale=1){
+  const agg={};
+  for(const {recipe,count} of uses){
+    if(!recipe||!count)continue;
+    const bp=parseInt(recipe.batch_portions)||1;
+    const mult=(recipe.bulk_cook?count/bp:count)*(scale||1);
+    for(const line of recipeShopLines(recipe)){
+      const key=shopKey(line.item);
+      if(!key)continue;
+      const a=agg[key]||(agg[key]={key,names:{},aisles:{},amounts:{},cupboard:false});
+      a.names[line.item.trim()]=(a.names[line.item.trim()]||0)+1;
+      if(line.aisle)a.aisles[line.aisle]=(a.aisles[line.aisle]||0)+1;
+      if(line.cupboard){a.cupboard=true;continue;}
+      const [amt,u]=shopUnit(line.amount,line.unit,key);
+      if(amt>0)a.amounts[u]=(a.amounts[u]||0)+amt*mult;
+    }
+  }
+  const pick=o=>Object.entries(o).sort((x,y)=>y[1]-x[1]||x[0].localeCompare(y[0]))[0]?.[0]||'';
+  const aisles={},cupboard=[];
+  for(const a of Object.values(agg)){
+    const raw=pick(a.names);
+    const name=SHOP_NAMES[a.key]||raw.charAt(0).toUpperCase()+raw.slice(1);
+    let aisle=pick(a.aisles)||shopGuessAisle(raw);
+    if(aisle==='Herbs and spices'&&/\bfresh\b/i.test(raw))aisle='Fruit and veg';
+    if(aisle==='Herbs and spices'||SHOP_CUPBOARD_RE.test(raw)||a.cupboard&&!Object.keys(a.amounts).length){
+      // A long name is usually a note that ran on ("black pepper No feta or olives") - keep the cupboard word
+      const cm=raw.split(/\s+/).length>4&&(raw.match(SHOP_CUPBOARD_RE)||raw.match(SHOP_SPICE_RE));
+      if(cm){const short=cm[0].charAt(0).toUpperCase()+cm[0].slice(1),k=shopKey(short);if(!cupboard.some(c=>c.key===k))cupboard.push({key:k,name:short});}
+      else if(!cupboard.some(c=>c.key===a.key))cupboard.push({key:a.key,name});
+      continue;
+    }
+    if(!Object.keys(a.amounts).length)continue;
+    if(!SHOP_AISLE_ORDER.includes(aisle))aisle='Other';
+    (aisles[aisle]=aisles[aisle]||[]).push({key:a.key,name,qty:shopAmountText(a.key,a.amounts,raw)});
+  }
+  return{
+    aisles:SHOP_AISLE_ORDER.filter(x=>aisles[x]).map(x=>({aisle:x,items:aisles[x].sort((p,q)=>p.name.localeCompare(q.name))})),
+    cupboard:cupboard.sort((p,q)=>p.name.localeCompare(q.name)),
+  };
+}
+// Shop-friendly amounts: only the obvious packs (user decision 23 Oct 2026) - tins, eggs, garlic
+// bulbs, spring onion bunches, whole lemons and limes. Everything else exact, rounded up.
+function shopAmountText(key,amounts,name){
+  const up=x=>Math.ceil(x-1e-9);
+  const parts=[];
+  const words=key.split(' ');
+  for(const [u,raw] of Object.entries(amounts)){
+    if(!(raw>0))continue;
+    if(u==='clove'&&key==='garlic'){const c=up(raw),b=up(c/10);parts.push(b+(b===1?' bulb':' bulbs')+' ('+c+(c===1?' clove':' cloves')+')');continue;}
+    if(u===''&&key==='egg'){const n=up(raw);parts.push(n<=6?n+(n===1?' egg':' eggs')+' - a box of 6':n<=12?n+' eggs - a box of 12':up(n/12)+' boxes of 12 ('+n+' eggs)');continue;}
+    if(u===''&&key==='onion spring'){const n=up(raw),b=up(n/8);parts.push(b+(b===1?' bunch':' bunches')+' ('+n+')');continue;}
+    if((u==='g'||u==='ml')&&words.includes('tinned')&&/\b(chickpea|bean|tomato|lentil|coconut)\b/.test(key)){const t=up(raw/400);parts.push(t+' x 400'+u+(t===1?' tin':' tins')+' ('+up(raw)+u+')');continue;}
+    if(u==='g'||u==='ml'){const r=up(raw);parts.push(r>=1000?(Math.ceil(r/100)/10)+(u==='g'?'kg':'L'):r+u);continue;}
+    if(u==='tsp'){const r=up(raw);parts.push(r>=3&&r%3===0?(r/3)+' tbsp':r+' tsp');continue;}
+    if(u===''){parts.push(String(up(raw)));continue;}
+    const r=up(raw);parts.push(r+' '+u+(r===1?'':'s'));
+  }
+  return parts.join(' + ');
+}
+// The list as text for copying: only what is not ticked, grouped by aisle
+function shoppingListText(list,ticked){
+  const lines=[];
+  for(const sec of list.aisles){
+    const left=sec.items.filter(i=>!ticked.has(i.key));
+    if(!left.length)continue;
+    lines.push(sec.aisle+':');
+    for(const i of left)lines.push('- '+i.name+': '+i.qty);
+    lines.push('');
+  }
+  const cup=list.cupboard.filter(i=>!ticked.has(i.key));
+  if(cup.length)lines.push('Check the cupboard: '+cup.map(i=>i.name).join(', '));
+  return lines.join('\n').trim();
+}
+// ---- shopping list engine end ----
+
+// Ticks on the shopping list, per person and per week (decision D5). Kept on this phone here;
+// the new backend keeps them in its database (the preview replaces these three).
+function shopTicksStoreKey(week){return'shop_ticks_'+CU.user_id+'_'+week;}
+async function shopTicksLoad(week){try{return new Set(JSON.parse(localStorage.getItem(shopTicksStoreKey(week))||'[]'));}catch(e){return new Set();}}
+async function shopTickSave(week,key,on){
+  try{
+    const s=await shopTicksLoad(week);on?s.add(key):s.delete(key);
+    localStorage.setItem(shopTicksStoreKey(week),JSON.stringify([...s]));
+    // Older weeks are not needed after 5 weeks
+    const cutoff=shopWeekKey(new Date(Date.now()-35*864e5)),prefix='shop_ticks_'+CU.user_id+'_';
+    for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k&&k.startsWith(prefix)&&k.slice(prefix.length)<cutoff)localStorage.removeItem(k);}
+    return true;
+  }catch(e){return false;}
+}
+async function shopTicksClear(week){try{localStorage.removeItem(shopTicksStoreKey(week));return true;}catch(e){return false;}}
+
+let shopBuy=null,shopTicked=new Set(),shopTickWeek='';
 async function genShoppingList(){
   const out=document.getElementById('shopping-list-out');
   if(!userMealPlan?.meals)return;
   const m=userMealPlan.meals;
   const rotation=m.weekly_rotation||[];
   if(!rotation.length){out.innerHTML='<div class="alert alert-warn">Generate your plan first to get a shopping list.</div>';return;}
+  const choice=document.getElementById('shop-weeks-sel')?.value||'this';
+  const offsets=choice==='next'?[1]:choice==='both'?[0,1]:[0];
+  const weeksFor=(created,len)=>[...new Set(offsets.map(o=>shopRotationWeek(created,len,o)))];
 
-  const weekCount=parseInt(document.getElementById('shop-weeks-sel')?.value)||1;
-  const slots=['breakfast','snack1','snack','lunch','snack2','snack3','dinner','evening'];
-  const days=['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
-
-  // Count how many times each meal appears in the rotation (for multiplying batch quantities)
-  const mealCounts={};
-  for(let wi=0;wi<weekCount&&wi<rotation.length;wi++){
-    const wk=rotation[wi]; const d=wk.days||wk;
-    for(const day of days){
-      if(!d[day])continue;
-      for(const slot of slots){
-        const n=d[day][slot];
-        if(n)mealCounts[n]=(mealCounts[n]||0)+1;
-      }
-    }
-  }
-
-  // Build recipe lookup
+  // How many times each meal appears in the chosen weeks, and the recipes by name
+  const mealCounts=shopAddRotationCounts({},rotation,weeksFor(userMealPlan.created_at,rotation.length));
   const allCats=['breakfasts','snacks','lunches','dinners','evening_snacks','protein_desserts','low_calorie_meals','bulking_meals'];
   const recipeMap={};
-  for(const cat of allCats){
-    for(const meal of(m.meals?.[cat]||[])){if(meal.name)recipeMap[meal.name]=meal;}
-  }
+  for(const cat of allCats)for(const meal of(m.meals?.[cat]||[]))if(meal.name)recipeMap[meal.name]=meal;
 
   // Household shopping list - if synced with partner, also process partner's plan
   const shopSyncSt=getSyncStatus();
@@ -5431,18 +5676,7 @@ async function genShoppingList(){
           if(partnerRow){
             const partnerMeals=JSON.parse(readMealsJson(partnerRow)||'{}');
             const pRotation=partnerMeals.weekly_rotation||[];
-            // Add partner meal counts to mealCounts
-            for(let wi=0;wi<weekCount&&wi<pRotation.length;wi++){
-              const wk=pRotation[wi];const d=wk.days||wk;
-              for(const day of days){
-                if(!d[day])continue;
-                for(const slot of slots){
-                  const n=d[day][slot];
-                  if(n)mealCounts[n]=(mealCounts[n]||0)+1;
-                }
-              }
-            }
-            // Extend recipeMap with partner's recipes
+            shopAddRotationCounts(mealCounts,pRotation,weeksFor(partnerRow[2],pRotation.length));
             for(const cat of allCats){
               for(const meal of((partnerMeals.meals||partnerMeals)?.[cat]||[])){
                 if(meal.name&&!recipeMap[meal.name])recipeMap[meal.name]=meal;
@@ -5456,375 +5690,72 @@ async function genShoppingList(){
     }
   }
 
-  // ---- QUANTITY PARSER ----
-  // Parses "210g chicken breast (diced)" into {qty:210, unit:'g', base:'chicken breast'}
-  // Also handles trailing format: "protein powder 44g" -> same result
-  // Handles: 210g, 200ml, 3 tbsp, 2 tsp, 1 tbsp, 45g, 4 cloves, 2 slices, 4 (whole items)
-  const unitPattern='g|ml|kg|l|tbsp|tsp|cup|fl oz|oz|lb|cloves?|slices?|cubes?|sprigs?|sticks?|fillets?|rashers?';
-  function parseIngr(str){
-    str=str.trim();
-    // Try leading number + unit first: "210g chicken breast"
-    let m=str.match(new RegExp('^(\\d+(?:\\.\\d+)?)\\s*('+unitPattern+')?\\s+(.+)$','i'));
-    if(m){
-      const qty=parseFloat(m[1]);
-      const unit=(m[2]||'').toLowerCase().trim().replace(/s$/,'');
-      let base=m[3]
-        .replace(/\(.*?\)/g,'')   // remove parenthetical notes like (diced)
-        .replace(/,.*$/,'')        // remove trailing comma clauses
-        .replace(/\s+/g,' ')
-        .trim()
-        .toLowerCase();
-      return{qty,unit:unit||'unit',base,raw:str};
-    }
-    // Try trailing number + unit: "protein powder 44g"
-    m=str.match(new RegExp('^(.+?)\\s+(\\d+(?:\\.\\d+)?)\\s*('+unitPattern+')$','i'));
-    if(m){
-      const qty=parseFloat(m[2]);
-      const unit=(m[3]||'').toLowerCase().trim().replace(/s$/,'');
-      let base=m[1]
-        .replace(/\(.*?\)/g,'')
-        .replace(/,.*$/,'')
-        .replace(/\s+/g,' ')
-        .trim()
-        .toLowerCase();
-      return{qty,unit:unit||'unit',base,raw:str};
-    }
-    // Try trailing BARE number with no unit at all: "spring onions 4"
-    m=str.match(/^(.+?)\s+(\d+(?:\.\d+)?)$/);
-    if(m){
-      const qty=parseFloat(m[2]);
-      let base=m[1]
-        .replace(/\(.*?\)/g,'')
-        .replace(/,.*$/,'')
-        .replace(/\s+/g,' ')
-        .trim()
-        .toLowerCase();
-      return{qty,unit:'unit',base,raw:str};
-    }
-    // No recognisable number anywhere - true fallback, flagged as such so the
-    // display can be honest that this isn't a real extracted quantity
-    const base=str.replace(/\(.*?\)/g,'').replace(/,.*$/,'').trim().toLowerCase();
-    return{qty:1,unit:'unit',base,raw:str,noQtyFound:true};
-  }
-
-  // ---- INGREDIENT NORMALISER ----
-  // Maps variations to a canonical name for aggregation
-  const aliases={
-    // Proteins
-    'chicken breast':'Chicken breast',
-    'chicken':'Chicken breast',
-    'turkey mince':'Turkey mince',
-    'turkey rashers':'Turkey rashers',
-    'turkey breast slices':'Turkey breast (sliced)',
-    'turkey ham slices':'Turkey breast (sliced)',
-    'turkey breast':'Turkey breast (sliced)',
-    'beef mince':'Beef mince',
-    'beef strips':'Beef strips (sirloin)',
-    'sirloin strips':'Beef strips (sirloin)',
-    'cod fillet':'Cod fillet',
-    'cod':'Cod fillet',
-    'king prawns':'King prawns',
-    'prawns':'King prawns',
-    'smoked salmon':'Smoked salmon',
-    'tuna in spring water':'Tinned tuna',
-    'tinned tuna':'Tinned tuna',
-    'tuna':'Tinned tuna',
-    'liquid egg whites':'Liquid egg whites',
-    'egg whites':'Liquid egg whites',
-    'egg white':'Liquid egg whites',
-    'eggs':'Eggs',
-    'egg':'Eggs',
-    'cottage cheese':'Cottage cheese (low-fat)',
-    'whey protein powder':'Whey protein powder',
-    'whey protein':'Whey protein powder',
-    // Carbs
-    'rolled oats':'Rolled oats',
-    'oats':'Rolled oats',
-    'basmati rice':'Basmati rice',
-    'jasmine rice':'Jasmine rice',
-    'brown rice':'Brown rice',
-    'long grain rice':'Long grain rice',
-    'paella rice':'Paella rice',
-    'arborio rice':'Arborio rice',
-    'rice noodles':'Rice noodles',
-    'jasmine rice noodles':'Rice noodles',
-    'egg noodles':'Egg noodles',
-    'medium egg noodles':'Egg noodles',
-    'wholewheat spaghetti':'Wholemeal spaghetti',
-    'wholemeal spaghetti':'Wholemeal spaghetti',
-    'wholemeal penne':'Wholemeal penne pasta',
-    'orzo':'Orzo',
-    'sweet potato':'Sweet potato',
-    'baby potatoes':'Baby potatoes',
-    'potatoes':'Potatoes',
-    'wholemeal flatbread':'Wholemeal flatbread',
-    'wholemeal wrap':'Wholemeal wrap',
-    'corn tortilla':'Corn tortillas',
-    'small corn tortillas':'Corn tortillas',
-    'rice cakes':'Rice cakes (plain)',
-    'plain rice cakes':'Rice cakes (plain)',
-    'oat cakes':'Oat cakes (plain)',
-    'plain oat cakes':'Oat cakes (plain)',
-    'wholemeal crackers':'Wholemeal crackers',
-    'crackers':'Wholemeal crackers',
-    'pitta':'Wholemeal pitta bread',
-    'wholemeal pitta':'Wholemeal pitta bread',
-    'bagel':'Plain bagel',
-    'sourdough bread':'Sourdough bread',
-    'crusty wholemeal bread':'Wholemeal bread',
-    'wholemeal bread':'Wholemeal bread',
-    'couscous':'Couscous',
-    // Dairy
-    'greek yogurt':'Greek yogurt (fat-free)',
-    'fat-free greek yogurt':'Greek yogurt (fat-free)',
-    'semi-skimmed milk':'Semi-skimmed milk',
-    'skimmed milk':'Skimmed milk',
-    'reduced-fat cream cheese':'Cream cheese (reduced-fat)',
-    'cream cheese':'Cream cheese (reduced-fat)',
-    'reduced-fat cheddar':'Cheddar (reduced-fat)',
-    'reduced-fat feta':'Feta (reduced-fat)',
-    'reduced-fat parmesan':'Parmesan (reduced-fat)',
-    'parmesan':'Parmesan (reduced-fat)',
-    'coconut milk':'Coconut milk (reduced-fat)',
-    // Oils
-    'olive oil':'Olive oil',
-    'sesame oil':'Sesame oil',
-    'coconut oil':'Coconut oil',
-    // Stock
-    'chicken stock':'Chicken stock',
-    // Veg
-    'cherry tomatoes':'Cherry tomatoes',
-    'tinned chopped tomatoes':'Tinned chopped tomatoes',
-    'chopped tomatoes':'Tinned chopped tomatoes',
-    'baby spinach':'Baby spinach',
-    'spinach':'Baby spinach',
-    'tinned chickpeas':'Tinned chickpeas',
-    'chickpeas':'Tinned chickpeas',
-    'tinned black beans':'Tinned black beans',
-    'black beans':'Tinned black beans',
-    'tinned butter beans':'Tinned butter beans',
-    'butter beans':'Tinned butter beans',
-    'passata':'Passata',
-    'salsa':'Tomato salsa (jarred)',
-    'tomato salsa':'Tomato salsa (jarred)',
-    // Condiments
-    'honey':'Honey',
-    'soy sauce':'Soy sauce',
-    'fish sauce':'Fish sauce',
-    'olive oil drizzle':'Olive oil',
-    'rice vinegar':'Rice vinegar',
-  };
-
-  function normalise(base){
-    // Strip common descriptors that create false duplicates
-    // e.g. "lean turkey mince" "extra-lean turkey mince" -> "turkey mince"
-    // e.g. "cooked shredded chicken breast" -> "chicken breast"
-    const stripWords=['extra-lean','extra lean','lean','low-fat','low fat','fat-free','fat free',
-      'reduced-fat','reduced fat','semi-skimmed','skimmed','full-fat','full fat',
-      'cooked','raw','fresh','frozen','tinned','canned','drained','dried','dry',
-      'shredded','sliced','diced','minced','grated','chopped','halved','crushed',
-      'wafer-thin','wafer thin','liquid','whole','large','medium','small',
-      'baby','plain','mixed','ground','boneless','skinless',
-      'in spring water','in brine','in oil','in juice',
-      'approx','approximately'];
-    let clean=base.toLowerCase();
-    for(const w of stripWords){
-      // Negative lookbehind for a hyphen prevents stripping the second half of a
-      // compound like "sun-dried" while still stripping standalone "dried apricots"
-      const re=new RegExp('(?<!-)\\b'+w+'\\b','gi');
-      clean=clean.replace(re,' ');
-    }
-    clean=clean.replace(/\s+/g,' ').trim();
-
-    // Direct alias match first
-    if(aliases[clean])return aliases[clean];
-    if(aliases[base])return aliases[base];
-
-    // Partial alias match - find longest key contained in the cleaned string
-    let best=null,bestLen=0;
-    for(const[k,v] of Object.entries(aliases)){
-      if(clean.includes(k)&&k.length>bestLen){best=v;bestLen=k.length;}
-    }
-    if(best)return best;
-
-    // No alias - return the cleaned base as canonical name, capitalised
-    return clean.charAt(0).toUpperCase()+clean.slice(1);
-  }
-
-  // ---- UNIT NORMALISER ----
-  // Converts everything to a single comparable unit per ingredient
-  // g/kg -> g, ml/l -> ml, tsp/tbsp -> tsp, units stay as units
-  function normaliseUnit(qty,unit){
-    if(unit==='kg')return{qty:qty*1000,unit:'g'};
-    if(unit==='l')return{qty:qty*1000,unit:'ml'};
-    if(unit==='tbsp')return{qty:qty*3,unit:'tsp'};
-    return{qty,unit:unit||'unit'};
-  }
-
-  // ---- AGGREGATION ----
-  // Map of normalisedName -> {qty, unit, rawExamples}
-  const aggregated={};
-
-  for(const[mealName,count] of Object.entries(mealCounts)){
-    const recipe=recipeMap[mealName];
-    if(!recipe?.ingredients_uk)continue;
-    const servings=parseInt(recipe.servings)||1;
-    // For batch meals count how many times they appear - but batch_portions already accounts for servings
-    // So multiply by count (appearances in rotation) but only by 1/batch_portions each time
-    const batchPortions=parseInt(recipe.batch_portions)||1;
-    // Times the current portion size, so the list matches the resized recipes
-    const multiplier=(recipe.bulk_cook?(count/batchPortions):count)*portionScale();
-
-    // Strip cost annotations before splitting - these aren't ingredients
-    // (e.g. "Approx £3.20/serving." or "est. cost/serving: £1.40")
-    const costStripped=(recipe.ingredients_uk||'').replace(/\.?\s*(approx\.?|est\.?(imated)?)?\s*(cost\s*)?(per\s*serving|\/\s*serving)?:?\s*£[\d.]+\s*(\/\s*serving)?\.?/gi,'');
-
-    // Words that only ever appear as a trailing descriptor, never a standalone ingredient
-    const descriptorOnly=new Set(['diced','sliced','chopped','minced','grated','crushed','blended','halved','quartered','shredded','peeled','trimmed','drained','rinsed','zested','juiced','boiled','mashed','roasted','baked','steamed','toasted','whisked','beaten','melted','softened','each','approx','approximately','about']);
-
-    // Smart split: split on commas AND semicolons only when NOT inside parentheses
-    // Prevents "mixed seeds (sunflower, pumpkin)" splitting into two items
-    const lines=[];
-    let current='',depth=0;
-    for(const ch of costStripped){
-      if(ch==='(')depth++;
-      else if(ch===')')depth--;
-      if((ch===','||ch===';')&&depth===0){if(current.trim().length>2)lines.push(current.trim());current='';}
-      else if(ch==='\n'){if(current.trim().length>2)lines.push(current.trim());current='';}
-      else current+=ch;
-    }
-    if(current.trim().length>2)lines.push(current.trim());
-    for(let line of lines){
-      line=line.replace(/\.$/,'').trim();
-      if(!line)continue;
-      // Catches both a single descriptor word ("diced") and short phrases where
-      // every word is a descriptor ("boiled & mashed") - neither is a real ingredient
-      const lineWords=line.toLowerCase().split(/\s*&\s*|\s+/).filter(Boolean);
-      if(lineWords.every(w=>descriptorOnly.has(w)))continue;
-      const parsed=parseIngr(line);
-      if(descriptorOnly.has(parsed.base))continue;
-      const {qty:nQty,unit:nUnit}=normaliseUnit(parsed.qty,parsed.unit);
-      const key=normalise(parsed.base);
-      if(!aggregated[key]){aggregated[key]={qty:0,unit:nUnit,raw:parsed.raw};}
-      // If units match, add. If they don't match (e.g. someone lists ml and g for same ingredient), keep separate
-      if(aggregated[key].unit===nUnit){
-        aggregated[key].qty+=nQty*multiplier;
-        if(!parsed.noQtyFound)aggregated[key].hasRealQty=true;
-      } else {
-        // Different unit - create a variant key
-        const vkey=key+'_'+nUnit;
-        if(!aggregated[vkey]){aggregated[vkey]={qty:0,unit:nUnit,raw:parsed.raw};}
-        aggregated[vkey].qty+=nQty*multiplier;
-        if(!parsed.noQtyFound)aggregated[vkey].hasRealQty=true;
-      }
-    }
-  }
-
-  // ---- CATEGORISE with STORECUPBOARD split ----
-  const proteinKw=['chicken','turkey','beef','pork','salmon','tuna','egg','mince','steak','cod','haddock','prawn','tofu','tempeh','quorn','cottage cheese','egg white','whey'];
-  const carbKw=['oat','rice','pasta','bread','potato','wrap','tortilla','quinoa','noodle','flour','cracker','cereal','bagel','pitta','couscous','orzo','spaghetti','penne'];
-  const dairyKw=['milk','yogurt','cheese','cream','kefir','butter bean'];
-  const fatKw=['olive oil','sesame oil','coconut oil','nut butter','almond butter','peanut butter','seed','avocado'];
-  const vegKw=['spinach','broccoli','pepper','onion','garlic','tomato','lettuce','courgette','mushroom','carrot','celery','cucumber','kale','bean','lentil','chickpea','pea','leek','pak choi','beansprout','rocket','salsa'];
-  // Items that are storecupboard staples - list name only, no quantity needed
-  const storecupboardKw=['salt','pepper','paprika','cumin','oregano','thyme','basil','cinnamon','turmeric','chilli powder','chilli flakes','curry powder','garam masala','cayenne','coriander powder','garlic powder','onion powder','mixed herb','dried herb','cooking spray','olive oil spray','baking powder','bicarbonate','vanilla extract','cornflour','stock cube','saffron','mustard powder','bay leaf','allspice','cardamom','nutmeg','chinese five spice','ras el hanout'];
-
-  const cats={proteins:{},carbs:{},dairy:{},fats:{},veg:{},extras:{}};
-  const storecupboard=new Set();
-
-  for(const[key,data] of Object.entries(aggregated)){
-    const low=key.toLowerCase();
-    // Check if it's a storecupboard item (tiny spice/herb/extract)
-    const isStore=storecupboardKw.some(k=>low.includes(k))||
-      (data.unit==='tsp'&&data.qty<=3)||
-      (data.unit==='pinch')||
-      (data.qty<=5&&data.unit==='g'&&low.match(/spice|powder|extract|flake/));
-    if(isStore){storecupboard.add(data.canonical||key.charAt(0).toUpperCase()+key.slice(1));continue;}
-
-    let placed=false;
-    if(!placed&&proteinKw.some(k=>low.includes(k))){cats.proteins[key]=data;placed=true;}
-    if(!placed&&carbKw.some(k=>low.includes(k))){cats.carbs[key]=data;placed=true;}
-    if(!placed&&dairyKw.some(k=>low.includes(k))){cats.dairy[key]=data;placed=true;}
-    if(!placed&&fatKw.some(k=>low.includes(k))){cats.fats[key]=data;placed=true;}
-    if(!placed&&vegKw.some(k=>low.includes(k))){cats.veg[key]=data;placed=true;}
-    if(!placed){cats.extras[key]=data;}
-  }
-
-  // ---- FORMAT QUANTITY ----
-  function fmtQty(qty,unit){
-    const rounded=Math.ceil(qty); // always round up so you don't run short
-    if(unit==='g'){
-      if(rounded>=1000)return`${(rounded/1000).toFixed(1).replace('.0','')}kg`;
-      return`${rounded}g`;
-    }
-    if(unit==='ml'){
-      if(rounded>=1000)return`${(rounded/1000).toFixed(1).replace('.0','')}L`;
-      return`${rounded}ml`;
-    }
-    if(unit==='tsp')return rounded===1?'1 tsp':`${rounded} tsp`;
-    if(unit==='unit')return rounded===1?'1':`${rounded}`;
-    return`${rounded} ${unit}`;
-  }
-
-  // ---- RENDER ----
-  const catLabels={proteins:'🥩 Proteins',carbs:'🍚 Carbs',dairy:'🥛 Dairy & Protein',fats:'🥑 Oils & Fats',veg:'🥦 Veg, Beans & Legumes',extras:'🧂 Spices, Sauces & Extras'};
-
-  let html=`<div class="card">
+  shopBuy=buildShoppingList(Object.entries(mealCounts).map(([name,count])=>({recipe:recipeMap[name],count})),portionScale());
+  shopTickWeek=shopWeekKey(new Date());
+  shopTicked=await shopTicksLoad(shopTickWeek);
+  const weekLabel={this:'this week',next:'next week',both:'this week and next'}[choice];
+  out.innerHTML=`<div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
       <div class="card-lbl" style="margin:0">🛒 Shopping List</div>
       <div style="display:flex;align-items:center;gap:8px">
         <select class="fsel" id="shop-weeks-sel" onchange="genShoppingList()" style="width:auto;padding:6px 10px;font-size:12px">
-          <option value="1">1 Week</option>
-          <option value="2">2 Weeks</option>
+          <option value="this"${choice==='this'?' selected':''}>This week</option>
+          <option value="next"${choice==='next'?' selected':''}>Next week</option>
+          <option value="both"${choice==='both'?' selected':''}>Both</option>
         </select>
         <button class="btn btn-ghost btn-sm" onclick="copyShoppingList()">📋 Copy</button>
       </div>
     </div>
-    <div style="font-size:11px;color:var(--tx3);margin-bottom:14px">${isHouseholdList?`🏠 Household list for ${CU.username} and ${escapeHtml(householdPartnerName)} - `:''}Total quantities for ${weekCount===1?'Week 1':'Weeks 1-2'} - ${Object.keys(mealCounts).length} unique meals</div>`;
-
-  for(const[key,label] of Object.entries(catLabels)){
-    const items=Object.entries(cats[key]);
-    if(!items.length)continue;
-    // Sort alphabetically
-    items.sort((a,b)=>a[0].localeCompare(b[0]));
+    <div style="font-size:11px;color:var(--tx3);margin-bottom:14px">${isHouseholdList?`🏠 Household list for ${escapeHtml(CU.username)} and ${escapeHtml(householdPartnerName)} - `:''}Everything for ${weekLabel} - ${Object.keys(mealCounts).length} different meals. Tick things off as you shop.</div>
+    <div id="shop-list-body">${shopListBodyHtml()}</div>
+    <div style="font-size:11px;color:var(--tx3);margin-top:10px">Amounts are rounded up so you never run short. Batch cook meals are counted by how many times they appear.</div></div>`;
+  out.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function shopListBodyHtml(){
+  if(!shopBuy)return'';
+  let html='';
+  for(const sec of shopBuy.aisles){
     html+=`<div style="margin-bottom:18px">
-      <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--ac);margin-bottom:8px">${label}</div>
-      ${items.map(([name,data])=>{
-        const displayName=name.replace(/_[a-z]+$/,'');
-        const qtyStr=fmtQty(data.qty,data.unit);
-        const uncertain=data.unit==='unit'&&!data.hasRealQty;
-        return`<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--b1);font-size:13px">
-          <input type="checkbox" style="accent-color:var(--ac);width:14px;height:14px;flex-shrink:0">
-          <span style="flex:1">${displayName.charAt(0).toUpperCase()+displayName.slice(1)}${uncertain?' <span style="color:var(--warn);font-size:11px">(check amount)</span>':''}</span>
-          <span style="color:var(--ac);font-weight:700;font-family:'JetBrains Mono',monospace;font-size:12px;white-space:nowrap">${qtyStr}</span>
-        </div>`;
+      <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--ac);margin-bottom:8px">${escapeHtml(sec.aisle)}</div>
+      ${sec.items.map(i=>{
+        const t=shopTicked.has(i.key);
+        return`<label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--b1);font-size:13px;cursor:pointer">
+          <input type="checkbox" data-shop-key="${escapeHtml(i.key)}" onchange="toggleShopTick(this)"${t?' checked':''} style="accent-color:var(--ac);width:16px;height:16px;flex-shrink:0">
+          <span style="flex:1${t?';text-decoration:line-through;color:var(--tx3)':''}">${escapeHtml(i.name)}</span>
+          <span style="color:${t?'var(--tx3)':'var(--ac)'};font-weight:700;font-family:'JetBrains Mono',monospace;font-size:12px;text-align:right">${escapeHtml(i.qty)}</span>
+        </label>`;
       }).join('')}
     </div>`;
   }
-
-  html+=`${storecupboard.size>0?`<div style="margin-bottom:14px">
-    <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--tx2);margin-bottom:6px">🗄️ Storecupboard - check you have these</div>
-    <div style="font-size:11px;color:var(--tx3);margin-bottom:8px">Small amounts of spices and condiments - you probably already have most of these</div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px">
-      ${[...storecupboard].sort().map(name=>`<span style="background:var(--s2);border:1px solid var(--b1);border-radius:6px;padding:4px 8px;font-size:11px;color:var(--tx2)">${name}</span>`).join('')}
-    </div>
-  </div>`:''}
-  <div style="font-size:11px;color:var(--tx3);margin-top:10px">Quantities rounded up so you never run short. Batch cook meals calculated by how many times they appear in your rotation.</div></div>`;
-  out.innerHTML=html;
-  out.scrollIntoView({behavior:'smooth',block:'start'});
+  if(shopBuy.cupboard.length){
+    html+=`<details style="margin-bottom:12px"><summary style="cursor:pointer;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--tx2)">🗄️ Probably in your cupboard (${shopBuy.cupboard.length})</summary>
+      <div style="font-size:11px;color:var(--tx3);margin:6px 0 8px">Oils, spices and seasonings in small amounts - just check you have them.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${shopBuy.cupboard.map(i=>`<span style="background:var(--s2);border:1px solid var(--b1);border-radius:6px;padding:4px 8px;font-size:11px;color:var(--tx2)">${escapeHtml(i.name)}</span>`).join('')}</div>
+    </details>`;
+  }
+  if(shopTicked.size)html+=`<button class="btn btn-ghost btn-sm" onclick="untickAllShop()">Untick all</button>`;
+  return html;
 }
-
+async function toggleShopTick(cb){
+  const key=cb.dataset.shopKey,on=cb.checked;
+  on?shopTicked.add(key):shopTicked.delete(key);
+  document.getElementById('shop-list-body').innerHTML=shopListBodyHtml();
+  if(!await shopTickSave(shopTickWeek,key,on)){
+    on?shopTicked.delete(key):shopTicked.add(key);
+    document.getElementById('shop-list-body').innerHTML=shopListBodyHtml();
+    alert('That tick could not be saved. Please try again.');
+  }
+}
+async function untickAllShop(){
+  if(!await shopTicksClear(shopTickWeek)){alert('Could not clear the ticks. Please try again.');return;}
+  shopTicked=new Set();
+  document.getElementById('shop-list-body').innerHTML=shopListBodyHtml();
+}
 function copyShoppingList(){
-  const out=document.getElementById('shopping-list-out');
-  if(!out)return;
-  const lines=[];
-  out.querySelectorAll('[style*="border-bottom"]').forEach(row=>{
-    const name=row.querySelector('span:first-of-type')?.textContent?.trim();
-    const qty=row.querySelector('span:last-of-type')?.textContent?.trim();
-    if(name&&name!==qty)lines.push(`- ${name}: ${qty}`);
-    else if(name)lines.push(`- ${name}`);
-  });
-  navigator.clipboard?.writeText(lines.join('\n')).then(()=>celebrateMsg('listCopied','📋','Copied!'));
+  if(!shopBuy)return;
+  const text=shoppingListText(shopBuy,shopTicked);
+  if(!text){alert('Everything is ticked off - nothing left to copy.');return;}
+  navigator.clipboard?.writeText(text).then(()=>celebrateMsg('listCopied','📋','Copied!'));
 }
 
 async function dislikeMeal(btn){
