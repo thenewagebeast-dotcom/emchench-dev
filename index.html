@@ -1289,7 +1289,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct recipe detail';
+const APP_BUILD='23 Oct 4c shared pieces';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -3431,14 +3431,22 @@ function showMealPicker(meals){
 }
 
 // chooseForMe=true ignores any ticks and lets the app pick every section.
-function confirmMealPicks(chooseForMe=false){
+// The picks for every section: the ticked ones, topped up with variety to each section's
+// number. No ticks at all = "Choose for me". Shared with the server's 24-hour automatic pick.
+function pickMeals(optionsByCat,tickedByCat){
   const targets=getPickTargets();
   const picked={};
   for(const cat of Object.keys(targets)){
-    const options=pickerOptions(cat);
-    const ticked=chooseForMe?[]:Array.from(document.querySelectorAll(`#meal-picker-content input[data-cat="${cat}"]:checked`)).map(cb=>parseInt(cb.dataset.idx));
+    const options=(optionsByCat?.[cat]||[]).filter(m=>m&&m.name);
+    const ticked=tickedByCat?.[cat]||[];
     picked[cat]=options.length?topUpWithVariety(options,ticked,targets[cat]):[];
   }
+  return picked;
+}
+function confirmMealPicks(chooseForMe=false){
+  const ticked={};
+  if(!chooseForMe){for(const cat of Object.keys(getPickTargets()))ticked[cat]=Array.from(document.querySelectorAll(`#meal-picker-content input[data-cat="${cat}"]:checked`)).map(cb=>parseInt(cb.dataset.idx));}
+  const picked=pickMeals(_mealPickerOptions,ticked);
   // Keep the plan to a sensible size - every extra recipe adds generation time and cost
   const total=Object.values(picked).reduce((n,list)=>n+list.length,0);
   if(total>MAX_PLAN_RECIPES){
@@ -3489,6 +3497,19 @@ function recipeBatches(chosenMeals){
     {breakfasts:chosenMeals.breakfasts||[],snacks:chosenMeals.snacks||[],lunches:chosenMeals.lunches||[]},
     {dinners:chosenMeals.dinners||[],evening_snacks:chosenMeals.evening_snacks||[],protein_desserts:chosenMeals.protein_desserts||[],low_calorie_meals:chosenMeals.low_calorie_meals||[],bulking_meals:chosenMeals.bulking_meals||[]}
   ];
+}
+// The chosen meals in groups of a few recipes each (the server writes each group in its own
+// call, inside its time limit), keeping the usual order of the sections
+function recipeGroups(chosenMeals,size){
+  const all=[];
+  for(const cat of RECIPE_CATS)for(const m of(chosenMeals?.[cat]||[]))if(m&&m.name)all.push([cat,m]);
+  const groups=[];
+  for(let i=0;i<all.length;i+=size){
+    const g={};
+    for(const [cat,m] of all.slice(i,i+size))(g[cat]=g[cat]||[]).push(m);
+    groups.push(g);
+  }
+  return groups;
 }
 // Every recipe answer merged into the plan. The targets are always the app's own
 // calculation (never the AI's), with the food rules the plan was written for.
@@ -8732,6 +8753,10 @@ async function callAIFeature(feature,args){
   catch(e){throw new Error(describeAiError(e,'The AI took too long to respond. This sometimes happens with large plans - please try again.')||e.message);}
 }
 
+// The request callAI sends - shared with the server, which sends the same for plan generation
+function callAIBody(prompt,systemPrompt,maxTokens=30000,model=AI_MODEL){
+  return{model,max_tokens:maxTokens,fallbacks:'default',output_config:{effort:model===AI_MODEL_TRAINING?'medium':'low'},system:[{type:'text',text:systemPrompt,cache_control:{type:'ephemeral'}}],messages:[{role:'user',content:prompt}]};
+}
 async function callAI(apiKey, prompt, systemPrompt, maxTokens=30000, model=AI_MODEL){
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),420000);
@@ -8740,7 +8765,7 @@ async function callAI(apiKey, prompt, systemPrompt, maxTokens=30000, model=AI_MO
       method:'POST',
       signal:controller.signal,
       headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
-      body:JSON.stringify({model,max_tokens:maxTokens,fallbacks:'default',output_config:{effort:model===AI_MODEL_TRAINING?'medium':'low'},system:[{type:'text',text:systemPrompt,cache_control:{type:'ephemeral'}}],messages:[{role:'user',content:prompt}]})
+      body:JSON.stringify(callAIBody(prompt,systemPrompt,maxTokens,model))
     });
     clearTimeout(timeout);
     const data=await res.json();
