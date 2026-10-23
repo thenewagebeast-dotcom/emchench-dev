@@ -1289,7 +1289,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct UK clock';
+const APP_BUILD='23 Oct mince fix';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -3929,11 +3929,16 @@ function addedGroups(oldRules,newRules){
 // Word matching on one recipe's ingredient list. Returns a reason, or ''.
 function wordFlagRecipe(recipe,groups){
   const phrases=String(recipe.ingredients_uk||'').split(/[,;\n]/).map(p=>p.trim()).filter(Boolean);
+  const esc=w=>w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
   for(const g of Object.values(groups)){
     for(const phrase of phrases){
       if(g.safe&&g.safe.test(phrase))continue;
       for(const w of g.words){
-        if(new RegExp('\\b'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?:e?s)?\\b','i').test(phrase)){
+        if(new RegExp('\\b'+esc(w)+'(?:e?s)?\\b','i').test(phrase)){
+          // "500ml water for mince" only points back to an ingredient the recipe already
+          // named as a safe version ("200g soya mince") - not a new ingredient (23 Oct 2026)
+          const pointsBack=new RegExp('\\b(for|to|into|onto|over|with|on|around)\\s+(the\\s+)?'+esc(w)+'(?:e?s)?\\b','i').test(phrase);
+          if(pointsBack&&g.safe&&phrases.some(p=>p!==phrase&&g.safe.test(p)&&new RegExp('\\b'+esc(w)+'(?:e?s)?\\b','i').test(p)))continue;
           return'Contains '+g.label+': '+phrase.replace(/\(.*?\)/g,'').replace(/\s+/g,' ').trim().slice(0,48);
         }
       }
