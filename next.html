@@ -1359,7 +1359,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct guide 8 sections';
+const APP_BUILD='23 Oct AI server 4b-1';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -4055,8 +4055,7 @@ async function checkPlanFoodRules(){
   if(!CU.api_key){aiError='no API key on this profile';}
   else if(recipes.length){
     try{
-      const prompt=foodCheckPrompt(rules,recipes);
-      const res=await callAI(CU.api_key,prompt,FOOD_CHECK_SYS,8000);
+      const res=await callAIFeature('food_check',{});
       for(const f of(res&&res.flagged)||[]){
         const hit=recipes[parseInt(f.n)-1];
         if(hit)items[hit.meal.name]=String(f.reason||items[hit.meal.name]||'Breaks one of your food rules').slice(0,90);
@@ -4151,7 +4150,7 @@ async function replaceFlaggedMeals(){
       if(!found){delete userMealPlan.meals.flagged.items[name];continue;}
       showLoad(`Replacing Meals (${done+1} of ${names.length})`,`Writing a new recipe in place of ${name}...`);
       const taken=allPlanRecipes().map(x=>x.meal.name).join(', ');
-      const recipe=await callAI(CU.api_key,replaceMealPrompt(name,found.cat,taken),REPLACE_MEAL_SYS,6000);
+      const recipe=await callAIFeature('replace_meal',{name,cat:found.cat,taken});
       if(!recipe||!recipe.name||!recipe.ingredients_uk)throw new Error('the replacement for '+name+' came back incomplete');
       applyMealSwapInMemory(name,recipe,found.cat);
       done++;
@@ -4463,19 +4462,9 @@ async function genPatternAnalysis(weighIns, recentLogs){
   const apiKey=CU.api_key;
   if(!apiKey)return null;
 
-  const prompt=patternAnalysisPrompt(weighIns,recentLogs);
 
   try{
-    const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),60000);
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
-      body:JSON.stringify({model:AI_MODEL,max_tokens:4000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:prompt}]})
-    });
-    clearTimeout(timeout);
-    const data=await res.json();
+    const data=await aiRequest('weigh_in_review',{weighIns,recentLogs});
     if(data.error)throw new Error(data.error.message);
     const text=(extractAiText(data)||'{}').replace(/[—–]/g,'-');
     const parsed=JSON.parse(text.match(/\{[\s\S]*\}/)?.[0]||'{}');
@@ -5215,18 +5204,7 @@ async function openMealSwap(btn){
   btn.textContent='Finding...';btn.disabled=true;
 
   try{
-    const prompt=mealSwapNamesPrompt(mealName,cat,targetCals,targetProtein);
-
-    const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),60000);
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
-      body:JSON.stringify({model:AI_MODEL,max_tokens:2000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:prompt}]})
-    });
-    clearTimeout(timeout);
-    const data=await res.json();
+    const data=await aiRequest('meal_swap_names',{mealName,cat,cals:targetCals,protein:targetProtein});
     if(data.error)throw new Error(data.error.message);
     const text=(extractAiText(data)||'{}').replace(/[—–]/g,'-');
     const jm=text.match(/\{[\s\S]*\}/)?.[0]||'{}';
@@ -5269,18 +5247,7 @@ async function confirmMealSwap(btn){
   if(resEl)resEl.innerHTML=`<div style="font-size:13px;color:var(--tx2)">Getting full recipe for ${newName}...</div>`;
 
   try{
-    const prompt=mealSwapRecipePrompt(newName,cat);
-
-    const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),60000);
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
-      body:JSON.stringify({model:AI_MODEL,max_tokens:4000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:prompt}]})
-    });
-    clearTimeout(timeout);
-    const data=await res.json();
+    const data=await aiRequest('meal_swap_recipe',{newName,cat});
     if(data.error)throw new Error(data.error.message);
     const text=(extractAiText(data)||'{}').replace(/[—–]/g,'-');
     const jm=text.match(/\{[\s\S]*\}/)?.[0]||'{}';
@@ -5955,20 +5922,7 @@ async function getSwap(){
 
   document.getElementById('swap-btn').textContent='Finding...';
   try{
-    const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),60000);
-    const promptText=exerciseSwapPrompt(swapExercise,equip,constraints,!!swapEquipmentPhoto);
-    const messageContent=swapEquipmentPhoto
-      ?[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:swapEquipmentPhoto}},{type:'text',text:promptText}]
-      :promptText;
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
-      body:JSON.stringify({model:AI_MODEL,max_tokens:2000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:messageContent}]})
-    });
-    clearTimeout(timeout);
-    const data=await res.json();
+    const data=await aiRequest('exercise_swap',{exercise:swapExercise,equip,constraints,photo:swapEquipmentPhoto||null});
     if(data.error)throw new Error(data.error.message);
     const text=(extractAiText(data)||'{}').replace(/[—–]/g,'-');
     const jm=text.match(/\{[\s\S]*\}/)?.[0]||'{}';
@@ -6898,16 +6852,7 @@ async function genProgressReport(){
   try{
     const apiKey=CU.api_key;
     if(!apiKey){hideLoad();alert('No API key - add it in Profile');return;}
-    const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),60000);
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
-      body:JSON.stringify({model:AI_MODEL,max_tokens:5000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:progressReportPrompt()}]})
-    });
-    clearTimeout(timeout);
-    const data=await res.json();
+    const data=await aiRequest('progress_report',{});
     if(data.error)throw new Error(data.error.message);
     const report=(extractAiText(data)||'').replace(/[—–]/g,'-').trim();
     if(!report)throw new Error('No report came back - stop_reason: '+(data.stop_reason||'unknown')+'. Please try again.');
@@ -6973,20 +6918,11 @@ Write the ENTIRE guide in this voice, not just the closing section. Make it feel
 }
 async function genHowToGuide(){
   if(!CU.api_key){showHowToError('No API key found on this account. Please add your Anthropic API key in Profile.');return false;}
-  const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),60000);
   try{
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':CU.api_key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
-      body:JSON.stringify({model:AI_MODEL,max_tokens:5000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:howToGuidePrompt()}]})
-    });
-    clearTimeout(timeout);
-    const data=await res.json();
-    if(!res.ok||data.error){
-      console.error('How to guide API error:',res.status,data.error||data);
-      showHowToError((data.error?.message||'HTTP '+res.status)+' [status: '+res.status+', type: '+(data.error?.type||data.type||'unknown')+']');
+    const data=await aiRequest('howto_guide',{});
+    if(data.error){
+      console.error('How to guide API error:',data.error);
+      showHowToError((data.error?.message||'Request failed')+' [type: '+(data.error?.type||data.type||'unknown')+']');
       return false;
     }
     const guide=(extractAiText(data)||'').replace(/[—–]/g,'-');
@@ -7011,7 +6947,6 @@ async function genHowToGuide(){
     }
     return true;
   }catch(e){
-    clearTimeout(timeout);
     console.error('How to guide:',e);
     showHowToError(describeAiError(e,'The request timed out. Please try again.')||(e.message||'Something went wrong.'));
     return false;
@@ -7343,6 +7278,7 @@ function renderProfile(){
     </div>
 
     ${accountCardHtml()}
+    ${aiAdminCardHtml()}
     <div class="card" style="display:none">
       <div class="card-lbl">Change PIN</div>
       <div class="frow"><label class="flbl">Current PIN</label><div style="position:relative"><input class="finput" id="prof-pin-current" type="password" placeholder="Your current PIN" maxlength="6" inputmode="numeric" style="padding-right:44px"><button onclick="togglePinVis('prof-pin-current',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--tx3);cursor:pointer;font-size:14px">Show</button></div></div>
@@ -8728,6 +8664,70 @@ function extractJsonText(text){
   return end>start?text.slice(start,end+1):null;
 }
 
+// ---- AI requests (Phase 4b, 23 Oct 2026) ----
+// Every AI feature outside plan generation asks through aiRequest(). This table holds
+// each feature's length limit and how its request is built. The server has an exact
+// copy (generated by dev-seed/build-prompts.js), so it builds the same request.
+const AI_FEATURES={
+  meal_swap_names:{max_tokens:2000,build:a=>({user:mealSwapNamesPrompt(a.mealName,a.cat,a.cals,a.protein)})},
+  meal_swap_recipe:{max_tokens:4000,build:a=>({user:mealSwapRecipePrompt(a.newName,a.cat)})},
+  exercise_swap:{max_tokens:2000,build:a=>({user:exerciseSwapPrompt(a.exercise,a.equip,a.constraints,!!a.photo),photo:a.photo||null})},
+  progress_report:{max_tokens:5000,build:()=>({user:progressReportPrompt()})},
+  howto_guide:{max_tokens:5000,build:()=>({user:howToGuidePrompt()})},
+  weigh_in_review:{max_tokens:4000,build:a=>({user:patternAnalysisPrompt(a.weighIns,a.recentLogs)})},
+  event_bank:{max_tokens:2000,build:a=>({user:eventBankPrompt(a.event)})},
+  food_check:{max_tokens:8000,build:()=>({system:FOOD_CHECK_SYS,user:foodCheckPrompt(currentFoodRules(),allPlanRecipes())})},
+  replace_meal:{max_tokens:6000,build:a=>({system:REPLACE_MEAL_SYS,user:replaceMealPrompt(a.name,a.cat,a.taken)})}
+};
+function aiRequestBody(feature,args){
+  const f=AI_FEATURES[feature];
+  if(!f)throw new Error('Unknown AI feature: '+feature);
+  const b=f.build(args||{});
+  const content=b.photo?[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:b.photo}},{type:'text',text:b.user}]:b.user;
+  const body={model:AI_MODEL,max_tokens:f.max_tokens,fallbacks:'default',output_config:{effort:'low'}};
+  if(b.system!=null)body.system=[{type:'text',text:b.system,cache_control:{type:'ephemeral'}}];
+  body.messages=[{role:'user',content}];
+  return body;
+}
+// Sends one AI request and returns the answer as Anthropic gives it. The preview
+// (next.html) replaces this so the request goes to the server instead.
+async function aiRequest(feature,args,timeoutMs=60000){
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),timeoutMs);
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      signal:controller.signal,
+      headers:{'Content-Type':'application/json','x-api-key':CU.api_key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
+      body:JSON.stringify(aiRequestBody(feature,args))
+    });
+    return await res.json();
+  }finally{clearTimeout(timeout);}
+}
+// Reads the JSON out of an AI answer, with clear errors (shared by callAI and callAIFeature)
+function aiJson(data){
+  if(data.error)throw new Error(data.error.message);
+  if(data.usage)console.log('AI call cache stats - read:',data.usage.cache_read_input_tokens||0,'written:',data.usage.cache_creation_input_tokens||0,'fresh:',data.usage.input_tokens||0);
+  const text=(extractAiText(data)||'').replace(/[—–]/g,'-');
+  const jsonText=extractJsonText(text);
+  const jm=jsonText==null?null:[null,jsonText];
+  if(!jm){
+    const diag='stop_reason: '+(data.stop_reason||'unknown')+' | blocks: '+(data.content?.length||0)+' | text length: '+text.length+' | preview: "'+text.slice(0,150)+'"';
+    throw new Error('No valid JSON returned from AI. '+diag);
+  }
+  try{
+    return JSON.parse(jm[1]);
+  }catch(parseErr){
+    const diag='stop_reason: '+(data.stop_reason||'unknown')+' | matched length: '+jm[1].length+' | parse error: '+parseErr.message;
+    throw new Error('AI response looked like JSON but failed to parse - it may have been cut off. '+diag);
+  }
+}
+// An AI feature whose answer is JSON (the food check and replacing flagged meals)
+async function callAIFeature(feature,args){
+  try{return aiJson(await aiRequest(feature,args,420000));}
+  catch(e){throw new Error(describeAiError(e,'The AI took too long to respond. This sometimes happens with large plans - please try again.')||e.message);}
+}
+
 async function callAI(apiKey, prompt, systemPrompt, maxTokens=30000, model=AI_MODEL){
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),420000);
@@ -8740,21 +8740,7 @@ async function callAI(apiKey, prompt, systemPrompt, maxTokens=30000, model=AI_MO
     });
     clearTimeout(timeout);
     const data=await res.json();
-    if(data.error)throw new Error(data.error.message);
-    if(data.usage)console.log('AI call cache stats - read:',data.usage.cache_read_input_tokens||0,'written:',data.usage.cache_creation_input_tokens||0,'fresh:',data.usage.input_tokens||0);
-    const text=(extractAiText(data)||'').replace(/[—–]/g,'-');
-    const jsonText=extractJsonText(text);
-    const jm=jsonText==null?null:[null,jsonText];
-    if(!jm){
-      const diag='stop_reason: '+(data.stop_reason||'unknown')+' | blocks: '+(data.content?.length||0)+' | text length: '+text.length+' | preview: "'+text.slice(0,150)+'"';
-      throw new Error('No valid JSON returned from AI. '+diag);
-    }
-    try{
-      return JSON.parse(jm[1]);
-    }catch(parseErr){
-      const diag='stop_reason: '+(data.stop_reason||'unknown')+' | matched length: '+jm[1].length+' | parse error: '+parseErr.message;
-      throw new Error('AI response looked like JSON but failed to parse - it may have been cut off. '+diag);
-    }
+    return aiJson(data);
   }catch(e){
     clearTimeout(timeout);
     throw new Error(describeAiError(e,'The AI took too long to respond. This sometimes happens with large plans - please try again.')||e.message);
@@ -8853,18 +8839,7 @@ async function confirmEventBank(){
   showLoad('Planning Your Event','Getting your personalised event guide...');
 
   try{
-    const prompt=eventBankPrompt(ev);
-
-    const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),60000);
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
-      body:JSON.stringify({model:AI_MODEL,max_tokens:2000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:prompt}]})
-    });
-    clearTimeout(timeout);
-    const data=await res.json();
+    const data=await aiRequest('event_bank',{event:ev});
     if(data.error)throw new Error(data.error.message);
     const text=(extractAiText(data)||'{}').replace(/[—–]/g,'-');
     const jm=text.match(/\{[\s\S]*\}/)?.[0]||'{}';
@@ -10349,6 +10324,94 @@ async function doChangePassword(){
     authMsg('cp-msg','Password changed.','ok');
   }finally{authBusy('cp-btn',false);}
 }
+// ---- AI on the server (Phase 4b, 23 Oct 2026) ----
+// Every AI feature asks through aiRequest(feature,args). In the preview it goes to the
+// server function "ai" (supabase/functions/ai), which checks the login, the budget and
+// the person's limits, builds the instructions itself from their data and holds the key.
+// The phone sends only which feature and what the person picked - never instructions.
+// Plan generation still goes through callAI and stays switched off until 4c.
+const AI_SERVER_URL=SB_URL+'/functions/v1/ai';
+async function aiRequest(feature,args,timeoutMs=60000){
+  const {data:{session}}=await sb.auth.getSession();
+  if(!session)return{error:{type:'auth',message:'Please log in again.'}};
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),Math.min(timeoutMs,150000));
+  try{
+    const res=await fetch(AI_SERVER_URL,{method:'POST',signal:controller.signal,
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token,'apikey':SB_ANON_KEY},
+      body:JSON.stringify({feature,args:args||{}})});
+    let data=null;try{data=await res.json();}catch(e){}
+    if(!data)return{error:{type:'server',message:'The AI server gave an answer that could not be read (HTTP '+res.status+'). Please try again.'}};
+    // A gateway error (e.g. the function is not deployed) comes back in its own shape
+    if(!res.ok&&!data.error)return{error:{type:'server',message:(data.message||data.msg||'The AI server is not available')+' (HTTP '+res.status+').'}};
+    return data;
+  }finally{clearTimeout(timeout);}
+}
+
+// ---- Admin card: AI spending, the budget, extra uses, and a server check ----
+const AI_FEATURE_LABELS={meal_swap_names:'Meal swap - choices',meal_swap_recipe:'Meal swap - recipe',exercise_swap:'Exercise swap',
+  food_check:'Food check',replace_meal:'Replace flagged meal',progress_report:'Progress report',howto_guide:'How-to guide',
+  weigh_in_review:'Weigh-in review',event_bank:'Calorie banking',plan_generation:'Plan generation'};
+function aiAdminCardHtml(){
+  if(!CU?.is_admin)return'';
+  setTimeout(()=>loadAiAdminCard().catch(e=>{const el=document.getElementById('ai-admin-body');if(el)el.textContent='Could not load: '+e.message;}),0);
+  return`<div class="card" id="ai-admin-card">
+      <div class="card-lbl">AI Spending (admin)</div>
+      <div id="ai-admin-body" style="font-size:13px;color:var(--tx2)">Loading...</div>
+    </div>`;
+}
+async function loadAiAdminCard(){
+  const el=document.getElementById('ai-admin-body');if(!el)return;
+  const [set,sum,extras]=await Promise.all([sb.from('app_settings').select('monthly_ai_cap_usd').maybeSingle(),sb.rpc('ai_month_summary'),sb.from('ai_extra_uses').select('user_id,feature,extra').gt('extra',0)]);
+  const err=set.error||sum.error||extras.error;if(err)throw new Error(friendlyDbError(err));
+  const cap=Number(set.data?.monthly_ai_cap_usd||0);
+  const rows=sum.data||[];
+  const spent=rows.reduce((n,r)=>n+Number(r.cost_usd||0),0);
+  const pct=cap?Math.min(100,spent/cap*100):0;
+  const money=n=>'$'+Number(n).toFixed(2);
+  const byPerson={},byFeature={};
+  for(const r of rows){const p=r.username||'(deleted account)';byPerson[p]=(byPerson[p]||0)+Number(r.cost_usd);
+    const f=AI_FEATURE_LABELS[r.feature]||r.feature;byFeature[f]=byFeature[f]||{calls:0,cost:0};byFeature[f].calls+=r.calls;byFeature[f].cost+=Number(r.cost_usd);}
+  const list=o=>Object.entries(o).sort((a,b)=>(b[1].cost??b[1])-(a[1].cost??a[1])).map(([k,v])=>`<div style="display:flex;justify-content:space-between"><span>${escapeHtml(k)}</span><span>${typeof v==='number'?money(v):v.calls+' calls, '+money(v.cost)}</span></div>`).join('')||'<div>Nothing yet this month.</div>';
+  const people=allUsers.map(u=>`<option value="${u.user_id}">${escapeHtml(u.username)}</option>`).join('');
+  const feats=Object.entries(AI_FEATURE_LABELS).map(([k,v])=>`<option value="${k}">${escapeHtml(v)}</option>`).join('');
+  const extraList=(extras.data||[]).map(x=>`<div>${escapeHtml(nameOf(x.user_id))}: +${x.extra} ${escapeHtml(AI_FEATURE_LABELS[x.feature]||x.feature)}</div>`).join('')||'<div>None.</div>';
+  el.innerHTML=`<div style="margin-bottom:6px">This month: <strong style="color:var(--tx)">${money(spent)}</strong> of ${money(cap)}</div>
+    <div class="prog-bar" style="margin-bottom:6px"><div class="prog-fill" style="width:${pct}%;${pct>=80?'background:var(--warn)':''}"></div></div>
+    ${pct>=80?`<div class="alert alert-warn" style="font-size:12px">Over 80% of the month's AI budget is used. At 100% the AI stops for everyone until the 1st.</div>`:''}
+    <div style="display:flex;gap:8px;align-items:center;margin:10px 0"><label style="font-size:12px">Monthly budget $</label><input class="finput" id="ai-cap" type="number" min="0" step="5" value="${cap}" style="max-width:110px"><button class="btn btn-ghost btn-sm" onclick="saveAiCap()">Save</button></div>
+    <div class="card-lbl" style="margin-top:12px">By person</div>${list(byPerson)}
+    <div class="card-lbl" style="margin-top:12px">By feature</div>${list(byFeature)}
+    <div class="card-lbl" style="margin-top:12px">Extra uses</div>${extraList}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><select class="fsel" id="ai-extra-user" style="flex:1;min-width:120px">${people}</select><select class="fsel" id="ai-extra-feature" style="flex:1;min-width:140px">${feats}</select>
+      <input class="finput" id="ai-extra-n" type="number" min="1" max="100" value="2" style="max-width:70px"><button class="btn btn-sm" onclick="giveAiExtra()">Give</button></div>
+    <div style="margin-top:12px"><button class="btn btn-ghost btn-sm" onclick="checkAiServer()">Check the AI server</button> <span id="ai-server-check" style="font-size:12px"></span></div>`;
+}
+async function saveAiCap(){
+  const v=parseFloat(document.getElementById('ai-cap')?.value);
+  if(!(v>=0)){alert('Enter a budget in dollars.');return;}
+  const {error}=await sb.from('app_settings').update({monthly_ai_cap_usd:v}).eq('id',true);
+  if(error){alert('Could not save: '+friendlyDbError(error));return;}
+  await loadAiAdminCard();
+}
+async function giveAiExtra(){
+  const user_id=document.getElementById('ai-extra-user')?.value,feature=document.getElementById('ai-extra-feature')?.value;
+  const n=parseInt(document.getElementById('ai-extra-n')?.value);
+  if(!user_id||!feature||!(n>0)){alert('Pick a person, a feature and a number.');return;}
+  const {data:cur}=await sb.from('ai_extra_uses').select('extra').eq('user_id',user_id).eq('feature',feature).maybeSingle();
+  const {error}=await sb.from('ai_extra_uses').upsert({user_id,feature,extra:Math.min(1000,(cur?.extra||0)+n),updated_by:CU.user_id,updated_at:nowIso()},{onConflict:'user_id,feature'});
+  if(error){alert('Could not save: '+friendlyDbError(error));return;}
+  await loadAiAdminCard();
+}
+async function checkAiServer(){
+  const el=document.getElementById('ai-server-check');if(el)el.textContent='Checking...';
+  const r=await aiRequest('server_check',{},20000).catch(e=>({error:{message:e.message}}));
+  if(!el)return;
+  if(r.error){el.textContent='Not working: '+r.error.message;return;}
+  const ukOk=r.time_zone==='Europe/London'||(r.utc_offset_minutes===new Date().getTimezoneOffset()*-1);
+  el.innerHTML=(r.key_set?'Key set ✓':'<span style="color:var(--warn)">Key NOT set</span>')+' · '+(ukOk?'UK time ✓':'<span style="color:var(--warn)">Not on UK time ('+escapeHtml(String(r.time_zone))+')</span>');
+}
+
 function accountCardHtml(){
   return`<div class="card">
       <div class="card-lbl">Account</div>

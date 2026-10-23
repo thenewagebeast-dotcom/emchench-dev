@@ -1289,7 +1289,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct guide 8 sections';
+const APP_BUILD='23 Oct AI server 4b-1';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -3987,8 +3987,7 @@ async function checkPlanFoodRules(){
   if(!CU.api_key){aiError='no API key on this profile';}
   else if(recipes.length){
     try{
-      const prompt=foodCheckPrompt(rules,recipes);
-      const res=await callAI(CU.api_key,prompt,FOOD_CHECK_SYS,8000);
+      const res=await callAIFeature('food_check',{});
       for(const f of(res&&res.flagged)||[]){
         const hit=recipes[parseInt(f.n)-1];
         if(hit)items[hit.meal.name]=String(f.reason||items[hit.meal.name]||'Breaks one of your food rules').slice(0,90);
@@ -4083,7 +4082,7 @@ async function replaceFlaggedMeals(){
       if(!found){delete userMealPlan.meals.flagged.items[name];continue;}
       showLoad(`Replacing Meals (${done+1} of ${names.length})`,`Writing a new recipe in place of ${name}...`);
       const taken=allPlanRecipes().map(x=>x.meal.name).join(', ');
-      const recipe=await callAI(CU.api_key,replaceMealPrompt(name,found.cat,taken),REPLACE_MEAL_SYS,6000);
+      const recipe=await callAIFeature('replace_meal',{name,cat:found.cat,taken});
       if(!recipe||!recipe.name||!recipe.ingredients_uk)throw new Error('the replacement for '+name+' came back incomplete');
       applyMealSwapInMemory(name,recipe,found.cat);
       done++;
@@ -4395,19 +4394,9 @@ async function genPatternAnalysis(weighIns, recentLogs){
   const apiKey=CU.api_key;
   if(!apiKey)return null;
 
-  const prompt=patternAnalysisPrompt(weighIns,recentLogs);
 
   try{
-    const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),60000);
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
-      body:JSON.stringify({model:AI_MODEL,max_tokens:4000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:prompt}]})
-    });
-    clearTimeout(timeout);
-    const data=await res.json();
+    const data=await aiRequest('weigh_in_review',{weighIns,recentLogs});
     if(data.error)throw new Error(data.error.message);
     const text=(extractAiText(data)||'{}').replace(/[—–]/g,'-');
     const parsed=JSON.parse(text.match(/\{[\s\S]*\}/)?.[0]||'{}');
@@ -5147,18 +5136,7 @@ async function openMealSwap(btn){
   btn.textContent='Finding...';btn.disabled=true;
 
   try{
-    const prompt=mealSwapNamesPrompt(mealName,cat,targetCals,targetProtein);
-
-    const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),60000);
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
-      body:JSON.stringify({model:AI_MODEL,max_tokens:2000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:prompt}]})
-    });
-    clearTimeout(timeout);
-    const data=await res.json();
+    const data=await aiRequest('meal_swap_names',{mealName,cat,cals:targetCals,protein:targetProtein});
     if(data.error)throw new Error(data.error.message);
     const text=(extractAiText(data)||'{}').replace(/[—–]/g,'-');
     const jm=text.match(/\{[\s\S]*\}/)?.[0]||'{}';
@@ -5201,18 +5179,7 @@ async function confirmMealSwap(btn){
   if(resEl)resEl.innerHTML=`<div style="font-size:13px;color:var(--tx2)">Getting full recipe for ${newName}...</div>`;
 
   try{
-    const prompt=mealSwapRecipePrompt(newName,cat);
-
-    const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),60000);
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
-      body:JSON.stringify({model:AI_MODEL,max_tokens:4000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:prompt}]})
-    });
-    clearTimeout(timeout);
-    const data=await res.json();
+    const data=await aiRequest('meal_swap_recipe',{newName,cat});
     if(data.error)throw new Error(data.error.message);
     const text=(extractAiText(data)||'{}').replace(/[—–]/g,'-');
     const jm=text.match(/\{[\s\S]*\}/)?.[0]||'{}';
@@ -5887,20 +5854,7 @@ async function getSwap(){
 
   document.getElementById('swap-btn').textContent='Finding...';
   try{
-    const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),60000);
-    const promptText=exerciseSwapPrompt(swapExercise,equip,constraints,!!swapEquipmentPhoto);
-    const messageContent=swapEquipmentPhoto
-      ?[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:swapEquipmentPhoto}},{type:'text',text:promptText}]
-      :promptText;
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
-      body:JSON.stringify({model:AI_MODEL,max_tokens:2000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:messageContent}]})
-    });
-    clearTimeout(timeout);
-    const data=await res.json();
+    const data=await aiRequest('exercise_swap',{exercise:swapExercise,equip,constraints,photo:swapEquipmentPhoto||null});
     if(data.error)throw new Error(data.error.message);
     const text=(extractAiText(data)||'{}').replace(/[—–]/g,'-');
     const jm=text.match(/\{[\s\S]*\}/)?.[0]||'{}';
@@ -6830,16 +6784,7 @@ async function genProgressReport(){
   try{
     const apiKey=CU.api_key;
     if(!apiKey){hideLoad();alert('No API key - add it in Profile');return;}
-    const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),60000);
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
-      body:JSON.stringify({model:AI_MODEL,max_tokens:5000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:progressReportPrompt()}]})
-    });
-    clearTimeout(timeout);
-    const data=await res.json();
+    const data=await aiRequest('progress_report',{});
     if(data.error)throw new Error(data.error.message);
     const report=(extractAiText(data)||'').replace(/[—–]/g,'-').trim();
     if(!report)throw new Error('No report came back - stop_reason: '+(data.stop_reason||'unknown')+'. Please try again.');
@@ -6905,20 +6850,11 @@ Write the ENTIRE guide in this voice, not just the closing section. Make it feel
 }
 async function genHowToGuide(){
   if(!CU.api_key){showHowToError('No API key found on this account. Please add your Anthropic API key in Profile.');return false;}
-  const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),60000);
   try{
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':CU.api_key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
-      body:JSON.stringify({model:AI_MODEL,max_tokens:5000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:howToGuidePrompt()}]})
-    });
-    clearTimeout(timeout);
-    const data=await res.json();
-    if(!res.ok||data.error){
-      console.error('How to guide API error:',res.status,data.error||data);
-      showHowToError((data.error?.message||'HTTP '+res.status)+' [status: '+res.status+', type: '+(data.error?.type||data.type||'unknown')+']');
+    const data=await aiRequest('howto_guide',{});
+    if(data.error){
+      console.error('How to guide API error:',data.error);
+      showHowToError((data.error?.message||'Request failed')+' [type: '+(data.error?.type||data.type||'unknown')+']');
       return false;
     }
     const guide=(extractAiText(data)||'').replace(/[—–]/g,'-');
@@ -6943,7 +6879,6 @@ async function genHowToGuide(){
     }
     return true;
   }catch(e){
-    clearTimeout(timeout);
     console.error('How to guide:',e);
     showHowToError(describeAiError(e,'The request timed out. Please try again.')||(e.message||'Something went wrong.'));
     return false;
@@ -8666,6 +8601,70 @@ function extractJsonText(text){
   return end>start?text.slice(start,end+1):null;
 }
 
+// ---- AI requests (Phase 4b, 23 Oct 2026) ----
+// Every AI feature outside plan generation asks through aiRequest(). This table holds
+// each feature's length limit and how its request is built. The server has an exact
+// copy (generated by dev-seed/build-prompts.js), so it builds the same request.
+const AI_FEATURES={
+  meal_swap_names:{max_tokens:2000,build:a=>({user:mealSwapNamesPrompt(a.mealName,a.cat,a.cals,a.protein)})},
+  meal_swap_recipe:{max_tokens:4000,build:a=>({user:mealSwapRecipePrompt(a.newName,a.cat)})},
+  exercise_swap:{max_tokens:2000,build:a=>({user:exerciseSwapPrompt(a.exercise,a.equip,a.constraints,!!a.photo),photo:a.photo||null})},
+  progress_report:{max_tokens:5000,build:()=>({user:progressReportPrompt()})},
+  howto_guide:{max_tokens:5000,build:()=>({user:howToGuidePrompt()})},
+  weigh_in_review:{max_tokens:4000,build:a=>({user:patternAnalysisPrompt(a.weighIns,a.recentLogs)})},
+  event_bank:{max_tokens:2000,build:a=>({user:eventBankPrompt(a.event)})},
+  food_check:{max_tokens:8000,build:()=>({system:FOOD_CHECK_SYS,user:foodCheckPrompt(currentFoodRules(),allPlanRecipes())})},
+  replace_meal:{max_tokens:6000,build:a=>({system:REPLACE_MEAL_SYS,user:replaceMealPrompt(a.name,a.cat,a.taken)})}
+};
+function aiRequestBody(feature,args){
+  const f=AI_FEATURES[feature];
+  if(!f)throw new Error('Unknown AI feature: '+feature);
+  const b=f.build(args||{});
+  const content=b.photo?[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:b.photo}},{type:'text',text:b.user}]:b.user;
+  const body={model:AI_MODEL,max_tokens:f.max_tokens,fallbacks:'default',output_config:{effort:'low'}};
+  if(b.system!=null)body.system=[{type:'text',text:b.system,cache_control:{type:'ephemeral'}}];
+  body.messages=[{role:'user',content}];
+  return body;
+}
+// Sends one AI request and returns the answer as Anthropic gives it. The preview
+// (next.html) replaces this so the request goes to the server instead.
+async function aiRequest(feature,args,timeoutMs=60000){
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),timeoutMs);
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      signal:controller.signal,
+      headers:{'Content-Type':'application/json','x-api-key':CU.api_key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
+      body:JSON.stringify(aiRequestBody(feature,args))
+    });
+    return await res.json();
+  }finally{clearTimeout(timeout);}
+}
+// Reads the JSON out of an AI answer, with clear errors (shared by callAI and callAIFeature)
+function aiJson(data){
+  if(data.error)throw new Error(data.error.message);
+  if(data.usage)console.log('AI call cache stats - read:',data.usage.cache_read_input_tokens||0,'written:',data.usage.cache_creation_input_tokens||0,'fresh:',data.usage.input_tokens||0);
+  const text=(extractAiText(data)||'').replace(/[—–]/g,'-');
+  const jsonText=extractJsonText(text);
+  const jm=jsonText==null?null:[null,jsonText];
+  if(!jm){
+    const diag='stop_reason: '+(data.stop_reason||'unknown')+' | blocks: '+(data.content?.length||0)+' | text length: '+text.length+' | preview: "'+text.slice(0,150)+'"';
+    throw new Error('No valid JSON returned from AI. '+diag);
+  }
+  try{
+    return JSON.parse(jm[1]);
+  }catch(parseErr){
+    const diag='stop_reason: '+(data.stop_reason||'unknown')+' | matched length: '+jm[1].length+' | parse error: '+parseErr.message;
+    throw new Error('AI response looked like JSON but failed to parse - it may have been cut off. '+diag);
+  }
+}
+// An AI feature whose answer is JSON (the food check and replacing flagged meals)
+async function callAIFeature(feature,args){
+  try{return aiJson(await aiRequest(feature,args,420000));}
+  catch(e){throw new Error(describeAiError(e,'The AI took too long to respond. This sometimes happens with large plans - please try again.')||e.message);}
+}
+
 async function callAI(apiKey, prompt, systemPrompt, maxTokens=30000, model=AI_MODEL){
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),420000);
@@ -8678,21 +8677,7 @@ async function callAI(apiKey, prompt, systemPrompt, maxTokens=30000, model=AI_MO
     });
     clearTimeout(timeout);
     const data=await res.json();
-    if(data.error)throw new Error(data.error.message);
-    if(data.usage)console.log('AI call cache stats - read:',data.usage.cache_read_input_tokens||0,'written:',data.usage.cache_creation_input_tokens||0,'fresh:',data.usage.input_tokens||0);
-    const text=(extractAiText(data)||'').replace(/[—–]/g,'-');
-    const jsonText=extractJsonText(text);
-    const jm=jsonText==null?null:[null,jsonText];
-    if(!jm){
-      const diag='stop_reason: '+(data.stop_reason||'unknown')+' | blocks: '+(data.content?.length||0)+' | text length: '+text.length+' | preview: "'+text.slice(0,150)+'"';
-      throw new Error('No valid JSON returned from AI. '+diag);
-    }
-    try{
-      return JSON.parse(jm[1]);
-    }catch(parseErr){
-      const diag='stop_reason: '+(data.stop_reason||'unknown')+' | matched length: '+jm[1].length+' | parse error: '+parseErr.message;
-      throw new Error('AI response looked like JSON but failed to parse - it may have been cut off. '+diag);
-    }
+    return aiJson(data);
   }catch(e){
     clearTimeout(timeout);
     throw new Error(describeAiError(e,'The AI took too long to respond. This sometimes happens with large plans - please try again.')||e.message);
@@ -8791,18 +8776,7 @@ async function confirmEventBank(){
   showLoad('Planning Your Event','Getting your personalised event guide...');
 
   try{
-    const prompt=eventBankPrompt(ev);
-
-    const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),60000);
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      signal:controller.signal,
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':AI_BETA},
-      body:JSON.stringify({model:AI_MODEL,max_tokens:2000,fallbacks:'default',output_config:{effort:'low'},messages:[{role:'user',content:prompt}]})
-    });
-    clearTimeout(timeout);
-    const data=await res.json();
+    const data=await aiRequest('event_bank',{event:ev});
     if(data.error)throw new Error(data.error.message);
     const text=(extractAiText(data)||'{}').replace(/[—–]/g,'-');
     const jm=text.match(/\{[\s\S]*\}/)?.[0]||'{}';
