@@ -1289,7 +1289,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct small fixes';
+const APP_BUILD='23 Oct what to buy';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -5336,6 +5336,7 @@ function renderMealCard(meal,cat){
       ${ingredientsHtml(meal)}
       ${meal.method?`<div class="det-lbl">Method</div><div class="method">${fmtMethod(meal.method)}</div>`:''}
       ${recipeAfterHtml(meal)}
+      ${whatToBuyHtml(meal)}
       ${meal.bulk_cook?`<div class="alert alert-info" style="margin-top:10px">🍳 Batch cook - makes <strong>${meal.batch_portions||meal.servings||2} portions</strong>. Portion into containers. ${String(meal.storage||'').trim()?escapeHtml(meal.storage):'Refrigerate up to 5 days or freeze up to 3 months.'}</div>`:''}
     </div>
   </div>`;
@@ -5349,6 +5350,92 @@ function recipeListHtml(label,items){
 }
 function recipeBeforeHtml(meal){
   return recipeListHtml('Before You Start',meal.prep_list)+recipeListHtml('You Will Need',meal.equipment);
+}
+// ---- brand list start ----
+// "What to buy" (23 Oct 2026, BRAND-LIST-SPEC-2026-10-23.md). Brand examples for the free-from and
+// plant-based products in a recipe, seen on sale at UK supermarkets on the date below. Each brand
+// lists what it contains (the food check's groups, plus 'lf' = lactose-free dairy and 'sugar'),
+// so nobody is shown a brand with something they avoid. UK only: US users see none until the US
+// list is checked (decision B2). Changed only with the checks in dev-seed/check-brand-list.js.
+// The "contains" marks lean towards hiding: where a brand might contain wheat or egg it is marked
+// as containing it, so someone avoiding it sees fewer brands, never an unsafe one.
+const BRAND_LIST_CHECKED='23 Oct 2026';
+const BRAND_LIST=[
+  {type:'Soya mince',find:/(?<!dried\s)\b(soya|soy|plant[- ]based|meat[- ]free|vegan|veggie)\s+mince\b|\bvegemince\b/i,own:true,brands:[
+    {n:"THIS Isn't Beef",c:['soy','gluten']},{n:"Linda McCartney's Vegemince",c:['soy','gluten']},{n:'Vivera',c:['soy','gluten']},{n:'Meatless Farm',c:['soy','gluten']}]},
+  {type:'Quorn',find:/\b(quorn|mycoprotein)\b/i,brands:[
+    {n:'Quorn Vegan Pieces',c:['gluten']},{n:'Quorn Vegetarian Mince or Chicken Style Pieces',c:['eggs','gluten']}]},
+  {type:'Plant-based chicken pieces',find:/\b(vegan|plant[- ]based|meat[- ]free|no[- ]chicken|vegetarian)\s+(chicken[- ]style\s+|chicken\s+)?(pieces|chunks|strips)\b|\bchicken[- ]style pieces\b|\bvegan chicken\b|\bplant[- ]based chicken\b/i,own:true,brands:[
+    {n:"THIS Isn't Chicken",c:['soy','gluten']},{n:'Vivera',c:['soy','gluten']},{n:'Richmond No Chicken',c:['soy','gluten']},{n:'Squeaky Bean',c:['soy','gluten']},{n:"Linda McCartney's Vegan Shredded Chicken",c:['soy','gluten']}]},
+  {type:'Seitan',find:/\bseitan\b/i,brands:[{n:'The Tofoo Co. Original Seitan',c:['gluten']}]},
+  {type:'Silken tofu',find:/\bsilken\s+tofu\b/i,brands:[{n:'Yutaka',c:['soy']},{n:'Clearspring',c:['soy']},{n:'Morinaga Mori-Nu',c:['soy']},{n:'The Tofoo Co. Silken',c:['soy']}]},
+  {type:'Tofu',find:/(?<!silken\s)\btofu\b/i,own:true,brands:[{n:'The Tofoo Co.',c:['soy']},{n:'Cauldron',c:['soy']},{n:'Clearspring Organic',c:['soy']}]},
+  {type:'Tempeh',find:/\btempeh\b/i,brands:[{n:'Tiba',c:['soy']},{n:'Better Nature',c:['soy']},{n:'The Tofoo Co. Tempeh',c:['soy']}]},
+  {type:'Oat milk',find:/\boat\s+(milk|drink)\b/i,brands:[{n:'Alpro Oat No Sugar',c:['gluten'],ns:true},{n:'Alpro Oat',c:['gluten']},{n:'Oatly',c:['gluten']}]},
+  {type:'Soya milk',find:/\b(soya|soy)\s+(milk|drink)\b/i,brands:[{n:'Alpro Soya No Sugar',c:['soy'],ns:true},{n:'Alpro Soya',c:['soy']}]},
+  {type:'Almond milk',find:/\balmond\s+(milk|drink)\b/i,brands:[{n:'Alpro Almond No Sugar',c:['nuts'],ns:true},{n:'Alpro Almond',c:['nuts']},{n:'Rude Health Almond',c:['nuts']}]},
+  {type:'Coconut drink',find:/\bcoconut\s+(milk\s+)?drink\b/i,brands:[{n:'Alpro Coconut No Sugar',c:[],ns:true},{n:'KoKo Unsweetened',c:[],ns:true},{n:'Alpro Coconut',c:[]}]},
+  {type:'Lactose-free milk',find:/\blactose[- ]free\s+([\w-]+\s+){0,2}(milk|drink)\b/i,own:true,brands:[{n:'Arla Lactofree',c:['dairy','lf']}]},
+  {type:'Lactose-free yoghurt',find:/\blactose[- ]free\s+([\w-]+\s+){0,3}yogh?urt\b/i,own:true,brands:[{n:'Arla Lactofree Greek Style',c:['dairy','lf']},{n:'Fage Total Lactose Free',c:['dairy','lf']}]},
+  {type:'Lactose-free cheese',find:/\blactose[- ]free\s+([\w-]+\s+){0,3}(cheese|cheddar)\b/i,brands:[{n:'Arla Lactofree',c:['dairy','lf']},{n:'Cathedral City Lactose Free',c:['dairy','lf']}]},
+  {type:'Lactose-free cream or butter',find:/\blactose[- ]free\s+([\w-]+\s+){0,2}(cream|butter|spread)\b/i,brands:[{n:'Arla Lactofree',c:['dairy','lf']}]},
+  {type:'Plant yoghurt',find:/\b(soya|soy|plant[- ]based|dairy[- ]free|vegan)\s+([\w-]+\s+){0,2}yogh?urt\b/i,brands:[{n:'Alpro Plain No Sugars',c:['soy'],ns:true},{n:'Alpro Greek Style Plain',c:['soy']}]},
+  {type:'Coconut yoghurt',find:/\bcoconut\s+yogh?urt\b/i,brands:[{n:'The Coconut Collab Natural',c:[]},{n:'Alpro Plain Coconut (made from soya)',c:['soy']}]},
+  {type:'Vegan cream cheese',find:/\b(vegan|plant[- ]based|dairy[- ]free)\s+(cream|soft)\s+cheese\b/i,brands:[{n:'Violife Creamy',c:[]},{n:'Food Heaven Spreadable',c:['soy']},{n:'Philadelphia Plant Based (almond)',c:['nuts','gluten']}]},
+  {type:'Vegan feta',find:/\b(vegan|plant[- ]based|dairy[- ]free)\s+(feta|greek[- ]style\s+(white\s+)?(block|cheese))\b/i,brands:[{n:'Violife Greek White',c:[]}]},
+  {type:'Vegan cheese',find:/\b(vegan|plant[- ]based|dairy[- ]free)\s+(?!cream\b|soft\b|feta\b)([\w-]+\s+){0,2}(cheese|cheddar)\b/i,brands:[{n:'Violife',c:[]},{n:'Cathedral City Plant Based',c:[]},{n:'Babybel Plant-Based',c:[]}]},
+  {type:'Plant cream',find:/\b(soya|soy|oat|plant[- ]based|dairy[- ]free|vegan)\s+(single\s+)?cream\b(?!\s+cheese)/i,brands:[{n:'Alpro Soya single cream alternative',c:['soy']}]},
+  {type:'Plant whipping cream',find:/\b(vegan|plant[- ]based|dairy[- ]free)\s+whipp(ing|ed)\b/i,brands:[{n:'Food Heaven Heavenly Whipped',c:['soy']}]},
+  {type:'Plant custard',find:/\b(soya|plant[- ]based|dairy[- ]free|vegan)\s+custard\b/i,brands:[{n:'Alpro Vanilla Custard',c:['soy','sugar']}]},
+  {type:'Plant butter',find:/\b(vegan|plant[- ]based|dairy[- ]free)\s+(butter|spread|block)\b/i,brands:[{n:'Flora Plant Butter',c:[]},{n:'Vitalite',c:['soy']}]},
+  {type:'Vegan mayonnaise',find:/\b(vegan|plant[- ]based|egg[- ]free)\s+mayo(nnaise)?\b/i,brands:[{n:"Hellmann's 100% Plant Based",c:[]},{n:'Heinz Vegan Mayo',c:['soy']}]},
+  {type:'Gluten-free pasta',find:/\bgluten[- ]free\s+([\w-]+\s+){0,2}(pasta|penne|fusilli|spaghetti|macaroni|lasagne|tagliatelle|rigatoni|linguine)\b/i,own:true,brands:[{n:'Rummo Gluten Free',c:['eggs']},{n:'Freee Brown Rice Fusilli',c:[]}]},
+  {type:'Gluten-free gnocchi',find:/\bgluten[- ]free\s+([\w-]+\s+){0,1}gnocchi\b/i,brands:[{n:'Rummo Gluten Free',c:[]},{n:'La Gnoccheria',c:[]}]},
+  {type:'Gluten-free bread',find:/\bgluten[- ]free\s+([\w-]+\s+){0,2}(bread|loaf|rolls?|buns?|bagels?|crumpets?)\b/i,own:true,brands:[{n:'Warburtons Gluten Free',c:['eggs']},{n:'Schär',c:[]},{n:'Promise',c:['eggs']},{n:'Genius',c:['eggs']}]},
+  {type:'Gluten-free pitta',find:/\bgluten[- ]free\s+([\w-]+\s+){0,1}pittas?\b/i,brands:[{n:'BFree',c:[]}]},
+  {type:'Gluten-free wraps',find:/\bgluten[- ]free\s+([\w-]+\s+){0,2}(wraps?|tortillas?|flatbreads?)\b/i,brands:[{n:'BFree',c:['eggs']},{n:'Schär Foldable Flatbreads',c:[]}]},
+  {type:'Gluten-free crispbread',find:/\bgluten[- ]free\s+crispbreads?\b/i,brands:[{n:'Schär',c:[]}]},
+  {type:'Gluten-free oats',find:/\bgluten[- ]free\s+([\w-]+\s+){0,2}oats?\b/i,own:true,brands:[{n:"Nairn's Gluten Free",c:[]}]},
+  {type:'Tamari',find:/\btamari\b/i,brands:[{n:'Kikkoman Tamari Gluten Free',c:['soy']},{n:'Yutaka Organic Tamari',c:['soy']}]},
+  {type:'Falafel',find:/\bfalafels?\b/i,brands:[{n:"Ramona's",c:[]},{n:'Cauldron',c:['gluten']}]},
+];
+// Who the list is filtered for: the food rules (as the food check uses them), lactose intolerance
+// told apart from a dairy allergy, and a "no added sugar" health note
+function brandContext(rules,health,region){
+  const allergies=(rules?.allergies||[]).map(a=>String(a).toLowerCase());
+  const banned=Object.keys(bannedGroups(rules||{}));
+  const lactose=allergies.some(a=>a.includes('lactose'));
+  const otherDairy=String(rules?.dietary_type||'').toLowerCase()==='vegan'||allergies.some(a=>/\b(dairy|milk)\b/.test(a));
+  return{banned,lactoseOnly:lactose&&!otherDairy,noSugar:/no added sugar|sugar[- ]free|low sugar|diabet/i.test(String(health||'')),uk:region!=='us'};
+}
+function brandAllowed(b,ctx){
+  if(b.c.includes('lf'))return ctx.lactoseOnly&&!b.c.some(g=>g!=='dairy'&&g!=='lf'&&ctx.banned.includes(g));
+  if(ctx.noSugar&&b.c.includes('sugar'))return false;
+  return!b.c.some(g=>ctx.banned.includes(g));
+}
+// The products on the list found in some recipe text, each with the brands this person may use
+function brandsFor(text,ctx){
+  if(!ctx.uk)return[];
+  const out=[];
+  for(const t of BRAND_LIST){
+    if(!t.find.test(String(text||'')))continue;
+    let brands=t.brands.filter(b=>brandAllowed(b,ctx));
+    if(ctx.noSugar)brands=brands.filter(b=>b.ns).concat(brands.filter(b=>!b.ns));
+    if(!brands.length)continue;
+    out.push({type:t.type,brands:brands.map(b=>b.n),own:!!t.own});
+  }
+  return out;
+}
+// ---- brand list end ----
+// The recipe's own text the list looks in: its shopping data and its readable ingredients
+function recipeBrandText(meal){return(meal.shopping||[]).map(s=>s&&s.item).join(', ')+', '+(meal.ingredients_uk||'');}
+function brandLine(x,max=4){return x.brands.slice(0,max).join(', ')+(x.own?', or supermarket own brand':'');}
+function whatToBuyHtml(meal){
+  if(!CU)return'';
+  const found=brandsFor(recipeBrandText(meal),brandContext(currentFoodRules(),CU.health_conditions,userRegion()));
+  if(!found.length)return'';
+  return`<div class="det-lbl">What to buy</div><div style="font-size:13px;line-height:1.6;margin-bottom:6px">${found.map(x=>`<div><b>${escapeHtml(x.type)}:</b> ${escapeHtml(brandLine(x))}</div>`).join('')}</div>
+    <div style="font-size:11px;color:var(--tx3);margin-bottom:10px">Brands are examples only (seen on sale ${BRAND_LIST_CHECKED}) - always check the label, recipes change.</div>`;
 }
 function recipeAfterHtml(meal){
   let html=recipeListHtml('Tips',meal.tips);
@@ -5719,6 +5806,8 @@ async function genShoppingList(){
 function shopListBodyHtml(){
   if(!shopBuy)return'';
   let html='';
+  // Brand examples under the matching items (decision B1)
+  const bctx=CU?brandContext(currentFoodRules(),CU.health_conditions,userRegion()):null;
   for(const sec of shopBuy.aisles){
     html+=`<div style="margin-bottom:18px">
       <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--ac);margin-bottom:8px">${escapeHtml(sec.aisle)}</div>
@@ -5726,7 +5815,7 @@ function shopListBodyHtml(){
         const t=shopTicked.has(i.key);
         return`<label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--b1);font-size:13px;cursor:pointer">
           <input type="checkbox" data-shop-key="${escapeHtml(i.key)}" onchange="toggleShopTick(this)"${t?' checked':''} style="accent-color:var(--ac);width:16px;height:16px;flex-shrink:0">
-          <span style="flex:1${t?';text-decoration:line-through;color:var(--tx3)':''}">${escapeHtml(i.name)}</span>
+          <span style="flex:1${t?';text-decoration:line-through;color:var(--tx3)':''}">${escapeHtml(i.name)}${(()=>{const bh=bctx&&brandsFor(i.name,bctx)[0];return bh?`<span style="display:block;font-size:11px;color:var(--tx3);text-decoration:none">e.g. ${escapeHtml(brandLine(bh,3))}</span>`:'';})()}</span>
           <span style="color:${t?'var(--tx3)':'var(--ac)'};font-weight:700;font-family:'JetBrains Mono',monospace;font-size:12px;text-align:right">${escapeHtml(i.qty)}</span>
         </label>`;
       }).join('')}
