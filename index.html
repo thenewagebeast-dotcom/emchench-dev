@@ -1289,7 +1289,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct 4c plan on the server';
+const APP_BUILD='23 Oct 4c seed butter';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -3935,7 +3935,7 @@ async function saveMealPlanJson(){
 // ---- food check engine start ----
 const FOOD_GROUPS={
   dairy:{label:'dairy',words:['milk','yogurt','yoghurt','cheese','butter','cream','whey','ghee','paneer','feta','quark','parmesan','halloumi','mozzarella','cheddar','custard','casein','kefir','mascarpone','ricotta','creme fraiche','buttermilk'],
-    safe:/(dairy[- ]free|non[- ]dairy|vegan|plant[- ]based|(soya?|oat|almond|coconut|rice|cashew|hazelnut|pea|hemp)\s+(milk|yogh?urt|cream|butter|cheese)|peanut butter|nut butter|cocoa butter|butter ?beans?|cream of tartar)/i},
+    safe:/(dairy[- ]free|non[- ]dairy|vegan|plant[- ]based|(soya?|oat|almond|coconut|rice|cashew|hazelnut|pea|hemp)\s+(milk|yogh?urt|cream|butter|cheese)|peanut butter|nut butter|seed butter|apple butter|cocoa butter|butter ?beans?|cream of tartar)/i},
   nuts:{label:'nuts',words:['nut','almond','cashew','walnut','pecan','hazelnut','pistachio','peanut','macadamia','praline','marzipan','pesto','satay','nutella','frangipane'],
     safe:/nut[- ]free/i},
   gluten:{label:'gluten',words:['wheat','flour','bread','pasta','spaghetti','penne','fusilli','noodle','couscous','bulgur','barley','rye','seitan','soy sauce','breadcrumb','tortilla','pitta','wrap','cracker','oat','bagel','orzo','semolina','crouton','panko','malt','lasagne','gnocchi','crumpet','muffin'],
