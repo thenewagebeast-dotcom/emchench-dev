@@ -1359,7 +1359,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct mince fix';
+const APP_BUILD='23 Oct 4c helpers';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -3540,6 +3540,60 @@ function openGenModal(){
   openModal('gen-modal');
 }
 
+// ---- Plan generation pieces (Phase 4c) - shared by the app and, copied by
+// dev-seed/build-prompts.js, the server. No screen and no database in here. ----
+// Which month a new plan is: one more than the training plans so far
+function planMonthNumber(trainingPlanCount){return trainingPlanCount+1;}
+// Next month starts where last month ended: carry the current (adjusted) calorie
+// target into the new plan. A goal change since the last plan starts fresh from
+// the profile instead.
+function carriedTarget(){
+  const prevTarget=parseInt(userMealPlan?.meals?.daily_targets?.calories)||0;
+  return(prevTarget&&CU.goal_updated!=='true')?prevTarget:null;
+}
+// The chosen meals, split into the groups each recipe call writes
+function recipeBatches(chosenMeals){
+  return[
+    {breakfasts:chosenMeals.breakfasts||[],snacks:chosenMeals.snacks||[],lunches:chosenMeals.lunches||[]},
+    {dinners:chosenMeals.dinners||[],evening_snacks:chosenMeals.evening_snacks||[],protein_desserts:chosenMeals.protein_desserts||[],low_calorie_meals:chosenMeals.low_calorie_meals||[],bulking_meals:chosenMeals.bulking_meals||[]}
+  ];
+}
+// Every recipe answer merged into the plan. The targets are always the app's own
+// calculation (never the AI's), with the food rules the plan was written for.
+const RECIPE_CATS=['breakfasts','snacks','lunches','dinners','evening_snacks','protein_desserts','low_calorie_meals','bulking_meals'];
+function assembleMealPlan(recipeAnswers){
+  const meals={};
+  for(const cat of RECIPE_CATS)meals[cat]=[];
+  for(const ans of recipeAnswers){
+    const a=ans||{};
+    if(a.meals?.meals)a.meals=a.meals.meals;
+    for(const cat of RECIPE_CATS){const list=a.meals?.[cat]||a[cat]||[];if(list.length)meals[cat]=meals[cat].concat(list);}
+  }
+  const calculatedTargets=getMealTargets().daily;
+  return{meals,daily_targets:{...calculatedTargets,base_calories:calculatedTargets.calories},built_for:currentFoodRules()};
+}
+// The recipe names the rotation is built from
+function rotationMealNames(fullRecipes){
+  return{
+    breakfasts:(fullRecipes.meals?.breakfasts||[]).map(m=>m.name),
+    snacks:(fullRecipes.meals?.snacks||[]).map(m=>m.name),
+    lunches:(fullRecipes.meals?.lunches||[]).map(m=>m.name),
+    dinners:(fullRecipes.meals?.dinners||[]).map(m=>m.name),
+    evening_snacks:(fullRecipes.meals?.evening_snacks||[]).map(m=>m.name),
+    protein_desserts:(fullRecipes.meals?.protein_desserts||[]).map(m=>m.name),
+  };
+}
+// The rotation as the app keeps it: a list of weeks, day names in lowercase
+function normaliseRotation(rotationRaw){
+  const rotation=Array.isArray(rotationRaw)?rotationRaw:(rotationRaw.weekly_rotation||rotationRaw.rotation||[]);
+  return rotation.map(wk=>{
+    if(!wk.days)return wk;
+    const n={};
+    for(const k of Object.keys(wk.days))n[k.toLowerCase()]=wk.days[k];
+    return{...wk,days:n};
+  });
+}
+
 async function generatePlan(){
   if(isGenerating)return;
   isGenerating=true;
@@ -3565,14 +3619,10 @@ async function generatePlan(){
     const myPlanCount=existingPlans.values
       ?existingPlans.values.filter(r=>r[1]===CU.user_id&&r[0]!=='plan_id').length
       :0;
-    const monthNumber=myPlanCount+1;
+    const monthNumber=planMonthNumber(myPlanCount);
     const isMonth2OrLater=monthNumber>=2;
 
-    // Next month starts where last month ended: carry the current (adjusted) calorie
-    // target into the new plan. A goal change since the last plan starts fresh from
-    // the profile instead.
-    const prevTarget=parseInt(userMealPlan?.meals?.daily_targets?.calories)||0;
-    carriedCalorieTarget=(prevTarget&&CU.goal_updated!=='true')?prevTarget:null;
+    carriedCalorieTarget=carriedTarget();
 
     // Save the monthly check-in answers now, before generation - awaited so
     // this same generation's fetch below is guaranteed to see them, not just
@@ -3665,53 +3715,23 @@ async function generatePlan(){
     // CALL 3a - FULL RECIPES for core meals (breakfasts, snacks, lunches)
     showLoad('Building Your Recipes (3 of 6)','Writing breakfasts, snacks and lunches...');
     startLoadFun(32,45,40000);
-    const coreMeals={breakfasts:chosenMeals.breakfasts||[],snacks:chosenMeals.snacks||[],lunches:chosenMeals.lunches||[]};
+    const [coreMeals,extraMeals]=recipeBatches(chosenMeals);
     const corePrompt=buildChosenRecipesPrompt(coreMeals,'core');
     const coreRecipes=corePrompt==='{}'?{}:await callAI(apiKey, corePrompt, sys, 64000);
-    if(coreRecipes.meals?.meals)coreRecipes.meals=coreRecipes.meals.meals;
 
     // CALL 3b - FULL RECIPES for dinners + evening snacks + extras
     showLoad('Building Your Recipes (4 of 6)','Writing dinners, evening snacks and extra categories...');
     startLoadFun(45,58,40000);
-    const extraMeals={dinners:chosenMeals.dinners||[],evening_snacks:chosenMeals.evening_snacks||[],protein_desserts:chosenMeals.protein_desserts||[],low_calorie_meals:chosenMeals.low_calorie_meals||[],bulking_meals:chosenMeals.bulking_meals||[]};
     const extraPrompt=buildChosenRecipesPrompt(extraMeals,'extras');
     const extraRecipes=extraPrompt==='{}'?{}:await callAI(apiKey, extraPrompt, sys, 64000);
-    if(extraRecipes.meals?.meals)extraRecipes.meals=extraRecipes.meals.meals;
 
-    // Merge both recipe batches
-    const calculatedTargets=getMealTargets().daily;
-    fullRecipes={meals:{
-      breakfasts:coreRecipes.meals?.breakfasts||coreRecipes.breakfasts||[],
-      snacks:coreRecipes.meals?.snacks||coreRecipes.snacks||[],
-      lunches:coreRecipes.meals?.lunches||coreRecipes.lunches||[],
-      dinners:extraRecipes.meals?.dinners||extraRecipes.dinners||[],
-      evening_snacks:extraRecipes.meals?.evening_snacks||extraRecipes.evening_snacks||[],
-      protein_desserts:extraRecipes.meals?.protein_desserts||extraRecipes.protein_desserts||[],
-      low_calorie_meals:extraRecipes.meals?.low_calorie_meals||extraRecipes.low_calorie_meals||[],
-      bulking_meals:extraRecipes.meals?.bulking_meals||extraRecipes.bulking_meals||[],
-    // Always use the calculated targets as ground truth - don't rely on AI returning them correctly
-    },daily_targets:{...calculatedTargets,base_calories:calculatedTargets.calories},built_for:currentFoodRules()};
+    fullRecipes=assembleMealPlan([coreRecipes,extraRecipes]);
 
     // CALL 5 - ROTATION built from chosen meal names
     showLoad('Building Weekly Schedule (5 of 6)','Mapping your meals into a 4-week rotation...');
     startLoadFun(60,74,15000);
-    const rotNames={
-      breakfasts:(fullRecipes.meals?.breakfasts||[]).map(m=>m.name),
-      snacks:(fullRecipes.meals?.snacks||[]).map(m=>m.name),
-      lunches:(fullRecipes.meals?.lunches||[]).map(m=>m.name),
-      dinners:(fullRecipes.meals?.dinners||[]).map(m=>m.name),
-      evening_snacks:(fullRecipes.meals?.evening_snacks||[]).map(m=>m.name),
-      protein_desserts:(fullRecipes.meals?.protein_desserts||[]).map(m=>m.name),
-    };
-    const rotationRaw=await callAI(apiKey, buildRotationPrompt(rotNames, monthNumber, progressionContext, useAssessment), sys);
-    rotation=Array.isArray(rotationRaw)?rotationRaw:(rotationRaw.weekly_rotation||rotationRaw.rotation||[]);
-    // Normalise all day keys to lowercase to handle any AI capitalisation
-    rotation=rotation.map(wk=>{
-      if(!wk.days)return wk;
-      const n={};
-      for(const k of Object.keys(wk.days))n[k.toLowerCase()]=wk.days[k];
-      return{...wk,days:n};
-    });
+    const rotationRaw=await callAI(apiKey, buildRotationPrompt(rotationMealNames(fullRecipes), monthNumber, progressionContext, useAssessment), sys);
+    rotation=normaliseRotation(rotationRaw);
     fullRecipes.weekly_rotation=rotation;
 
     // CALL 6 - TRAINING PLAN
