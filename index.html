@@ -1289,7 +1289,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct 4c helpers';
+const APP_BUILD='23 Oct recipe detail';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -4083,7 +4083,10 @@ INGREDIENT QUANTITY RULE - required: every ingredient, including every spice and
 INGREDIENT STATE RULE - required: list every ingredient in its raw, as-purchased state, and make sure the method actually cooks or prepares every ingredient listed - never list something as an ingredient without a step that uses it.
 DISH NAME CONSISTENCY - required: if the dish name specifies a particular type of an ingredient, the ingredients list must use that exact type, not a different or more generic one - and name the specific variety of anything that genuinely has meaningfully different common types, rather than defaulting to a generic term.
 METHOD SPECIFICITY - required: every cooking step involving heat must state an actual temperature and time, never vague terms like "cook until done" on their own.
-Reply ONLY with valid JSON: {"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"servings":1,"ingredients_uk":"","ingredients_us":"","method":[],"micronutrients":"","bulk_cook":false}`;
+METHOD: one action per step (usually 6 to 12 steps, each up to 30 words), naming the pan or tray and its size, the heat level and time, what to look for and any resting time.
+${recipeDetailLimits()}
+${recipeQualityRules()}
+Reply ONLY with valid JSON: {"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"servings":1,"ingredients_uk":"","ingredients_us":"","method":[],${RECIPE_DETAIL_FIELDS},"micronutrients":"","bulk_cook":false}`;
 }
 
 // Replaces every flagged recipe with a new one written for the current rules,
@@ -4663,6 +4666,24 @@ Return ONLY this JSON:
 Exactly 10 per category. Macros must match targets above. Names only - no ingredients, no method.
 VARIETY - required: within each category spread the 10 options evenly across the user's chosen cuisines, use at least 4 different main proteins, and never offer two options that are basically the same dish. Fill in cuisine (one of the user's cuisines) and main_protein (the single main protein source) for every option.${getDislikedMealsLine()}`;}
 
+// ---- Recipe detail (Phase 4c, agreed 23 Oct 2026) - one source for every recipe the AI
+// writes: the meal plan recipes, meal swaps and replacements for flagged meals ----
+const RECIPE_DETAIL_FIELDS='"prep_list":[],"equipment":[],"tips":[],"storage":"","swaps":{"cheaper":"","quicker":"","if_missing":""},"serving":"","shopping":[{"item":"","amount":0,"unit":"","aisle":""}]';
+const SHOPPING_AISLES=['Fruit and veg','Meat and fish','Dairy and alternatives','Bakery','Tins and jars','Rice, pasta and grains','Frozen','Herbs and spices','Oils, sauces and condiments','Other'];
+function recipeDetailLimits(){
+  return`prep_list: 2 to 8 items, each up to 12 words - what to chop, weigh and get out before cooking starts.
+equipment: up to 8 items - the pans, trays and tools needed, with a size where it matters (e.g. "28cm non-stick frying pan").
+tips: 1 to 3 items, each up to 25 words - why a key step matters or a common mistake to avoid, written for a beginner.
+storage: ONLY when bulk_cook is true - how many days in the fridge, how many months in the freezer and how to reheat, up to 35 words. An empty string for every other recipe.
+swaps: cheaper, quicker and if_missing - each up to 20 words, and every swap must follow this person's diet, allergies, dislikes and health swaps.
+serving: up to 20 words - how to plate it or what to serve it with, without changing the macros given.
+shopping: every ingredient once, as bought - item (plain shop name, e.g. "red onion", "soya mince"), amount (a number, for the whole recipe as written), unit ("g", "ml", or "" for a count of whole items), aisle (one of: ${SHOPPING_AISLES.join(', ')}).`;
+}
+function recipeQualityRules(){
+  return`FLAVOUR RULE - required: give every recipe as much flavour as this person's rules allow, built in layers - aromatics (onion, garlic, ginger, chilli to their spice level), browning or searing, toasting the spices, a marinade where the cook time allows, acid (citrus or vinegar) to lift it, fresh herbs, and a finishing touch (zest, toasted seeds, a drizzle). Never add more salt or sugar than their health line allows - get the flavour from herbs, garlic, citrus and spices instead.
+PRODUCT NAMES RULE - required: for any free-from or plant-based item, name the actual product type every time it appears - in ingredients_uk, ingredients_us, the method and shopping (e.g. "200g soya mince", "300ml oat milk", "150g lactose-free Greek-style yoghurt", "40g vegan cheddar-style cheese") - never "mince", "milk", "yoghurt" or "cheese" on its own for these. No brand names.`;
+}
+
 function buildChosenRecipesPrompt(chosenMeals, batch){
   const u=CU;
   const mt=getMealTargets();
@@ -4674,7 +4695,7 @@ function buildChosenRecipesPrompt(chosenMeals, batch){
   for(const [cat,meals] of Object.entries(chosenMeals)){if(cats[cat]!==undefined)cats[cat]=meals.map(m=>m.name).filter(Boolean);}
   const allMeals=Object.entries(cats).filter(([,names])=>names.length).map(([cat,names])=>`${cat}: ${names.join(', ')}`).join('\n');
   if(!allMeals.trim())return'{}';
-  const sc=`{"name":"","bulk_cook":false,"batch_portions":1,"difficulty":"easy","servings":1,"calories":0,"protein":0,"carbs":0,"fats":0,"micronutrients":"","ingredients_uk":"","ingredients_us":"","method":"","prep_time_mins":0}`;
+  const sc=`{"name":"","bulk_cook":false,"batch_portions":1,"difficulty":"easy","servings":1,"calories":0,"protein":0,"carbs":0,"fats":0,"micronutrients":"","ingredients_uk":"","ingredients_us":"","method":[],${RECIPE_DETAIL_FIELDS},"prep_time_mins":0}`;
   const schemaKeys=Object.entries(cats).filter(([,names])=>names.length).map(([cat])=>`"${cat}":[${sc}]`).join(',');
 
   const catTargets=`STRICT MACRO TARGETS - portions MUST be scaled so macros land within 5% of these:
@@ -4704,14 +4725,16 @@ ${catTargets}
 FIELD LIMITS - these are ceilings to stop rambling, not targets to hit. Include every necessary detail (a quantity for every ingredient, a temperature and time for every heated step, real technique) and stop once the recipe is genuinely complete. Never pad to fill space, and never cut a necessary detail just to stay under a number.
 ingredients_uk: up to 130 words, every single ingredient with its own specific quantity.
 ${regionFieldLimit()}
-method: as many steps as the dish genuinely needs - usually 4 to 8, occasionally more for a genuinely multi-part dish (e.g. a separate sauce or side that needs its own step) - each step up to 25 words.
+method: one action per step, as many steps as the dish genuinely needs (usually 6 to 12) - each step up to 30 words and, where it applies, names the pan or tray and its size, the heat level and time, what to look for (e.g. "until golden at the edges") and any resting time.
 micronutrients: up to 15 words.
+${recipeDetailLimits()}
 INGREDIENT QUANTITY RULE - required, not optional: every single ingredient, including every spice and seasoning, must have a specific measured quantity (tsp, tbsp, g, ml, or a count). Never list a spice or ingredient by name alone with no amount - "turmeric" on its own is not acceptable, "1 tsp turmeric" is. This applies even when several vegetables get blended or cooked together - "400g onion, tomato, garlic, ginger" is not acceptable because there is no way to tell how much of each; write "100g onion, 100g tomato, 2 cloves garlic, 20g ginger" instead, even if they all go in the blender at the same time.
 INGREDIENT STATE RULE - required: list every ingredient in its raw, as-purchased state (e.g. "raw chicken breast, diced" not "cooked chicken breast"), unless it is genuinely used without further cooking. The method must then actually cook or prepare every one of those ingredients - if rice or any other component appears in the ingredients list, the method must include the step that cooks it, not just "serve with rice" as an afterthought with no cooking step of its own.
 DISH NAME CONSISTENCY - required: if the dish name specifies a particular type or style of an ingredient (e.g. a dish called "... with Sticky Rice" or "... with Basmati"), the ingredients list must use that exact type, not a different or more generic one. Never name a dish after one specific ingredient and then list something else in the ingredients. When any ingredient genuinely has meaningfully different common varieties (rice, pasta, onion, chilli, etc.), name the specific variety being used rather than defaulting to the generic term.
 SERVINGS CONSISTENCY - required: the "servings" field and the ingredient quantities given must match each other exactly. If this is a batch-cook recipe, "servings" must equal "batch_portions", and every ingredient quantity must be the amount for the FULL BATCH - never write batch-sized quantities under a "servings":1 label.
 BATCH PORTION SIZING - required, not optional: if you set bulk_cook:true for a meal, batch_portions must be enough to cover every time this user will eat it before cooking it again. This user's batch cooking pattern is "${batchPref}" on "${batchDaysPattern}". If a meal repeats across their batch days, batch_portions must be at least ${batchDayCount} - never default to a small generic number like 2-4 when their actual pattern needs more. Undersized batches leave them without food partway through the week, which defeats the entire point of batch cooking.
 METHOD SPECIFICITY - required, not optional: every cooking step involving heat must state an actual temperature and time (e.g. "200°C for 20 minutes", "medium heat for 6-8 minutes"), never vague terms like "cook until done" or "bake until golden" on their own - pair any visual/textural cue with a concrete time or temperature.
+${recipeQualityRules()}
 
 Return ONLY this JSON:
 \`\`\`json
@@ -5268,13 +5291,32 @@ function renderMealCard(meal,cat){
     </div>
     <div class="meal-det" id="${id}" data-meal-name="${meal.name.replace(/"/g,'&quot;')}" data-meal-cat="${cat}">
       ${portionNoteHtml(meal)}
+      ${recipeBeforeHtml(meal)}
       ${ingredientsHtml(meal)}
       ${meal.method?`<div class="det-lbl">Method</div><div class="method">${fmtMethod(meal.method)}</div>`:''}
-      ${meal.bulk_cook?`<div class="alert alert-info" style="margin-top:10px">🍳 Batch cook - makes <strong>${meal.batch_portions||meal.servings||2} portions</strong>. Portion into containers. Refrigerate up to 5 days or freeze up to 3 months.</div>`:''}
+      ${recipeAfterHtml(meal)}
+      ${meal.bulk_cook?`<div class="alert alert-info" style="margin-top:10px">🍳 Batch cook - makes <strong>${meal.batch_portions||meal.servings||2} portions</strong>. Portion into containers. ${String(meal.storage||'').trim()?escapeHtml(meal.storage):'Refrigerate up to 5 days or freeze up to 3 months.'}</div>`:''}
     </div>
   </div>`;
 }
 
+// The recipe detail sections (Phase 4c). Recipes from older plans simply have none of
+// these fields, so the sections do not appear. AI text is always escaped.
+function recipeListHtml(label,items){
+  const list=(Array.isArray(items)?items:[]).map(x=>String(x||'').trim()).filter(Boolean);
+  return list.length?`<div class="det-lbl">${label}</div><ul style="margin:0 0 10px 18px;padding:0;font-size:13px;line-height:1.6">${list.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul>`:'';
+}
+function recipeBeforeHtml(meal){
+  return recipeListHtml('Before You Start',meal.prep_list)+recipeListHtml('You Will Need',meal.equipment);
+}
+function recipeAfterHtml(meal){
+  let html=recipeListHtml('Tips',meal.tips);
+  const sw=meal.swaps&&typeof meal.swaps==='object'?meal.swaps:{};
+  const swaps=[['Cheaper',sw.cheaper],['Quicker',sw.quicker],['Missing something?',sw.if_missing]].filter(([,v])=>String(v||'').trim());
+  if(swaps.length)html+=`<div class="det-lbl">Swaps</div><div style="font-size:13px;line-height:1.6;margin-bottom:10px">${swaps.map(([k,v])=>`<div><strong>${k}:</strong> ${escapeHtml(v)}</div>`).join('')}</div>`;
+  if(String(meal.serving||'').trim())html+=`<div class="det-lbl">Serving</div><div style="font-size:13px;line-height:1.6;margin-bottom:10px">${escapeHtml(meal.serving)}</div>`;
+  return html;
+}
 function fmtMethod(m){
   if(Array.isArray(m))return m.map(s=>`<div class="mstep">${s}</div>`).join('');
   if(typeof m==='string')return m.split(/\d+\.\s+/).filter(Boolean).map(s=>`<div class="mstep">${s.trim()}</div>`).join('');
