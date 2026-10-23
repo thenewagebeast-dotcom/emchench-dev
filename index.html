@@ -1289,7 +1289,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct prompts lifted';
+const APP_BUILD='23 Oct guide 8 sections';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -6856,7 +6856,7 @@ function renderHowToGuideText(guide){
   if(!el||!guide)return;
   // Parse by SECTION: markers
   const sections=guide.split(/SECTION:\s*/i).filter(s=>s.trim());
-  const titles=['How to Read Your Plan','How Progression Works','What the Points Mean','How Your Weigh-In Works','How Streaks Work','A Note Just for You'];
+  const titles=['How to Read Your Plan','Why Logging Everything Matters','How Progression Works - The Double Progression Model','How Your Weigh-In Works','How Streaks and Points Work','Your Shop Directory','Your Different Modes','A Note Just for You'];
   if(sections.length>=2){
     el.innerHTML=sections.map((s,i)=>{
       const lines=s.trim().split('\n').filter(l=>l.trim());
@@ -6878,7 +6878,7 @@ function howToGuidePrompt(){
 Goal: ${CU.goal}, experience: ${CU.experience}, training ${CU.training_days} days/week.
 
 CRITICAL FORMAT RULES - follow exactly:
-- Output exactly 6 sections
+- Output exactly 8 sections
 - Each section starts with SECTION: followed by the title on its own line
 - Then the content on the next lines (3-4 sentences max)
 - No markdown, no ##, no ---, no *, no hashtags, no emojis in titles
