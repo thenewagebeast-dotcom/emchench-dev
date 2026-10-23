@@ -1289,7 +1289,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct 4e delete account';
+const APP_BUILD='23 Oct small fixes';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -2826,7 +2826,7 @@ function renderDashboard(){
         <div class="event-banner-sub">Today is the day. You planned ahead and you earned this.</div>
         <div class="event-banner-bank">${activeEvent.calories_banked}</div>
         <div class="event-banner-unit">Calories banked</div>
-        <div class="event-banner-guide">${activeEvent.guide}</div>
+        <div class="event-banner-guide">${escapeHtml(activeEvent.guide)}</div>
         <div style="font-size:13px;color:var(--tx2);margin-bottom:12px">Today's total allowance: <strong style="color:var(--ac)">${activeEvent.day_total} kcal</strong></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-sm" onclick="goTab('meallog')">Log Meals -></button>
@@ -3882,12 +3882,12 @@ function regionFieldLimit(){
 function ingredientsHtml(recipe){
   const r=userRegion();
   const serves=recipe.servings||1;
-  const metric=recipe.ingredients_uk?scaleIngredientText(recipe.ingredients_uk):'';
-  const us=recipe.ingredients_us||'';
+  const metric=recipe.ingredients_uk?escapeHtml(scaleIngredientText(recipe.ingredients_uk)):'';
+  const us=escapeHtml(recipe.ingredients_us||'');
   if(r==='us'&&us&&userMealPlan?.meals?.built_for?.region==='us'){
-    return`<div class="det-lbl">Ingredients (US) - Serves ${serves}</div><div class="ingr">${us}</div>${metric?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">Metric: ${metric}</div>`:''}`;
+    return`<div class="det-lbl">Ingredients (US) - Serves ${escapeHtml(serves)}</div><div class="ingr">${us}</div>${metric?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">Metric: ${metric}</div>`:''}`;
   }
-  return(metric?`<div class="det-lbl">Ingredients (UK) - Serves ${serves}</div><div class="ingr">${metric}</div>`:'')
+  return(metric?`<div class="det-lbl">Ingredients (UK) - Serves ${escapeHtml(serves)}</div><div class="ingr">${metric}</div>`:'')
     +(r!=='uk'&&us?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">US: ${us}</div>`:'');
 }
 
@@ -4622,6 +4622,8 @@ function declinePatternAdj(){
   celebrateMsg('reviewComplete','📊','Review Complete!');
 }
 
+// Meal names say what is in a meal (23 Oct 2026: the AI was writing "Mango-Free", "Wasabi-Free", "Toastie-Free")
+const MEAL_NAME_RULE='MEAL NAMES: name each meal by what is in it. Never name a meal after something it leaves out (no "Honey-Free", "Mango-Free", "Wasabi-Free"). A free-from word is only for the person\'s own allergy or diet (e.g. "Dairy-Free" for a dairy allergy).';
 function buildMealNamesPrompt(changeLevel='fresh', monthNumber=1, progressionContext='', rapportContext=''){
   const u=CU;
   const mt=getMealTargets();
@@ -4647,6 +4649,7 @@ Cuisines:${u.flavour_prefs?.join(',')||'varied'}, Spice level:${u.spice_level||'
 Snack style:${snackStyle}, Meals/day:${mt.mpd} (${mt.snackCount} snack slot${mt.snackCount!==1?'s':''}), Batch pref:${batchPref}
 INGREDIENT DISLIKES - NEVER use these: ${u.ingredient_dislikes||'none'}
 FOOD LOVES - incorporate these where possible: ${u.food_loves||'varied'}${getHealthDietLine()}
+${MEAL_NAME_RULE}
 COOKING TIME PER SLOT - strictly enforce these limits in every recipe:
 ${u.cook_time||'Breakfast:Under 5 mins, Lunch:5 to 15 mins, Dinner:15 to 30 mins, Snacks:Grab and go - no prep'}
 Breakfast and snack times are hard limits. If a slot says 'Batch cook it' generate recipes designed to be made in bulk and portioned.
@@ -4688,6 +4691,7 @@ USER: ${u.username}, goal:${goal}, dietary:${u.dietary_type}, allergies:${u.alle
 Cuisines:${u.flavour_prefs?.join(',')||'varied'}, Spice level:${u.spice_level||'Medium'}
 INGREDIENT DISLIKES - NEVER use these: ${u.ingredient_dislikes||'none'}
 FOOD LOVES - incorporate these where possible: ${u.food_loves||''}${getHealthDietLine()}
+${MEAL_NAME_RULE}
 COOKING TIME PER SLOT: ${u.cook_time||'Breakfast:Under 5 mins, Lunch:5 to 15 mins, Dinner:15 to 30 mins, Snacks:Grab and go - no prep'}. All recipes must fit within their slot's time limit.
 BUDGET: ${u.weekly_budget||'Mid-range'}. Budget = cheap staples only. No limit = premium fine.
 Daily totals: ${mt.daily.calories}kcal P:${mt.daily.protein}g C:${mt.daily.carbs}g F:${mt.daily.fats}g
@@ -5195,6 +5199,7 @@ function mealSwapNamesPrompt(mealName,cat,targetCals,targetProtein){
   const slotCook=(CU.cook_time||'').match(new RegExp(slotKey+':[^,]+'))?.[0]?.split(':')[1]?.trim()||'20 mins';
   return`You are E=MC-HENCH. The user wants to swap "${mealName}" (a ${cat.replace(/_/g,' ')} - ${targetCals} kcal, ${targetProtein}g protein).
 Find 2 completely different alternatives in the same category that hit similar macros (within 10% of ${targetCals} kcal and ${targetProtein}g protein).
+${MEAL_NAME_RULE}
 User dietary: ${dietary}. Allergies: ${allergies}. Ingredient dislikes - NEVER use these: ${dislikes}.${getHealthDietLine()}
 Cook time: ${slotCook}. Budget: ${CU.weekly_budget||'mid-range'}.
 Reply ONLY with valid JSON: {"alternatives":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy"},{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy"}]}`;
@@ -5306,10 +5311,10 @@ function renderMealCard(meal,cat){
   const diffClass={'easy':'badge-diff-e','medium':'badge-diff-m','hard':'badge-diff-h'}[meal.difficulty]||'badge-diff-e';
   return`<div class="meal-card ${meal.bulk_cook?'bulk':''} ${isDisliked?'disliked':''}">
     <div class="meal-hd">
-      <div class="meal-name">${meal.name||''}${flagLabelHtml(meal.name)}</div>
+      <div class="meal-name">${escapeHtml(meal.name||'')}${flagLabelHtml(meal.name)}</div>
       <div style="display:flex;gap:5px;flex-wrap:wrap">
         ${meal.bulk_cook?'<span class="badge badge-bulk">🍳 Batch Cook</span>':''}
-        ${meal.difficulty?`<span class="badge ${diffClass}">${meal.difficulty}</span>`:''}
+        ${meal.difficulty?`<span class="badge ${diffClass}">${escapeHtml(meal.difficulty)}</span>`:''}
       </div>
     </div>
     <div class="meal-macros">
@@ -5317,15 +5322,15 @@ function renderMealCard(meal,cat){
       <span>P:<b>${scaledMacro(meal.protein)}g</b></span>
       <span>C:<b>${scaledMacro(meal.carbs)}g</b></span>
       <span>F:<b>${scaledMacro(meal.fats)}g</b></span>
-      ${meal.prep_time_mins?`<span>⏱<b>${meal.prep_time_mins}m</b></span>`:''}
-      ${meal.servings?`<span>Serves:<b>${meal.servings}</b></span>`:''}
+      ${meal.prep_time_mins?`<span>⏱<b>${escapeHtml(meal.prep_time_mins)}m</b></span>`:''}
+      ${meal.servings?`<span>Serves:<b>${escapeHtml(meal.servings)}</b></span>`:''}
     </div>
-    ${meal.micronutrients?`<div style="font-size:11px;color:var(--tx3);margin-bottom:8px">${meal.micronutrients}</div>`:''}
+    ${meal.micronutrients?`<div style="font-size:11px;color:var(--tx3);margin-bottom:8px">${escapeHtml(meal.micronutrients)}</div>`:''}
     <div style="display:flex;gap:10px;align-items:center">
       <button class="expand-btn" onclick="toggleDet('${id}')">▼ Recipe &amp; Method</button>
       ${!isDisliked?`<button class="dislike-btn" onclick="dislikeMeal(this)">👎 Dislike</button>`:`<button class="dislike-btn" style="color:var(--ok)" onclick="restoreMeal(this)">↩ Restore</button>`}
     </div>
-    <div class="meal-det" id="${id}" data-meal-name="${meal.name.replace(/"/g,'&quot;')}" data-meal-cat="${cat}">
+    <div class="meal-det" id="${id}" data-meal-name="${escapeHtml(meal.name)}" data-meal-cat="${cat}">
       ${portionNoteHtml(meal)}
       ${recipeBeforeHtml(meal)}
       ${ingredientsHtml(meal)}
@@ -5354,9 +5359,9 @@ function recipeAfterHtml(meal){
   return html;
 }
 function fmtMethod(m){
-  if(Array.isArray(m))return m.map(s=>`<div class="mstep">${s}</div>`).join('');
-  if(typeof m==='string')return m.split(/\d+\.\s+/).filter(Boolean).map(s=>`<div class="mstep">${s.trim()}</div>`).join('');
-  return String(m);
+  if(Array.isArray(m))return m.map(s=>`<div class="mstep">${escapeHtml(s)}</div>`).join('');
+  if(typeof m==='string')return m.split(/\d+\.\s+/).filter(Boolean).map(s=>`<div class="mstep">${escapeHtml(s.trim())}</div>`).join('');
+  return escapeHtml(String(m));
 }
 
 function renderWeekDays(wk){
@@ -5368,13 +5373,13 @@ function renderWeekDays(wk){
     return`<div style="margin-bottom:14px">
       <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:var(--tx2);letter-spacing:1px;margin-bottom:6px">${day.toUpperCase()}</div>
       <div style="font-size:13px;line-height:2.4">
-        ${meals.breakfast?`<div><span style="color:var(--tx3);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-right:6px">Breakfast</span>🌅 ${meals.breakfast}</div>`:''}
-        ${meals.snack1||meals.snack?`<div><span style="color:var(--tx3);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-right:6px">Snack 1</span>🍎 ${meals.snack1||meals.snack}</div>`:''}
-        ${meals.lunch?`<div><span style="color:var(--tx3);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-right:6px">Lunch</span>🥗 ${meals.lunch}</div>`:''}
-        ${meals.snack2?`<div><span style="color:var(--tx3);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-right:6px">Snack 2</span>🍎 ${meals.snack2}</div>`:''}
-        ${meals.snack3?`<div><span style="color:var(--tx3);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-right:6px">Snack 3</span>🍎 ${meals.snack3}</div>`:''}
-        ${meals.dinner?`<div><span style="color:var(--tx3);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-right:6px">Dinner</span>🍽️ ${meals.dinner}</div>`:''}
-        ${meals.evening?`<div><span style="color:var(--tx3);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-right:6px">Evening</span>🍮 ${meals.evening}</div>`:''}
+        ${meals.breakfast?`<div><span style="color:var(--tx3);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-right:6px">Breakfast</span>🌅 ${escapeHtml(meals.breakfast)}</div>`:''}
+        ${meals.snack1||meals.snack?`<div><span style="color:var(--tx3);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-right:6px">Snack 1</span>🍎 ${escapeHtml(meals.snack1||meals.snack)}</div>`:''}
+        ${meals.lunch?`<div><span style="color:var(--tx3);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-right:6px">Lunch</span>🥗 ${escapeHtml(meals.lunch)}</div>`:''}
+        ${meals.snack2?`<div><span style="color:var(--tx3);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-right:6px">Snack 2</span>🍎 ${escapeHtml(meals.snack2)}</div>`:''}
+        ${meals.snack3?`<div><span style="color:var(--tx3);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-right:6px">Snack 3</span>🍎 ${escapeHtml(meals.snack3)}</div>`:''}
+        ${meals.dinner?`<div><span style="color:var(--tx3);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-right:6px">Dinner</span>🍽️ ${escapeHtml(meals.dinner)}</div>`:''}
+        ${meals.evening?`<div><span style="color:var(--tx3);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-right:6px">Evening</span>🍮 ${escapeHtml(meals.evening)}</div>`:''}
       </div>
     </div>`;
   }).join('<hr style="border-color:var(--b1);margin:10px 0">');
@@ -6192,7 +6197,7 @@ function trainWeekCard(s,sidx,isAb){
   return`<div class="card" style="${isToday?'border-color:var(--ac)':''}">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <div style="min-width:0">
-        <div style="font-weight:600;font-size:15px">${s.name}</div>
+        <div style="font-weight:600;font-size:15px">${escapeHtml(s.name)}</div>
         <div style="font-size:12px;color:var(--tx2)">${sub} - ${exs.length} exercise${exs.length===1?'':'s'}</div>
         ${status?`<div style="font-size:12px;margin-top:4px">${status}</div>`:''}
       </div>
@@ -6201,14 +6206,14 @@ function trainWeekCard(s,sidx,isAb){
     <button class="expand-btn" style="margin-top:10px" onclick="const d=document.getElementById('${id}');d.style.display=d.style.display==='none'?'block':'none'">▼ See exercises</button>
     <div id="${id}" style="display:none;margin-top:8px">
       ${s.warm_up_cardio?`<div style="font-size:12px;color:var(--tx2);margin-bottom:6px">🔥 Warm up: ${s.warm_up_cardio}</div>`:''}
-      ${exs.map(ex=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:6px 0;border-bottom:1px solid var(--b1)"><span>${ex.name}</span><span style="color:var(--tx2);white-space:nowrap">${ex.sets||3} x ${ex.reps||'8-12'}</span></div>`).join('')}
+      ${exs.map(ex=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:6px 0;border-bottom:1px solid var(--b1)"><span>${escapeHtml(ex.name)}</span><span style="color:var(--tx2);white-space:nowrap">${escapeHtml(ex.sets||3)} x ${escapeHtml(ex.reps||'8-12')}</span></div>`).join('')}
     </div>
   </div>`;
 }
 
 function trainWeekHtml(){
   let html='';
-  if(userTrainingPlan.notes)html+=`<div class="alert alert-info">${userTrainingPlan.notes}</div>`;
+  if(userTrainingPlan.notes)html+=`<div class="alert alert-info">${escapeHtml(userTrainingPlan.notes)}</div>`;
   html+=`<div style="font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;margin-bottom:4px">Your Week</div>
   <div style="font-size:12px;color:var(--tx2);margin-bottom:12px">Tap Start to train and log a session in one place. What you enter is saved on this phone as you go.</div>`;
   html+=userTrainingPlan.sessions.map((s,i)=>trainWeekCard(s,String(i),false)).join('');
@@ -6228,7 +6233,7 @@ function trainWeekHtml(){
         <div>
           <div style="font-weight:600">${dayName(c.day_of_week)} - ${c.type}</div>
           <div style="font-size:13px;color:var(--tx2);margin-top:3px">${c.duration_mins} mins - ${c.intensity}</div>
-          ${c.notes?`<div style="font-size:12px;color:var(--tx3);margin-top:4px">${c.notes}</div>`:''}
+          ${c.notes?`<div style="font-size:12px;color:var(--tx3);margin-top:4px">${escapeHtml(c.notes)}</div>`:''}
         </div>
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:36px;font-weight:900;color:var(--ac3)">${c.duration_mins}m</div>
       </div>`;
@@ -6267,7 +6272,7 @@ function trainSessionHtml(){
   const isAb=sidx.startsWith('ab');
   const head=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px">
     <button class="btn btn-ghost btn-xs" onclick="trainBackToWeek()">← Week</button>
-    <div style="font-size:12px;color:var(--tx2);text-align:right">${s.name}${isAb?'':' - '+dayName(s.day_of_week)}</div>
+    <div style="font-size:12px;color:var(--tx2);text-align:right">${escapeHtml(s.name)}${isAb?'':' - '+dayName(s.day_of_week)}</div>
   </div>`;
   if(!ex){
     return head+`<div class="alert alert-warn">This session has no exercises listed.</div>`;
@@ -6283,12 +6288,12 @@ function trainSessionHtml(){
   return head+`
   <div style="display:flex;justify-content:space-between;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--tx3);margin-bottom:6px"><span>Exercise ${ei+1} of ${exs.length}</span><span>Tap a bar to jump</span></div>
   <div id="train-strip" style="display:flex;gap:5px;margin-bottom:16px">${trainStripHtml()}</div>
-  ${ei===0&&s.warm_up_cardio?`<div class="alert alert-warn" style="font-size:13px">🔥 Warm up first: ${s.warm_up_cardio}</div>`:''}
+  ${ei===0&&s.warm_up_cardio?`<div class="alert alert-warn" style="font-size:13px">🔥 Warm up first: ${escapeHtml(s.warm_up_cardio)}</div>`:''}
   <div class="card">
-    <div style="font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:900;line-height:1.1">${ex.name}</div>
-    <div style="font-size:13px;color:var(--tx2);margin-top:4px">${ex.sets||3} sets x ${ex.reps||'8-12'}${ex.rest_seconds?' - rest '+ex.rest_seconds+'s':''}${ex.tempo?` - tempo ${ex.tempo} <span style="cursor:pointer;color:var(--tx3)" onclick="${tempoHelp}">(?)</span>`:''}</div>
-    ${ex.notes?`<div class="ex-note" style="margin-top:6px">${ex.notes}</div>`:''}
-    ${ex.progression_note?`<div class="ex-note" style="margin-top:6px">${ex.progression_note}</div>`:''}
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:900;line-height:1.1">${escapeHtml(ex.name)}</div>
+    <div style="font-size:13px;color:var(--tx2);margin-top:4px">${escapeHtml(ex.sets||3)} sets x ${escapeHtml(ex.reps||'8-12')}${ex.rest_seconds?' - rest '+escapeHtml(ex.rest_seconds)+'s':''}${ex.tempo?` - tempo ${escapeHtml(ex.tempo)} <span style="cursor:pointer;color:var(--tx3)" onclick="${tempoHelp}">(?)</span>`:''}</div>
+    ${ex.notes?`<div class="ex-note" style="margin-top:6px">${escapeHtml(ex.notes)}</div>`:''}
+    ${ex.progression_note?`<div class="ex-note" style="margin-top:6px">${escapeHtml(ex.progression_note)}</div>`:''}
     <div style="display:flex;gap:8px;margin:12px 0;flex-wrap:wrap">
       <button class="btn btn-ghost btn-sm" data-exname="${escapeHtml(ex.name)}" data-howto="${escapeHtml(ex.how_to||ex.notes||'')}" onclick="showHowTo(this.dataset.exname,this.dataset.howto)">? How to</button>
       <button class="btn btn-ghost btn-sm" data-sidx="${sidx}" data-eidx="${ei}" data-exname="${escapeHtml(ex.name)}" onclick="openSwapModal(this.dataset.sidx,parseInt(this.dataset.eidx),this.dataset.exname)">⇄ Swap</button>
@@ -6326,13 +6331,13 @@ function trainFinishHtml(){
     :`This session will earn <strong>${award.total} point${award.total===1?'':'s'}</strong>${!isAb&&award.base<full?' ('+pctText+'% of sets logged - 90% or more earns the full '+full+')':''}.`;
   return`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px">
     <button class="btn btn-ghost btn-xs" onclick="trainBackToWeek()">← Week</button>
-    <div style="font-size:12px;color:var(--tx2);text-align:right">${s.name}</div>
+    <div style="font-size:12px;color:var(--tx2);text-align:right">${escapeHtml(s.name)}</div>
   </div>
   <div id="train-strip" style="display:flex;gap:5px;margin-bottom:16px">${trainStripHtml()}</div>
   <div class="card">
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:900">Finish Session</div>
     <div style="font-size:13px;color:var(--tx2);margin:4px 0 12px">${prog.logged} of ${prog.planned} sets logged (${pctText}%)</div>
-    ${exs.map((ex,i)=>{const p=exerciseProgress(i);return`<div onclick="trainGoStep(${i})" style="display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:8px 0;border-bottom:1px solid var(--b1);cursor:pointer"><span>${ex.name}</span><span style="white-space:nowrap;color:${p.logged>=p.planned?'var(--ok)':p.logged?'var(--ac2)':'var(--tx3)'}">${p.logged>=p.planned?'✓ ':''}${p.logged} of ${p.planned}</span></div>`;}).join('')}
+    ${exs.map((ex,i)=>{const p=exerciseProgress(i);return`<div onclick="trainGoStep(${i})" style="display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:8px 0;border-bottom:1px solid var(--b1);cursor:pointer"><span>${escapeHtml(ex.name)}</span><span style="white-space:nowrap;color:${p.logged>=p.planned?'var(--ok)':p.logged?'var(--ac2)':'var(--tx3)'}">${p.logged>=p.planned?'✓ ':''}${p.logged} of ${p.planned}</span></div>`;}).join('')}
     <div class="alert alert-info" style="font-size:13px;margin-top:14px">${pointsLine}</div>
     <div class="frow"><label class="flbl">Session Rating (1=rough 5=smashed it)</label><div class="rating-row" id="sess-rating">${[1,2,3,4,5].map(n=>`<button class="rbtn ${(trainDraft.rating||3)===n?'on':''}" onclick="setSessRating(${n},this)">${n}</button>`).join('')}</div></div>
     ${isAb?'':`<div class="frow" style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
@@ -6537,7 +6542,7 @@ function renderMealLog(){
     const mid='ml_'+m.name.replace(/\W+/g,'_');
     html+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--b1)">
       <div>
-        <div style="font-weight:500;font-size:14px">${m.name}</div>${flagLabelHtml(m.name)}
+        <div style="font-weight:500;font-size:14px">${escapeHtml(m.name)}</div>${flagLabelHtml(m.name)}
         <div style="font-size:12px;color:var(--tx2);font-family:'JetBrains Mono',monospace">${scaledMacro(m.calories)} kcal P:${scaledMacro(m.protein)}g</div>
       </div>
       <label class="toggle"><input type="checkbox" id="${mid}"><div class="tslider"></div></label>
@@ -6799,6 +6804,16 @@ function buildRecompSummary(){
   const weightPart=(!isNaN(wF)&&!isNaN(wL))?` Bodyweight over the same period: ${wL>wF?'+':''}${(wL-wF).toFixed(1)}kg.`:'';
   return `Measurement trend from ${(first.logged_at||'').split('T')[0]} to ${(latest.logged_at||'').split('T')[0]}: ${deltas.join(', ')}.${weightPart}`;
 }
+// The person's actual plan, so the report never guesses it
+function progressPlanLine(){
+  const tp=userTrainingPlan,t=userMealPlan?.meals?.daily_targets;
+  const sessions=tp?.sessions||[];
+  const parts=[];
+  if(sessions.length)parts.push(`Training plan (Month ${tp.month||1}): ${sessions.length} sessions a week - ${sessions.map(x=>x.name).join(', ')}.`);
+  else parts.push('No training plan yet.');
+  if(t?.calories)parts.push(`Daily food target: ${t.calories} kcal, ${t.protein}g protein.`);
+  return parts.join(' ');
+}
 function progressReportPrompt(){
   const style=CU.mot_style||'Mix of Everything';
   const styleVoice=getStyleVoice(style);
@@ -6806,10 +6821,22 @@ function progressReportPrompt(){
   return`You are E=MC-HENCH. Write a progress report for ${CU.username} in ${style} motivational style.
 Stats: ${userPoints.sessions_logged} sessions, ${userPoints.current_streak||0} week workout streak, ${userPoints.pbs_logged} PBs, ${userPoints.season_points} season pts.
 Goal: ${CU.goal}, Experience: ${CU.experience}, Weight: ${CU.weight_kg}kg.
+${progressPlanLine()}
 ${recompSummary?recompSummary+' If this shows body recomposition (e.g. waist down while other measurements hold or rise) even though bodyweight has barely moved, explicitly call this out as real progress the scale alone would not show.':''}
 Under 180 words. Direct. Give 3 specific action points for next 2 weeks.
+Only use the numbers given here - never guess others (e.g. how many sessions the plan has).
+Plain text only: no markdown, no # headings, no ** bold. Short paragraphs, and the 3 action points as lines starting with "- ".
 Voice for this style - ${style}: ${styleVoice}
 Write the ENTIRE report in this voice, not just a closing line.`;
+}
+// AI text shown on a screen: escaped, with any markdown the AI still sends tidied
+// (## headings and **bold** become bold, other stray # and * removed)
+function aiPlainHtml(text){
+  return escapeHtml(String(text||'').trim())
+    .replace(/^#{1,6}\s*(.+)$/gm,'<b>$1</b>')
+    .replace(/\*\*(.+?)\*\*/g,'<b>$1</b>')
+    .replace(/(^|\s)\*(\S[^*\n]*?)\*(?=\s|$)/g,'$1$2')
+    .replace(/^\s*\*\s+/gm,'- ');
 }
 async function genProgressReport(){
   renderProgressContent();
@@ -6822,7 +6849,7 @@ async function genProgressReport(){
     const report=(extractAiText(data)||'').replace(/[—–]/g,'-').trim();
     if(!report)throw new Error('No report came back - stop_reason: '+(data.stop_reason||'unknown')+'. Please try again.');
     hideLoad();
-    document.getElementById('ai-report').innerHTML=`<div class="card"><div class="card-lbl">AI Progress Report</div><div style="font-size:14px;line-height:1.7;white-space:pre-wrap">${report}</div></div>`;
+    document.getElementById('ai-report').innerHTML=`<div class="card"><div class="card-lbl">AI Progress Report</div><div style="font-size:14px;line-height:1.7;white-space:pre-wrap">${aiPlainHtml(report)}</div></div>`;
   }catch(e){hideLoad();alert(describeAiError(e,'The request timed out. Please try again.')||('Error: '+e.message));}
 }
 
@@ -6840,11 +6867,11 @@ function renderHowToGuideText(guide){
       const lines=s.trim().split('\n').filter(l=>l.trim());
       const title=lines[0]?.trim()||titles[i]||'Guide';
       const body=lines.slice(1).join(' ').trim();
-      return`<div class="howto-section"><div class="howto-sec-title">${title}</div><div class="howto-sec-body">${body}</div></div>`;
+      return`<div class="howto-section"><div class="howto-sec-title">${escapeHtml(title)}</div><div class="howto-sec-body">${escapeHtml(body)}</div></div>`;
     }).join('');
   } else {
     // Fallback - just display as clean paragraphs if parsing fails
-    const cleaned=guide.replace(/#{1,6}\s*/g,'').replace(/\*\*/g,'').replace(/---/g,'').replace(/^\s*[-*]\s/gm,'');
+    const cleaned=escapeHtml(guide).replace(/#{1,6}\s*/g,'').replace(/\*\*/g,'').replace(/---/g,'').replace(/^\s*[-*]\s/gm,'');
     el.innerHTML=`<div class="howto-section"><div class="howto-sec-body">${cleaned.replace(/\n\n/g,'</div></div><div class="howto-section"><div class="howto-sec-body">').replace(/\n/g,' ')}</div></div>`;
   }
 }
