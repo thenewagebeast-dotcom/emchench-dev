@@ -9489,8 +9489,15 @@ async function dbGet(sheet){
   return{values:[['id'],...rows.map(a.toSheet)]};
 }
 async function dbAppend(sheet,values){
-  // Session ratings now live on the workout log itself
-  if(sheet==='session_ratings')return{};
+  // Session ratings live on the workout log itself; sleep and soreness go to check-ins
+  if(sheet==='session_ratings'){
+    const ref=String(values[0]||''),kind=ref.startsWith('sl_')?'sleep':ref.startsWith('so_')?'soreness':null;
+    if(!kind)return{};
+    const {error}=await sb.from('checkins').insert({client_ref:ref,kind,rating:kind==='sleep'?(parseInt(values[4])||null):null,
+      notes:String(values[5]||'').slice(0,1000),logged_at:values[2]||nowIso(),day:dayKey(values[2])||dayKey(new Date())});
+    if(error&&error.code!=='23505')throw new Error(friendlyDbError(error));
+    return{};
+  }
   const a=LOG_SHEETS[sheet];
   if(!a)throw new Error(NOT_MOVED);
   const row=a.fromSheet(values);
