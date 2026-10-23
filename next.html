@@ -1359,7 +1359,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct fixes 1-4';
+const APP_BUILD='23 Oct accept order';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -9984,7 +9984,7 @@ function compCardHtml(c){
   const lines=[];
   const kind=[CHALLENGE_NAMES[c.challenge_type],c.exercise?escapeHtml(c.exercise):'',c.challenge_type==='rep_test'?c.rep_pct+'% of your own max':'',
     c.goal?'goal '+compScoreText(c,c.goal):''].filter(Boolean).join(' · ');
-  if(c.challenge!==CHALLENGE_NAMES[c.challenge_type]+(c.exercise?' - '+c.exercise:''))lines.push(`<div style="font-size:12px;color:var(--tx2)">${kind}</div>`);
+  if(kind!==c.challenge)lines.push(`<div style="font-size:12px;color:var(--tx2)">${kind}</div>`);
   if(c.type==='h2h'&&!myM){
     lines.push(`<div style="font-size:13px;margin:6px 0">${mem.map(m=>escapeHtml(nameOf(m.user_id))).join(' vs ')}</div>`);
   }else if(c.type==='h2h'){
@@ -10045,13 +10045,15 @@ async function compAction(fn){
 }
 async function acceptComp(btn){
   const c=compById(btn.dataset.compId);if(!c)return;
-  if(!confirm(CHALLENGE_CARE_NOTE+'\n\nAccept this challenge?'))return;
   let baseline={};
+  // The safety checks first, so nobody agrees to something they then cannot do
   if(STRENGTH_CHALLENGES.includes(c.challenge_type)){
     const r=strengthReady(c.challenge_type,c.exercise,c.rep_pct);
     if(r.error){alert(r.error);return;}
     baseline=r.baseline;
   }
+  const yourWeight=baseline.target_kg?'\n\nYour rep test weight: '+baseline.target_kg+' kg ('+c.rep_pct+'% of your own estimated max).':'';
+  if(!confirm(CHALLENGE_CARE_NOTE+yourWeight+'\n\nAccept this challenge?'))return;
   await compAction(async()=>{
     const {error}=await sb.from('competition_members').update({accepted:true,baseline}).eq('competition_id',c.id).eq('user_id',CU.user_id);
     if(error)throw new Error(friendlyDbError(error));
