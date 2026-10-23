@@ -1289,7 +1289,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct accept order';
+const APP_BUILD='23 Oct AI timings';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -1360,6 +1360,17 @@ if(IS_DEV){(function(){
 
   function recordedTypes(){return store.keys().filter(k=>k.startsWith(REC_PREFIX)).map(k=>k.slice(REC_PREFIX.length)).sort();}
 
+  // How long each real AI call took (last 12), kept in this browser
+  const TIMES_KEY='dev_ai_times';
+  let times=[];
+  try{times=JSON.parse(store.get(TIMES_KEY)||'[]')||[];}catch(e){times=[];}
+  function addTime(type,secs,out,stop,model){
+    times.push({type,secs:Math.round(secs),out,stop:stop||'',model:String(model||'').replace('claude-',''),at:new Date().toISOString()});
+    times=times.slice(-12);store.set(TIMES_KEY,JSON.stringify(times));
+    console.log('DEV AI time:',type,Math.round(secs)+'s',out+' out',stop||'');
+    if(document.getElementById('dev-ai-times'))renderPanel();
+  }
+
   function renderPanel(){
     const t=document.getElementById('dev-ai-totals');
     const r=document.getElementById('dev-ai-recs');
@@ -1371,6 +1382,9 @@ if(IS_DEV){(function(){
       // Type names are fixed strings from callType(), safe to place in HTML. Click one to delete it.
       r.innerHTML='Recorded (click one to delete): '+(recs.length?recs.map(t=>'<span data-rec="'+t+'" style="cursor:pointer;text-decoration:underline">'+t+'</span>').join(', '):'nothing yet');
     }
+    const tm=document.getElementById('dev-ai-times');
+    // Type names, model names and stop reasons are fixed strings from this code or the API, never user text
+    if(tm)tm.innerHTML=times.length?'Timings (over 150s in red):<br>'+times.map(x=>'<span style="color:'+(x.secs>150?'#ff5555':'#cc8800')+'">'+x.type+' '+x.secs+'s, '+x.out+' out'+(x.stop&&x.stop!=='end_turn'?' ('+x.stop+')':'')+'</span>').join('<br>'):'';
   }
 
   const realFetch=window.fetch.bind(window);
@@ -1387,10 +1401,15 @@ if(IS_DEV){(function(){
       const payload=rec||JSON.stringify({type:'error',error:{type:'dev_replay',message:'DEV REPLAY: nothing recorded for "'+type+'". Switch the AI mode to Record and run this once.'}});
       return new Response(payload,{status:rec?200:400,headers:{'Content-Type':'application/json'}});
     }
-    const res=await realFetch(input,init);
+    // Timed to the last byte of the answer, for the Phase 4 server time limit (150s free, 400s paid)
+    const t0=Date.now();
+    let res;
+    try{res=await realFetch(input,init);}
+    catch(e){addTime(type,(Date.now()-t0)/1000,0,'failed: '+(e.name||'error'),body.model);throw e;}
     try{
       const text=await res.clone().text();
       const data=JSON.parse(text);
+      addTime(type,(Date.now()-t0)/1000,data.usage?.output_tokens||0,data.stop_reason||(data.error?'error':''),data.model||body.model);
       if(data.usage){
         // Cache writes bill at 1.25x input, cache reads at 0.1x
         const inTok=(data.usage.input_tokens||0)+(data.usage.cache_creation_input_tokens||0)*1.25+(data.usage.cache_read_input_tokens||0)*0.1;
@@ -1419,6 +1438,7 @@ if(IS_DEV){(function(){
     +'<option value="real">Real (costs)</option><option value="record">Record (costs, saves)</option><option value="replay">Replay (free)</option><option value="fill">Replay saved, record the rest</option></select></label>'
     +'<div id="dev-ai-totals" style="margin-top:4px;color:#cc8800"></div>'
     +'<div id="dev-ai-recs" style="margin-top:2px;color:#cc8800"></div>'
+    +'<div id="dev-ai-times" style="margin-top:2px;max-height:120px;overflow:auto"></div>'
     +'<div style="margin-top:4px"><button id="dev-ai-reset" style="background:none;border:1px solid #664400;color:#cc8800;border-radius:4px;font:10px monospace;cursor:pointer;padding:1px 5px">reset totals</button> '
     +'<button id="dev-ai-clear" style="background:none;border:1px solid #664400;color:#cc8800;border-radius:4px;font:10px monospace;cursor:pointer;padding:1px 5px">clear recordings</button></div>';
   document.body.appendChild(panel);
@@ -1426,7 +1446,7 @@ if(IS_DEV){(function(){
   sel.value=mode;
   sel.addEventListener('change',()=>{mode=sel.value;store.set(MODE_KEY,mode);});
   document.getElementById('dev-ai-recs').addEventListener('click',e=>{const t=e.target&&e.target.dataset&&e.target.dataset.rec;if(!t)return;if(!confirm('Delete the recording for "'+t+'"?'))return;store.del(REC_PREFIX+t);renderPanel();});
-  document.getElementById('dev-ai-reset').addEventListener('click',()=>{totals={inTok:0,outTok:0,calls:0,cost:0};store.set(TOTAL_KEY,JSON.stringify(totals));renderPanel();});
+  document.getElementById('dev-ai-reset').addEventListener('click',()=>{totals={inTok:0,outTok:0,calls:0,cost:0};store.set(TOTAL_KEY,JSON.stringify(totals));times=[];store.set(TIMES_KEY,'[]');renderPanel();});
   document.getElementById('dev-ai-clear').addEventListener('click',()=>{if(!confirm('Delete all recorded AI responses in this browser?'))return;recordedTypes().forEach(t=>store.del(REC_PREFIX+t));renderPanel();});
   renderPanel();
 })();}
