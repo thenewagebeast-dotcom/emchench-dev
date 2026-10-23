@@ -1359,7 +1359,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct 4c shared pieces';
+const APP_BUILD='23 Oct 4c plan on the server';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -2926,6 +2926,7 @@ function renderDashboard(){
   const aEl=document.getElementById('dash-alerts');
   aEl.innerHTML='';
   if(!userMealPlan&&!userTrainingPlan)aEl.innerHTML+=`<div class="alert alert-info">👋 Welcome! Hit "Generate Plan" to get your personalised programme.</div>`;
+  aEl.innerHTML+=genAlertHtml();
   aEl.innerHTML+=seasonAlertHtml();
   if(userMealPlan)aEl.innerHTML+=planRuleWarningHtml();
   if(CU.goal_updated==='true')aEl.innerHTML+=`<div class="alert alert-warn">⚡ Goal updated. Generate a new plan to reflect your changes.</div>`;
@@ -3060,6 +3061,8 @@ function seasonRuleText(){return'First to 1500 season points wins';}
 function hofQualifies(p){return(p.season_wins||0)>0||(p.season_points||0)>=SEASON_TARGET;}
 function hofLeaderText(p){return(p.season_points||0)>=SEASON_TARGET?'⚡ Current season leader':'';}
 function hofEmptyText(){return'The first person to reach 1500 season points will be remembered here forever.';}
+// A plan being built in the background (the new backend builds plans on its server; here it is built while you wait)
+function genAlertHtml(){return'';}
 function seasonAlertHtml(){return(userPoints.season_points||0)>=SEASON_TARGET?`<div class="alert alert-ok">🏆 SEASON WIN! You hit 1500 points! Absolute legend.</div>`:'';}
 function canDeleteWallPost(p){return p.user_id===CU.user_id||p.post_type==='auto';}
 function wallPostExtraHtml(p){return'';}
@@ -9280,7 +9283,7 @@ const AI_LATER='AI features arrive in the next phase of the new backend. The cur
 let sbUser=null;       // the logged-in Supabase user
 let inRecovery=false;  // opened from a password reset link
 
-// ---- AI calls are switched off until the server holds the key (Phase 4) ----
+// ---- The phone never calls the AI directly: every AI feature goes through the server (aiRequest) ----
 (function(){
   const realFetch=window.fetch;
   window.fetch=function(url){
@@ -9487,6 +9490,7 @@ async function loginUser(u){
     waterMl=0;
     await loadUserData();
     renderDashboard();renderBody();renderProfile();
+    refreshGenStatus();   // a plan being built, or choices waiting (in the background)
     loadShopList();
     checkWeighInDay();
     // The how-to guide saved with the plan (it cannot be regenerated until the AI moves across)
@@ -10335,6 +10339,7 @@ function signOut(){
   const wasIn=!!sbUser;sbUser=null;
   if(sb&&wasIn)sb.auth.signOut({scope:'local'}).catch(e=>console.error('Log out:',e));
   sheetsSignOut();
+  stopGenPoll();genRun=null;
   allUsers=[];lastSeasonWinners=[];wallReportCounts={};myShopRatings={};compMembers=[];compResults=[];
   document.querySelectorAll('#login-screen input').forEach(i=>i.value='');
   showAuthScreen();showAuthView('v-login');
@@ -10421,7 +10426,7 @@ async function doChangePassword(){
 // server function "ai" (supabase/functions/ai), which checks the login, the budget and
 // the person's limits, builds the instructions itself from their data and holds the key.
 // The phone sends only which feature and what the person picked - never instructions.
-// Plan generation still goes through callAI and stays switched off until 4c.
+// Plan generation (4c) is built by the server step by step - see generatePlan below.
 const AI_SERVER_URL=SB_URL+'/functions/v1/ai';
 async function aiRequest(feature,args,timeoutMs=60000){
   const {data:{session}}=await sb.auth.getSession();
@@ -10438,6 +10443,112 @@ async function aiRequest(feature,args,timeoutMs=60000){
     if(!res.ok&&!data.error)return{error:{type:'server',message:(data.message||data.msg||'The AI server is not available')+' (HTTP '+res.status+').'}};
     return data;
   }finally{clearTimeout(timeout);}
+}
+
+// ---- Plan generation on the server (Phase 4c, 23 Oct 2026) ----
+// The server builds the plan step by step and saves every step, so the person only waits for
+// the meal choices (about 40 seconds). After the picks they can close the app: the dashboard
+// shows how far it has got, and the new plan is read in when it is ready. Opening the app
+// also restarts a plan that stopped part way (the server's timer does the same every 15 minutes).
+let genRun=null;        // the latest plan_status answer
+let genPollTimer=null;
+const GEN_POLL_MS=10000;
+function genSeen(runId){try{return localStorage.getItem('gen_seen_'+CU.user_id)===runId;}catch(e){return false;}}
+function markGenSeen(runId){try{localStorage.setItem('gen_seen_'+CU.user_id,runId);}catch(e){}}
+
+async function generatePlan(){
+  if(isGenerating)return;
+  isGenerating=true;
+  const whats_changed=document.getElementById('gen-rap-1')?.value.trim()||'';
+  const how_last_month_felt=document.getElementById('gen-rap-2')?.value.trim()||'';
+  const changeLevel=document.getElementById('gen-change')?.value||'fresh';
+  closeModal('gen-modal');
+  showLoad('Getting Your Meal Choices Ready','About 40 seconds - please stay on this screen.');
+  startLoadFun(2,92,40000);
+  let r;
+  try{r=await aiRequest('plan_start',{changeLevel,whats_changed,how_last_month_felt},150000);}
+  catch(e){r={error:{message:e.name==='AbortError'?'The meal choices are taking longer than usual. Check the dashboard in a minute - they will be waiting there.':'Could not reach the AI server: '+e.message}};}
+  finally{stopLoadFun();hideLoad();isGenerating=false;}
+  if(r.error){alert(r.error.message);refreshGenStatus();return;}
+  genRun=r;
+  if(r.step==='waiting_picks')return openGenPicker();
+  genAfterChange();
+  goTab('dashboard');
+}
+
+// The meal picker for choices the server has ready (straight after Generate, or from the dashboard later)
+async function openGenPicker(){
+  if(!genRun||genRun.step!=='waiting_picks'||!genRun.options)return;
+  const runId=genRun.run_id,uid=CU.user_id;
+  const picks=await showMealPicker(genRun.options);
+  if(!CU||CU.user_id!==uid)return;
+  showLoad('Starting Your Plan','Sending your choices...');
+  let r;
+  try{r=await aiRequest('plan_picks',{run_id:runId,picks},30000);}
+  catch(e){r={error:{message:'Your choices could not be sent. Please try again from the dashboard.'}};}
+  finally{hideLoad();}
+  if(r.error){alert(r.error.message);refreshGenStatus();return;}
+  genRun={...genRun,step:'building',options:undefined,done:0,total:r.parts};
+  genAfterChange();
+  goTab('dashboard');
+}
+
+function startGenPoll(){if(!genPollTimer)genPollTimer=setInterval(refreshGenStatus,GEN_POLL_MS);}
+function stopGenPoll(){if(genPollTimer){clearInterval(genPollTimer);genPollTimer=null;}}
+function genAfterChange(){
+  if(genRun&&['choices','building','finishing'].includes(genRun.step))startGenPoll();else stopGenPoll();
+  if(CU)renderDashboard();
+}
+async function refreshGenStatus(){
+  if(!CU)return;
+  const uid=CU.user_id,before=genRun;
+  let r;
+  try{r=await aiRequest('plan_status',{},20000);}catch(e){return;}
+  if(!CU||CU.user_id!==uid||!r||r.error)return;
+  genRun=r;
+  if(r.step==='done'&&r.meal_plan_id&&r.meal_plan_id!==userMealPlan?.plan_id){
+    await genLoadNewPlan();
+    if(!CU||CU.user_id!==uid)return;
+    // Watching it finish: celebrate and show it (as the app always has)
+    if(before&&before.run_id===r.run_id&&before.step!=='done'){
+      markGenSeen(r.run_id);
+      if(r.assessment)celebrateMsg('planReadyAssessment','💪','Plan Ready!');else celebrate('workout','⚡');
+      goTab('meals');
+    }
+  }
+  const changed=!before||before.run_id!==r.run_id||before.step!==r.step||before.done!==r.done;
+  if(changed)genAfterChange();else if(!['choices','building','finishing'].includes(r.step))stopGenPoll();
+}
+// The finished plan, read in exactly as at login. The server has already cleared "new user"
+// and "goal updated" on the profile, saved the how-to guide and posted to the wall.
+async function genLoadNewPlan(){
+  const [mealRows,trainRows]=await Promise.all([fetchMyPlans('meal_plans'),fetchMyPlans('training_plans')]);
+  const m=mealRows[mealRows.length-1],t=trainRows[trainRows.length-1];
+  if(m)userMealPlan={plan_id:m.id,month:m.month_number,created_at:m.created_at,meals:planRowToMeals(m),how_to_guide:m.how_to_guide||''};
+  if(t)userTrainingPlan={plan_id:t.id,month:t.month_number,sessions:t.sessions||[],cardio:t.cardio||[],notes:t.notes||'',ab_sessions:t.ab_sessions||[]};
+  CU.is_new_user='false';CU.goal_updated='';
+  renderDashboard();renderMealPlan();renderTrainingPlan();renderSupps();
+  if(userMealPlan?.how_to_guide)renderHowToGuideText(userMealPlan.how_to_guide);
+}
+function genSeeNewPlan(){if(genRun)markGenSeen(genRun.run_id);renderDashboard();goTab('meals');}
+function genDismiss(){if(genRun)markGenSeen(genRun.run_id);renderDashboard();}
+function genAlertHtml(){
+  const g=genRun;
+  if(!g||!g.run_id)return'';
+  const recent=Date.now()-new Date(g.updated_at||0).getTime()<3*86400000;
+  if(g.step==='choices')return`<div class="alert alert-info">⏳ Your meal choices are being got ready - they will be here in under a minute.</div>`;
+  if(g.step==='waiting_picks')return`<div class="alert alert-info">🍽️ Your meal choices are waiting. Pick your favourites and your plan gets built. If you leave them for a day, we'll choose for you.
+    <div style="margin-top:8px"><button class="btn btn-sm" onclick="openGenPicker()">Choose my meals</button></div></div>`;
+  if(g.step==='building'||g.step==='finishing'){
+    const progress=g.step==='finishing'?'Putting it all together...':(g.total?`${g.done||0} of ${g.total} parts done.`:'');
+    return`<div class="alert alert-info">⚙️ Your Month ${g.month||''} plan is being built. ${progress}<br><span style="font-size:12px;color:var(--tx2)">You can close the app - it will be ready in about 5 minutes and waiting here when you come back.</span></div>`;
+  }
+  if(g.step==='done'&&recent&&!genSeen(g.run_id))return`<div class="alert alert-ok">✅ Your new Month ${g.month||''} plan is ready!
+    <div style="margin-top:8px"><button class="btn btn-sm" onclick="genSeeNewPlan()">See my plan</button></div></div>`;
+  if(g.step==='failed'&&recent&&!genSeen(g.run_id))return`<div class="alert alert-warn">⚠️ Your plan could not be built this time. It does not count toward your 2 plans a week - tap Generate Plan to try again.
+    <div style="font-size:11px;color:var(--tx3);margin-top:4px">${escapeHtml(g.error||'')}</div>
+    <div style="margin-top:8px"><button class="btn btn-ghost btn-sm" onclick="genDismiss()">OK</button></div></div>`;
+  return'';
 }
 
 // ---- Admin card: AI spending, the budget, extra uses, and a server check ----
@@ -10607,7 +10718,6 @@ async function createUser(){
 }
 
 // ---- not moved yet: say so plainly ----
-function openGenModal(){showInfo('Generate a Plan',`<p style="margin-bottom:12px">${AI_LATER}</p><p>Your sign-up answers are saved, so the new backend will use them when plan generation moves across.</p>`);}
 function deleteAccount(){showInfo('Delete Account','<p>Deleting an account needs the server, which arrives in a later phase of the new backend. Until then, ask Dom.</p>');}
 
 init();

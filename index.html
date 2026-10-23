@@ -1289,7 +1289,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct 4c shared pieces';
+const APP_BUILD='23 Oct 4c plan on the server';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -2858,6 +2858,7 @@ function renderDashboard(){
   const aEl=document.getElementById('dash-alerts');
   aEl.innerHTML='';
   if(!userMealPlan&&!userTrainingPlan)aEl.innerHTML+=`<div class="alert alert-info">👋 Welcome! Hit "Generate Plan" to get your personalised programme.</div>`;
+  aEl.innerHTML+=genAlertHtml();
   aEl.innerHTML+=seasonAlertHtml();
   if(userMealPlan)aEl.innerHTML+=planRuleWarningHtml();
   if(CU.goal_updated==='true')aEl.innerHTML+=`<div class="alert alert-warn">⚡ Goal updated. Generate a new plan to reflect your changes.</div>`;
@@ -2992,6 +2993,8 @@ function seasonRuleText(){return'First to 1500 season points wins';}
 function hofQualifies(p){return(p.season_wins||0)>0||(p.season_points||0)>=SEASON_TARGET;}
 function hofLeaderText(p){return(p.season_points||0)>=SEASON_TARGET?'⚡ Current season leader':'';}
 function hofEmptyText(){return'The first person to reach 1500 season points will be remembered here forever.';}
+// A plan being built in the background (the new backend builds plans on its server; here it is built while you wait)
+function genAlertHtml(){return'';}
 function seasonAlertHtml(){return(userPoints.season_points||0)>=SEASON_TARGET?`<div class="alert alert-ok">🏆 SEASON WIN! You hit 1500 points! Absolute legend.</div>`:'';}
 function canDeleteWallPost(p){return p.user_id===CU.user_id||p.post_type==='auto';}
 function wallPostExtraHtml(p){return'';}
