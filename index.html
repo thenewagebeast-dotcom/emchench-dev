@@ -1289,7 +1289,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct 2e tidy';
+const APP_BUILD='23 Oct fixes 1-4';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -2722,7 +2722,7 @@ async function loadUserData(){
     const mine=(d,header)=>(d.values||[]).filter(r=>r[0]&&r[0]!==header&&r[1]===CU.user_id);
     const meals=mine(await sheetData('meal_logs'),'log_id').map(parseMealLogRow);
     const workouts=mine(await sheetData('workout_logs'),'log_id').map(parseWorkoutLogRow);
-    const water=mine(await sheetData('water_log'),'record_id').map(r=>({day:dayKey(r[2]),ml:parseInt(r[3])||0}));
+    const water=mine(await sheetData('water_log'),'record_id').map(r=>({day:dayKey(r[2]),ml:parseInt(r[3])||0,target:parseInt(r[5])||null}));
     const pauses=mine(await sheetData('holiday_log'),'record_id').map(parsePauseRow);
     activityLogs={meals,workouts,water,pauses,loaded:true};
     // A streak that should have reset (or a second device's logs) shows up here. Saved in the background.
@@ -2754,9 +2754,8 @@ function renderDashboard(){
     <div class="stat"><div class="stat-v">${userPoints.challenges_won||0}</div><div class="stat-l">Challenges</div></div>`;
 
   // Water - realistic ranges: minimum 1.5L, good 2L, target = calc, above target = great
-  const wt=parseInt(CU.water_target_ml)||2000;
   const isTrainDay=!!getTodaySession();
-  const adjTarget=isTrainDay?Math.min(wt+500,3000):wt;
+  const adjTarget=todayWaterTarget();
   const minOk=1500; // 1.5L is acceptable
   const pct=Math.min((waterMl/adjTarget)*100,100);
   let waterStatus='';
@@ -2923,11 +2922,9 @@ function getTodaySession(){
 
 function logWater(ml){
   waterMl+=ml;
-  const wt=parseInt(CU.water_target_ml)||2000;
-  const isTrainDay=!!getTodaySession();
-  const adjTarget=isTrainDay?wt+500:wt;
+  const adjTarget=todayWaterTarget();
   // The water streak is worked out from the water log, so just record today's total
-  setWaterDay(dayKey(new Date()),waterMl);
+  setWaterDay(dayKey(new Date()),waterMl,adjTarget);
   refreshStreaks();
   // Crossing the target happens once a day (the total only goes up)
   const hitNow=waterMl>=adjTarget&&waterMl-ml<adjTarget;
@@ -2946,16 +2943,17 @@ async function saveWaterLog(){
   const myUserId=CU?.user_id;
   const myWaterMl=waterMl;
   if(!myUserId)return;
+  const myTarget=todayWaterTarget();
   const today=new Date().toDateString();
   const wd=await dbGet('water_log');
   if(wd.values){
     const ri=wd.values.findIndex(r=>r[1]===myUserId&&isSameCalendarDay(r[2]));
     if(ri>=0){
-      await dbUpdate('water_log',ri+1,[wd.values[ri][0],myUserId,today,myWaterMl,new Date().toISOString()]);
+      await dbUpdate('water_log',ri+1,[wd.values[ri][0],myUserId,today,myWaterMl,new Date().toISOString(),myTarget]);
       return;
     }
   }
-  await dbAppend('water_log',['wl_'+Date.now(),myUserId,today,myWaterMl,new Date().toISOString()]);
+  await dbAppend('water_log',['wl_'+Date.now(),myUserId,today,myWaterMl,new Date().toISOString(),myTarget]);
 }
 
 // ============================================================
@@ -3220,8 +3218,10 @@ async function saveWeighIn(){
     // Keep the profile weight current, so protein and next month's targets use the real weight
     if(currentWeight>0){
       try{
-        const patched=await patchUserRow(CU.user_id,{5:currentWeight},CU);
-        if(patched)CU.weight_kg=currentWeight;
+        // The water target follows the weight, the same rule as Edit Stats
+        const newWater=waterTargetFor(currentWeight);
+        const patched=await patchUserRow(CU.user_id,{5:currentWeight,24:newWater},CU);
+        if(patched){CU.weight_kg=currentWeight;CU.water_target_ml=newWater;}
       }catch(e){console.error('Profile weight update:',e);}
     }
     closeModal('weigh-modal');
@@ -6616,7 +6616,6 @@ async function saveSleep(){
   try{
     await dbAppend('session_ratings',['sl_'+Date.now(),CU.user_id,new Date().toISOString(),'Sleep',sleepRating,'Sleep quality: '+sleepRating+'/5']);
     celebrateMsg('sleepLogged','😴','Sleep Logged!');
-    postAutoWall(`😴 ${CU.username} logged sleep: ${sleepRating}/5`);
   }catch(e){console.error('Sleep save:',e);alert('Your sleep log could not be saved. Please try again: '+e.message);}
 }
 async function saveSoreness(){
@@ -6626,7 +6625,6 @@ async function saveSoreness(){
       await dbAppend('session_ratings',['so_'+Date.now(),CU.user_id,new Date().toISOString(),'Soreness',0,notes]);
     }
     celebrateMsg('sorenessLogged','💪','Soreness Logged!');
-    postAutoWall(`📊 ${CU.username} logged muscle soreness data`);
   }catch(e){console.error('Soreness save:',e);alert('Your soreness log could not be saved. Please try again: '+e.message);}
 }
 
@@ -6719,11 +6717,12 @@ async function logCardio(){
   if(pts)addPoints({pts}).then(()=>{if(CU)renderDashboard();}).catch(e=>console.error('Cardio points:',e));
 }
 async function saveMeasurements(){
+  const notes=(document.getElementById('m-notes')?.value||'').trim();
   const vals={weight:document.getElementById('m-weight')?.value||'',waist:document.getElementById('m-waist')?.value||'',chest:document.getElementById('m-chest')?.value||'',biceps:document.getElementById('m-biceps')?.value||'',shoulders:document.getElementById('m-shoulders')?.value||'',quads:document.getElementById('m-quads')?.value||'',calves:document.getElementById('m-calves')?.value||'',forearms:document.getElementById('m-forearms')?.value||''};
   showLoad('Saving','Logging measurements...');
   try{
     const mid='meas_'+Date.now();
-    await dbAppend('measurements',[mid,CU.user_id,new Date().toISOString(),vals.weight,vals.waist,vals.chest,vals.biceps,vals.shoulders,vals.quads,vals.calves,vals.forearms,'']);
+    await dbAppend('measurements',[mid,CU.user_id,new Date().toISOString(),vals.weight,vals.waist,vals.chest,vals.biceps,vals.shoulders,vals.quads,vals.calves,vals.forearms,notes]);
     // 5 points once a week (Monday to Sunday). A weigh-in is not a body stats entry.
     const statsWeek=weekStart(dayKey(new Date()));
     const statsPts=measurements.some(m=>!m.weighIn&&dayKey(m.logged_at)&&weekStart(dayKey(m.logged_at))===statsWeek)?0:BODY_STATS_POINTS;
@@ -7654,7 +7653,7 @@ async function saveStats(){
   const avoid=document.getElementById('prof-avoid')?.value;
   const health=document.getElementById('prof-health')?.value;
   showLoad('Saving','Updating your stats...');
-  const waterTarget=Math.min(Math.max(Math.round((parseFloat(weight)||parseFloat(CU.weight_kg)||75)*30),1500),2500);
+  const waterTarget=waterTargetFor(weight||CU.weight_kg);
   const patch={24:waterTarget};
   if(weight)patch[5]=weight;if(height)patch[6]=height;if(age)patch[3]=age;
   if(days)patch[9]=days;if(injuries!==undefined)patch[18]=injuries;if(avoid!==undefined)patch[19]=avoid;
@@ -7861,8 +7860,10 @@ function computeStreaks(logs,ctx){
   const mealSkips=new Set([...pauseDays,...(ctx.eventDays||[])]);
 
   const waterMax=new Map();
-  for(const w of logs.water||[]){if(w.day)waterMax.set(w.day,Math.max(waterMax.get(w.day)||0,parseInt(w.ml)||0));}
-  const waterHits=new Set([...waterMax].filter(([d,ml])=>ml>=ctx.waterTarget(d)).map(([d])=>d));
+  const waterTgt=new Map();
+  for(const w of logs.water||[]){if(w.day){waterMax.set(w.day,Math.max(waterMax.get(w.day)||0,parseInt(w.ml)||0));if(parseInt(w.target)>0)waterTgt.set(w.day,parseInt(w.target));}}
+  // A day is judged against the target saved with it; older days without one use today's rule
+  const waterHits=new Set([...waterMax].filter(([d,ml])=>ml>=(waterTgt.get(d)||ctx.waterTarget(d))).map(([d])=>d));
 
   return{
     workout:weeklyStreak(sessionsDoneByWeek(logs.workouts||[]),ctx.plannedPerWeek,pausedWeeks,ctx.today,first((logs.workouts||[]).filter(w=>!w.cardio&&!w.extra))),
@@ -7922,9 +7923,14 @@ function refreshStreaks(){
   showStreakHeader();
   return now.join()!==was.join();
 }
-function setWaterDay(day,ml){
+// The daily water target from body weight: 30 ml a kg, between 1.5 and 2.5 litres
+function waterTargetFor(weight){return Math.min(Math.max(Math.round((parseFloat(weight)||75)*30),1500),2500);}
+// Today's target: the daily target plus 500 ml on a training day
+function todayWaterTarget(){const wt=parseInt(CU.water_target_ml)||2000;return getTodaySession()?wt+500:wt;}
+// Each day keeps the target it had, so a later weight change never re-judges past days
+function setWaterDay(day,ml,target){
   const rec=activityLogs.water.find(w=>w.day===day);
-  if(rec)rec.ml=ml;else activityLogs.water.push({day,ml});
+  if(rec){rec.ml=ml;if(target)rec.target=target;}else activityLogs.water.push({day,ml,target:target||null});
 }
 // What a strength or ab session logged right now would earn
 function workoutAward({key,isAb,pct,pb}){
