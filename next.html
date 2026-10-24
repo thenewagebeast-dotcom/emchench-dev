@@ -1375,7 +1375,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='24 Oct test run fixes';
+const APP_BUILD='24 Oct sesame-free fix';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -4079,7 +4079,7 @@ const FOOD_GROUPS={
   fish:{label:'fish',words:['fish','salmon','tuna','prawn','cod','mackerel','sardine','anchovy','anchovies','haddock','shrimp','crab','lobster','mussel','squid','scallop','trout','sea bass','oyster','worcestershire'],safe:/(vegan|vegetarian)/i},
   honey:{label:'honey',words:['honey'],safe:null},
   shellfish:{label:'shellfish',words:['shellfish','prawn','shrimp','crab','lobster','mussel','scallop','oyster','squid','clam','crayfish','langoustine'],safe:/(vegan|vegetarian)/i},
-  sesame:{label:'sesame',words:['sesame','tahini','hummus','houmous'],safe:null}
+  sesame:{label:'sesame',words:['sesame','tahini','hummus','houmous'],safe:/sesame[- ]free/i}   // 'sesame-free' is not sesame (24 Oct 2026 test run)
 };
 const DIET_BANS={vegan:['meat','fish','dairy','eggs','honey'],vegetarian:['meat','fish'],pescatarian:['meat'],'meat-eater':[]};
 // The food groups named in one allergy as typed (24 Oct 2026 audit S1): "milk allergy", "cow's milk",
