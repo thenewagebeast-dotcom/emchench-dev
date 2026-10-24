@@ -1368,7 +1368,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='24 Oct supplements v3';
+const APP_BUILD='24 Oct supplements v4';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -7280,6 +7280,7 @@ function supplementPlan(u){
     const c=add({name:'Creatine Monohydrate',reason:'One of the most researched supplements for strength and power.',
       when:'3-5 g a day, any time - taking it every day matters more than when. With your post-workout meal is an easy habit.'});
     if(lowMeat)c.notes.push('You eat little or no red meat, the main food source of creatine, so a supplement makes more difference for you.');
+    c.notes.push('Hair loss: a 2025 trial of 5 g a day for 12 weeks found no change in hair or DHT. The worry comes from one 2009 study that used a 25 g a day loading phase.');
     if(bf||has('stones')||has('liver'))c.when='Speak to your GP or pharmacist first (your '+[bf&&'breastfeeding',has('stones')&&'kidney stone',has('liver')&&'liver'].filter(Boolean).join(' and ')+' notes).';
   }
 
@@ -7288,15 +7289,16 @@ function supplementPlan(u){
     if(minor){
       add({name:'Protein',reason:'Most teenagers get enough protein from meals - a shake is only a top-up when meals fall short.',when:'Food first. If you use one, 20-30 g after training.'});
     }else{
-      const plant=vegan||dairyA||has('lactose');
-      const c=add({name:plant?'Plant-Based Protein':'Whey Protein',
-        reason:plant?'Pea and rice blends work as well as whey for building muscle when the leucine is high enough.':'A convenient way to reach your daily protein target.',
+      const plant=vegan||dairyA;
+      const isolate=!plant&&has('lactose');
+      const c=add({name:plant?'Plant-Based Protein':isolate?'Whey Protein Isolate':'Whey Protein',
+        reason:plant?'Pea and rice blends work as well as whey for building muscle when the leucine is high enough.':isolate?'Isolate is filtered further than standard whey, so it has much less lactose - easier on the stomach if dairy does not agree with you.':'A convenient way to reach your daily protein target.',
         when:'20-40 g after training, or any time your meals fall short. Not a meal replacement.'});
       c.notes.push('Check your meal plan first - if food already covers your target, this is optional.');
       c.notes.push('Avoid "diet" or "lean" blends unless you have read the label - they often add green tea extract (caffeine), CLA and soy.');
       if(soyA)c.notes.push(plant?'Choose pea, rice or fava - many plant proteins contain soya.':'Most whey contains soy lecithin - check the label.');
       if(plant&&dairyA)c.notes.push('Many plant proteins are made where milk is handled - choose one that says free from dairy.');
-      if(plant&&has('lactose')&&!dairyA&&!vegan)c.notes.push('Whey can contain lactose - a plant protein is the safe choice.');
+      if(isolate)c.notes.push('Less lactose, not none - many people who are lactose intolerant are fine with isolate. If it still upsets you, a plant protein is the safe choice. Never for a milk allergy.');
       if(has('diabetes'))c.notes.push('Choose one with no added sugar.');
       if(has('pku'))c.notes.push('Choose one without aspartame - look for "contains a source of phenylalanine" on the label.');
       if(has('stones'))c.notes.push('A very high protein diet can make kidney stones more likely to come back - check with your GP.');
@@ -7323,6 +7325,8 @@ function supplementPlan(u){
         notes:['How much caffeine: research on performance uses about 3-6 mg per kg of body weight - '+range+'. Strong pre-workouts are usually 300-350 mg a serving. New to a product? Start with half a serving to see how you react.',
           'Your whole day: the safety guide for healthy adults is under 400 mg of caffeine a day from everything - a 350 mg pre-workout plus two coffees takes you well over. No caffeine within 6 hours of bed.',
           'Creatine: many contain it - if yours does, skip the separate creatine.',
+          'Never stack two stimulant products (a pre-workout plus an energy drink or fat burner). A caffeine-free pre-workout on top is fine.',
+          'Take a 5-7 day break from stimulants every month - it keeps them working. It hits harder on an empty stomach, and L-theanine can take the edge off the jitters.',
           'Extreme stims - yohimbine and synephrine (bitter orange): a stronger kick, but they can cause anxiety, cold sweats, shakes, a racing heart and high blood pressure, and have been linked to rare serious heart problems. Not for anyone with a heart, blood pressure or anxiety condition, or on medicines. Start low.']});
     }
   }
@@ -7354,6 +7358,8 @@ function supplementPlan(u){
     if(algae||fishOil){
       const c=add(algae?{name:'Algae Omega-3',reason:'Plant-based EPA and DHA for joints and heart health.',when:'Daily with your largest meal.'}
         :{name:'Omega-3 Fish Oil',reason:'EPA and DHA for joints and heart health - covers the gap if you avoid fish in your meals.',when:'1-2 g EPA/DHA a day with your largest meal - never above the label dose.'});
+      c.notes.push(algae?'Choose a high EPA and DHA amount per capsule and check the best-before date - the oil can go off.'
+        :'Choose a high EPA and DHA amount per capsule (not just "1,000 mg fish oil") and a fresh product - a strong fishy smell or taste means it has gone off. Some "krill oil" is mostly cheaper fish oil.');
       if(fishOil&&pesc)c.notes.push('Many fish oil capsules use beef gelatine - check the capsule.');
       if(shellA)c.notes.push('Never krill oil.');
       if(preg)c.notes.push('Never cod liver oil while pregnant or trying for a baby - it is high in vitamin A.');
@@ -7415,6 +7421,7 @@ const SUPP_PRODUCTS=[
   {card:'Creatine Monohydrate',n:'Applied Nutrition Creatine Monohydrate',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/applied-nutrition-creatine-monohydrate-250g/167984',d:'vegan',c:[],may:['dairy','soy','eggs','fish','gluten'],free:[],fit:2},
   {card:'Creatine Monohydrate',n:'Bulk Creatine Monohydrate',shop:'Bulk',u:'https://www.bulk.com/uk/products/creatine-monohydrate/bpb-cmon-0000',d:'vegan',c:[],may:['dairy','soy','gluten','sesame'],free:[],fit:2},
   {card:'Whey Protein',n:'Bulk Pure Whey Isolate',shop:'Bulk',u:'https://www.bulk.com/uk/products/pure-whey-isolate-90/bpb-wpi9-0000',d:'vegetarian',c:['dairy'],may:['soy','gluten','sesame'],free:[],fit:3,why:'isolate, few ingredients'},
+  {card:'Whey Protein Isolate',n:'Bulk Pure Whey Isolate',shop:'Bulk',u:'https://www.bulk.com/uk/products/pure-whey-isolate-90/bpb-wpi9-0000',d:'vegetarian',c:['dairy'],may:['soy','gluten','sesame'],free:[],fit:3},
   {card:'Whey Protein',n:'USN BlueLab 100% Whey',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/usn-bluelab-100-percent-whey-protein-2-kg/176700',d:'any',c:['dairy'],may:['soy'],free:[],fit:2},
   {card:'Whey Protein',n:'Applied Nutrition Critical Whey',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/applied-nutrition-critical-whey-2-kg-new-look/454794',d:'any',c:['dairy'],may:['soy','eggs','fish','gluten'],free:[],fit:2},
   {card:'Plant-Based Protein',n:'Nuzest Clean Lean Protein (pea)',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/nuzest-clean-lean-protein-1000g/151158',d:'vegan',c:[],may:null,free:['gluten','dairy','soy'],fit:3},
@@ -7474,6 +7481,7 @@ function suppCandidates(card,u){
     if(okDiet&&!okDiet.includes(p.d))continue;
     let hide=false;const check=[...typed];
     for(const g of groups){
+      if(g==='dairy'&&lactoseOnly&&card.name==='Whey Protein Isolate')continue;
       if(p.c.includes(g)){hide=true;break;}
       if(g==='dairy'&&lactoseOnly)continue;
       if(p.may&&p.may.includes(g)){hide=true;break;}
