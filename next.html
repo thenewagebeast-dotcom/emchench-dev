@@ -244,6 +244,13 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .det-lbl{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--tx3);margin-bottom:6px;font-weight:600;}
 .ingr{font-size:13px;color:var(--tx2);line-height:1.9;margin-bottom:12px;}
 .method{counter-reset:step;}
+.gsec{font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--ac);margin:14px 0 6px;}
+.gsec:first-child{margin-top:0;}
+.gtxt{font-size:14px;line-height:1.6;color:var(--tx);margin-bottom:6px;}
+.glist,.gsteps{margin:0 0 6px 20px;padding:0;font-size:14px;line-height:1.6;}
+.gsteps li{margin-bottom:6px;}
+.gwait{font-size:12px;color:var(--tx2);background:var(--s2);border:1px solid var(--b1);border-radius:8px;padding:8px 10px;margin-bottom:10px;}
+.gstop{font-size:12px;color:var(--warn);margin-top:14px;line-height:1.5;}
 .msec{font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--tx2);margin:12px 0 6px;}
 .msec:first-child{margin-top:0;}
 .ingr-sec{font-size:12px;font-weight:700;color:var(--tx2);margin:8px 0 4px;}
@@ -1379,7 +1386,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='24 Oct recipe sections';
+const APP_BUILD='24 Oct exercise guides';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -6290,9 +6297,152 @@ function renderInjuryModal(){
 
 function dayName(d){return['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d]||'Day '+d;}
 
+// ---- exercise guides start ----
+// One full guide per exercise, written once and shared by everyone (EXERCISE-GUIDES-SPEC-2026-10-24.md).
+// The library lives in the new backend (exercise_guides); index.html (Sheets) has none and shows the
+// plan's own quick cues. Pure functions here - the server uses the same ones (prompts.js).
+const GUIDE_STOP_LINE='Stop if you feel sharp pain, pins and needles, or pain in a joint rather than the muscle.';
+// Never in a guide: links, weights, set or rep counts, gym-science shorthand (the user's rule on RP wording)
+const GUIDE_BANNED_RE=/https?:|www\.|\.(com|co\.uk)\b|\b\d+(\.\d+)?\s*(kg|kgs|kilos?|kilograms?|lbs?|pounds?)\b|\b\d+\s*(sets?|reps?)\b|\bRIR\b|\bRPE\b|\bMEV\b|\bMRV\b|\bMAV\b|mesocycle|landmark|stimulus.to.fatigue|junk volume|Renaissance|Israetel/i;
+// The common exercises, written in advance and checked by hand before anyone sees them
+const EXERCISE_LIBRARY=[
+  'Barbell Back Squat','Barbell Front Squat','Barbell Bench Press','Incline Barbell Bench Press','Close-Grip Bench Press','Barbell Overhead Press',
+  'Conventional Deadlift','Sumo Deadlift','Romanian Deadlift','Stiff-Leg Deadlift','Trap Bar Deadlift','Barbell Bent-Over Row','Pendlay Row',
+  'Barbell Hip Thrust','Barbell Glute Bridge','Barbell Curl','EZ-Bar Curl','EZ-Bar Skull Crusher','Barbell Reverse Lunge','Barbell Shrug',
+  'Good Morning','Landmine Press','T-Bar Row',
+  'Dumbbell Bench Press','Incline Dumbbell Press','Dumbbell Floor Press','Dumbbell Shoulder Press','Arnold Press','One-Arm Dumbbell Row',
+  'Chest-Supported Dumbbell Row','Dumbbell Romanian Deadlift','Single-Leg Dumbbell Romanian Deadlift','Goblet Squat','Bulgarian Split Squat',
+  'Dumbbell Walking Lunge','Dumbbell Reverse Lunge','Dumbbell Step-Up','Dumbbell Sumo Squat','Dumbbell Lateral Raise','Dumbbell Front Raise',
+  'Dumbbell Rear Delt Fly','Dumbbell Fly','Incline Dumbbell Fly','Dumbbell Pullover','Dumbbell Bicep Curl','Hammer Curl','Incline Dumbbell Curl',
+  'Concentration Curl','Dumbbell Overhead Triceps Extension','Dumbbell Triceps Kickback','Dumbbell Shrug','Dumbbell Calf Raise',
+  "Farmer's Carry",'Suitcase Carry',
+  'Leg Press','Hack Squat','Pendulum Squat','Smith Machine Squat','Smith Machine Bench Press','Leg Extension','Lying Leg Curl','Seated Leg Curl',
+  'Standing Calf Raise','Seated Calf Raise','Hip Abduction Machine','Hip Adduction Machine','Machine Chest Press','Pec Deck','Reverse Pec Deck',
+  'Machine Shoulder Press','Chest-Supported Row','Assisted Pull-Up Machine','Glute Kickback Machine','Back Extension','45-Degree Back Extension',
+  'Lat Pulldown','Close-Grip Lat Pulldown','Neutral-Grip Lat Pulldown','Straight-Arm Pulldown','Seated Cable Row','Single-Arm Cable Row',
+  'Cable Fly','Low-to-High Cable Fly','Cable Lateral Raise','Cable Rear Delt Fly','Face Pull','Cable Bar Curl','Cable Bayesian Curl',
+  'Cable Rope Pushdown','Cable Straight-Bar Pushdown','Overhead Cable Triceps Extension','Cable Crunch','Pallof Press','Cable Woodchop',
+  'Cable Pull-Through','Cable Glute Kickback',
+  'Push-Up','Incline Push-Up','Knee Push-Up','Pull-Up','Chin-Up','Weighted Pull-Up','Inverted Row','Parallel Bar Dip','Bench Dip',
+  'Bodyweight Squat','Walking Lunge','Reverse Lunge','Split Squat','Step-Up','Glute Bridge','Single-Leg Glute Bridge','Nordic Hamstring Curl',
+  'Wall Sit','Bodyweight Calf Raise','Burpee','Jump Squat','Superman','Bird Dog',
+  'Kettlebell Swing','Kettlebell Deadlift','Resistance Band Row','Band Pull-Apart','Resistance Band Lateral Walk','Band Face Pull',
+  'Plank','Side Plank','Dead Bug','Crunch','Upper Crunch','Oblique Crunch','Reverse Crunch','Bicycle Crunch','Sit-Up','Lying Leg Raise',
+  'Hanging Knee Raise','Hanging Leg Raise','Russian Twist','Ab Wheel Rollout','Hollow Body Hold','Mountain Climber','Flutter Kicks','Heel Taps','V-Up'
+];
+// The matching name: the same exercise written differently finds the same guide; different exercises never do
+function guideKey(name){
+  let s=String(name||'').toLowerCase().replace(/\([^)]*\)/g,' ').replace(/['’]/g,'');
+  s=s.replace(/\bdb\b/g,'dumbbell').replace(/\bbb\b/g,'barbell').replace(/\bkb\b/g,'kettlebell').replace(/\bez\b/g,'ez')
+    .replace(/\bpull[\s-]?downs?\b/g,'pulldown').replace(/\bpush[\s-]?downs?\b/g,'pushdown').replace(/\bpush[\s-]?ups?\b/g,'push up')
+    .replace(/\bpull[\s-]?ups?\b/g,'pull up').replace(/\bchin[\s-]?ups?\b/g,'chin up').replace(/\bsit[\s-]?ups?\b/g,'sit up').replace(/\bstep[\s-]?ups?\b/g,'step up')
+    .replace(/(\d+)\s*-?\s*degrees?\b/g,'$1 degree').replace(/[^a-z0-9 ]+/g,' ');
+  return s.split(/\s+/).filter(Boolean).map(w=>w.length>3&&/s$/.test(w)&&!/(ss|us|is)$/.test(w)?w.slice(0,-1):w).join(' ');
+}
+const EXERCISE_GUIDE_SYS='You are E=MC-HENCH, a UK personal trainer writing clear, safe exercise guides for complete beginners. Everything you write is your own original wording. Respond with JSON only.';
+function exerciseGuidePrompt(name){
+  return`Write the exercise guide for "${name}".
+
+Who reads it: someone who may never have done this exercise, reading it on their phone in the gym between sets. Plain UK English. Explain any gym term in brackets the first time it appears, e.g. "lockout (arms fully straight)" or "brace (tighten your stomach as if someone is about to poke it)".
+
+Sections - the word counts are ceilings, not targets. Never pad:
+- quick_cues: exactly 3 short cues to think about mid-set, each up to 12 words.
+- works.muscles: the main muscles worked, in plain words with the gym name in brackets where it helps, e.g. "the back of your thighs (hamstrings)". Up to 20 words.
+- works.feel_it: where they should feel it working. Up to 25 words.
+- works.not_here: where they should NOT feel it, and what that usually means. Up to 25 words.
+- setup: getting ready - the equipment and its settings (seat height, pad position, bench angle, cable height), grip, stance and where to stand. Up to 60 words.
+- steps: 3 to 6 steps in order, one action each, up to 40 words each. Include when to breathe in and out, and when to brace, where it applies. Say what the right position looks or feels like.
+- mistakes: 2 to 4 common mistakes, each with its fix. mistake up to 15 words, fix up to 30 words.
+- easier and harder: one real exercise each that works the same muscles - its name (up to 8 words) and how it differs (up to 25 words). Use the same kind of equipment where you can.
+- safety: only where a safety step genuinely matters - a loaded barbell on the back, over the face or overhead (e.g. squat, bench press, overhead press), heavy hinges, or anything where a failed rep can trap you. Say how to set the safety bars or arms, when a spotter helps, and how to get out of a failed rep safely. Up to 50 words. For everything else, an empty string.
+
+Never include: weights, kilograms or pounds; numbers of sets or reps (holding a position for a few seconds is fine); brand or machine maker names; links; medical claims or diagnoses; gym-science shorthand (RIR, RPE, MEV, MRV, mesocycle). Write it all in your own words.
+UK spelling. No em dashes or en dashes - use a hyphen.
+
+If "${name}" could mean more than one exercise, write the most common version and put the exact name you wrote it for in "name".
+
+\`\`\`json
+{"name":"","quick_cues":["","",""],"works":{"muscles":"","feel_it":"","not_here":""},"setup":"","steps":[""],"mistakes":[{"mistake":"","fix":""}],"easier":{"name":"","how":""},"harder":{"name":"","how":""},"safety":""}
+\`\`\`
+JSON only.`;
+}
+// What is wrong with a guide (empty = it follows every rule). The server asks again with this list.
+function guideProblems(g){
+  if(!g||typeof g!=='object')return['the answer was not a guide'];
+  const p=[];
+  const words=s=>String(s||'').trim().split(/\s+/).filter(Boolean).length;
+  const need=(label,s)=>{if(!String(s||'').trim())p.push(label+' is missing');};
+  const over=(label,s,max)=>{const n=words(s);if(n>max)p.push(label+' is '+n+' words (up to '+max+')');};
+  const cues=Array.isArray(g.quick_cues)?g.quick_cues:[];
+  if(cues.length!==3)p.push('quick_cues must hold exactly 3 cues');
+  cues.forEach((c,i)=>{need('quick cue '+(i+1),c);over('quick cue '+(i+1),c,12);});
+  const w=g.works||{};
+  need('works.muscles',w.muscles);over('works.muscles',w.muscles,20);
+  need('works.feel_it',w.feel_it);over('works.feel_it',w.feel_it,25);
+  need('works.not_here',w.not_here);over('works.not_here',w.not_here,25);
+  need('setup',g.setup);over('setup',g.setup,60);
+  const steps=Array.isArray(g.steps)?g.steps:[];
+  if(steps.length<3||steps.length>6)p.push('steps must be 3 to 6 (there are '+steps.length+')');
+  steps.forEach((s,i)=>{need('step '+(i+1),s);over('step '+(i+1),s,40);});
+  const m=Array.isArray(g.mistakes)?g.mistakes:[];
+  if(m.length<2||m.length>4)p.push('mistakes must be 2 to 4 (there are '+m.length+')');
+  m.forEach((x,i)=>{need('mistake '+(i+1),x?.mistake);over('mistake '+(i+1),x?.mistake,15);need('fix '+(i+1),x?.fix);over('fix '+(i+1),x?.fix,30);});
+  for(const k of['easier','harder']){const v=g[k]||{};need(k+'.name',v.name);over(k+'.name',v.name,8);need(k+'.how',v.how);over(k+'.how',v.how,25);}
+  over('safety',g.safety,50);
+  const hit=JSON.stringify(g).match(GUIDE_BANNED_RE);
+  if(hit)p.push('it uses something a guide must never have: "'+hit[0]+'" (no links, weights, set or rep counts, or gym-science shorthand)');
+  return p;
+}
+// An easier or harder version that clashes with this person's injuries or exercises to avoid is never shown
+// (judged on its name - words like "press through your heels" in the how-text are not an exercise)
+function guideClash(text){
+  const t=String(text||'');
+  if(matchInjuryKeys(CU?.injuries||'').includes('Bad shoulder')&&shoulderUnsafe(t))return true;
+  const low=t.toLowerCase();
+  const avoid=String(CU?.avoided_exercises||'').toLowerCase().split(/[,;\n]+/).map(x=>x.trim()).filter(x=>x.length>2);
+  return avoid.some(a=>low.includes(a));
+}
+function exerciseGuideHtml(g){
+  const e=escapeHtml,li=a=>(Array.isArray(a)?a:[]).map(x=>'<li>'+e(x)+'</li>').join('');
+  const sec=(t,body)=>'<div class="gsec">'+e(t)+'</div>'+body;
+  const txt=s=>'<div class="gtxt">'+s+'</div>';
+  const w=g.works||{};
+  const vars=['easier','harder'].filter(k=>g[k]?.name&&!guideClash(g[k].name));
+  return sec('Quick cues','<ul class="glist">'+li(g.quick_cues)+'</ul>')
+    +sec('What it works',txt(e(w.muscles||''))+(w.feel_it?txt('<strong>Feel it:</strong> '+e(w.feel_it)):'')+(w.not_here?txt('<strong>Not here:</strong> '+e(w.not_here)):''))
+    +sec('Setting up',txt(e(g.setup||'')))
+    +sec('Step by step','<ol class="gsteps">'+li(g.steps)+'</ol>')
+    +((g.mistakes||[]).length?sec('Common mistakes',g.mistakes.map(m=>txt('<strong>'+e(m?.mistake||'')+'</strong> - '+e(m?.fix||''))).join('')):'')
+    +(vars.length?sec('Easier or harder',vars.map(k=>txt('<strong>'+(k==='easier'?'Easier':'Harder')+': '+e(g[k].name)+'</strong> - '+e(g[k].how||''))).join('')):'')
+    +(String(g.safety||'').trim()?sec('Safety',txt(e(g.safety))):'')
+    +'<div class="gstop">⚠️ '+e(GUIDE_STOP_LINE)+'</div>';
+}
+// The plan's own one-line cues ("Setup: ... Do: ... Avoid: ..."), one label per line, made safe
+function quickCuesHtml(cues){
+  const lines=String(cues||'').replace(/\s+(?=(Setup|Do|Avoid|Execution|Common mistakes?|Mistakes?):)/g,'\n').split('\n').map(x=>x.trim()).filter(Boolean);
+  if(!lines.length)return'<div style="color:var(--tx2);font-size:13px">No coaching cues available.</div>';
+  return lines.map(l=>{const m=l.match(/^([A-Za-z ]{2,20}):\s*([\s\S]*)$/);return'<div class="gtxt">'+(m?'<strong>'+escapeHtml(m[1])+':</strong> '+escapeHtml(m[2]):escapeHtml(l))+'</div>';}).join('');
+}
+// The full guide for an exercise, or null. index.html has no library; the preview replaces this.
+// onWait is called if the guide has to be written first (about 20 seconds).
+async function exerciseGuideFor(name,onWait){return null;}
+let guideOpenFor='';
+async function openExerciseGuide(name,cues){
+  showHowTo(name,cues);   // the plan's quick cues at once
+  guideOpenFor=name;
+  const box=()=>document.getElementById('howto-ex-content');
+  let g=null,waited=false;
+  try{g=await exerciseGuideFor(name,()=>{waited=true;if(guideOpenFor===name)box()?.insertAdjacentHTML('afterbegin','<div class="gwait" id="guide-wait">Writing the full guide for this exercise - about 20 seconds. Here are the quick cues meanwhile.</div>');});}catch(e){}
+  if(guideOpenFor!==name||!document.getElementById('howto-modal')?.classList.contains('open'))return;
+  document.getElementById('guide-wait')?.remove();
+  if(g)box().innerHTML=exerciseGuideHtml(g);
+  else if(waited)box()?.insertAdjacentHTML('afterbegin','<div class="gwait">The full guide could not be written just now - try again later. Here are the quick cues.</div>');
+}
+// ---- exercise guides end ----
+
 function showHowTo(name,cues){
   document.getElementById('howto-ex-title').textContent=name;
-  document.getElementById('howto-ex-content').innerHTML=cues?cues.split('\n').map(l=>`<div style="margin-bottom:10px;font-size:14px;line-height:1.6;padding-left:${l.startsWith('Setup')||l.startsWith('Execution')||l.startsWith('Mistake')||l.startsWith('Common')?'0':'16px'}">${l}</div>`).join(''):'<div style="color:var(--tx2);font-size:13px">No coaching cues available.</div>';
+  document.getElementById('howto-ex-content').innerHTML=quickCuesHtml(cues);
   openModal('howto-modal');
 }
 
@@ -6334,8 +6484,9 @@ async function getSwap(){
     if(!swap.name)throw new Error('No alternative came back - stop_reason: '+(data.stop_reason||'unknown')+'. Please try again.');
     pendingSwap=swap;
     document.getElementById('swap-result').style.display='block';
-    document.getElementById('swap-result').innerHTML=`<div class="alert alert-ok">✓ Alternative found: <strong>${swap.name}</strong></div>
-    <div style="font-size:13px;color:var(--tx2);line-height:1.6;margin-bottom:12px">${swap.how_to||''}</div>
+    document.getElementById('swap-result').innerHTML=`<div class="alert alert-ok">✓ Alternative found: <strong>${escapeHtml(swap.name)}</strong></div>
+    <div style="margin-bottom:12px">${quickCuesHtml(swap.how_to)}</div>
+    <button class="btn btn-ghost btn-sm" style="margin-bottom:10px" data-exname="${escapeHtml(swap.name)}" data-howto="${escapeHtml(swap.how_to||'')}" onclick="openExerciseGuide(this.dataset.exname,this.dataset.howto)">? Full guide</button><br>
     <button class="btn btn-sm" onclick="confirmSwap(pendingSwap)">Use This Exercise Permanently</button>
     <button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="closeModal('swap-modal')">Keep Original</button>`;
   }catch(e){alert(describeAiError(e,'Request timed out. Please try again.')||('Error finding swap: '+e.message));}
@@ -6924,7 +7075,7 @@ function trainSessionHtml(){
     ${ex.notes?`<div class="ex-note" style="margin-top:6px">${escapeHtml(ex.notes)}</div>`:''}
     ${ex.progression_note?`<div class="ex-note" style="margin-top:6px">${escapeHtml(ex.progression_note)}</div>`:''}
     <div style="display:flex;gap:8px;margin:12px 0;flex-wrap:wrap">
-      <button class="btn btn-ghost btn-sm" data-exname="${escapeHtml(ex.name)}" data-howto="${escapeHtml(ex.how_to||ex.notes||'')}" onclick="showHowTo(this.dataset.exname,this.dataset.howto)">? How to</button>
+      <button class="btn btn-ghost btn-sm" data-exname="${escapeHtml(ex.name)}" data-howto="${escapeHtml(ex.how_to||ex.notes||'')}" onclick="openExerciseGuide(this.dataset.exname,this.dataset.howto)">? How to</button>
       <button class="btn btn-ghost btn-sm" data-sidx="${sidx}" data-eidx="${ei}" data-exname="${escapeHtml(ex.name)}" onclick="openSwapModal(this.dataset.sidx,parseInt(this.dataset.eidx),this.dataset.exname)">⇄ Swap</button>
     </div>
     ${last?`<div style="background:var(--s2);border:1px solid var(--b1);border-radius:8px;padding:9px 12px;font-size:13px;color:var(--tx2);margin-bottom:8px">Last time: <span style="font-family:'JetBrains Mono',monospace;color:var(--tx)">${escapeHtml(lastTimeText(last))}</span></div>`:''}
@@ -11474,7 +11625,7 @@ function genAlertHtml(){
 // ---- Admin card: AI spending, the budget, extra uses, and a server check ----
 const AI_FEATURE_LABELS={meal_swap_names:'Meal swap - choices',meal_swap_recipe:'Meal swap - recipe',exercise_swap:'Exercise swap',
   food_check:'Food check',replace_meal:'Replace flagged meal',progress_report:'Progress report',howto_guide:'How-to guide',
-  weigh_in_review:'Weigh-in review',event_bank:'Calorie banking',plan_generation:'Plan generation'};
+  weigh_in_review:'Weigh-in review',event_bank:'Calorie banking',plan_generation:'Plan generation',exercise_guide:'Exercise guide'};
 function aiAdminCardHtml(){
   if(!CU?.is_admin)return'';
   setTimeout(()=>loadAiAdminCard().catch(e=>{const el=document.getElementById('ai-admin-body');if(el)el.textContent='Could not load: '+e.message;}),0);
@@ -11508,7 +11659,9 @@ async function loadAiAdminCard(){
     <div class="card-lbl" style="margin-top:12px">Extra uses</div>${extraList}
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><select class="fsel" id="ai-extra-user" style="flex:1;min-width:120px">${people}</select><select class="fsel" id="ai-extra-feature" style="flex:1;min-width:140px">${feats}</select>
       <input class="finput" id="ai-extra-n" type="number" min="1" max="100" value="2" style="max-width:70px"><button class="btn btn-sm" onclick="giveAiExtra()">Give</button></div>
-    <div style="margin-top:12px"><button class="btn btn-ghost btn-sm" onclick="checkAiServer()">Check the AI server</button> <span id="ai-server-check" style="font-size:12px"></span></div>`;
+    <div style="margin-top:12px"><button class="btn btn-ghost btn-sm" onclick="checkAiServer()">Check the AI server</button> <span id="ai-server-check" style="font-size:12px"></span></div>
+    <div class="card-lbl" style="margin-top:12px">Exercise guides</div><div id="guide-admin">Loading...</div>`;
+  loadGuideAdmin().catch(()=>{});
 }
 async function saveAiCap(){
   const v=parseFloat(document.getElementById('ai-cap')?.value);
@@ -11534,6 +11687,56 @@ async function checkAiServer(){
   // Supabase itself runs on UTC; the app's code on the server reads days and months from a UK clock
   const ukOk=!!r.uk_clock&&r.uk_clock.utc_offset_minutes===-new Date().getTimezoneOffset();
   el.innerHTML=(r.key_set?'Key set ✓':'<span style="color:var(--warn)">Key NOT set</span>')+' · '+(ukOk?'UK time ✓':'<span style="color:var(--warn)">UK clock not working ('+escapeHtml(JSON.stringify(r.uk_clock||r.time_zone))+')</span>');
+}
+
+// ---- Exercise guides (EXERCISE-GUIDES-SPEC-2026-10-24.md) ----
+// The shared library: read straight from exercise_guides; a missing one is written by the server once
+// (about 20 seconds) and then kept for everyone. Kept in memory for this visit.
+const guideCache={};
+async function exerciseGuideFor(name,onWait){
+  const key=guideKey(name);if(!key)return null;
+  if(guideCache[key])return guideCache[key];
+  const {data,error}=await sb.from('exercise_guides').select('guide').eq('key',key).maybeSingle();
+  if(!error&&data?.guide)return(guideCache[key]=data.guide);
+  if(onWait)onWait();
+  const r=await aiRequest('exercise_guide',{name},150000);
+  if(r?.guide)return(guideCache[key]=r.guide);
+  return null;
+}
+// Admin: how many guides there are, how many wait for a check, and writing the library a few at a time
+async function loadGuideAdmin(){
+  const el=document.getElementById('guide-admin');if(!el)return;
+  const [all,wait]=await Promise.all([sb.from('exercise_guides').select('key',{count:'exact',head:true}),sb.from('exercise_guides').select('key',{count:'exact',head:true}).eq('checked',false)]);
+  if(all.error||wait.error){el.textContent='Could not load: '+friendlyDbError(all.error||wait.error);return;}
+  el.innerHTML='<div>'+(all.count||0)+' guides written - <strong>'+(wait.count||0)+'</strong> waiting for a check.</div>'
+    +'<div style="margin-top:8px"><button class="btn btn-ghost btn-sm" id="guide-lib-btn" onclick="writeGuideLibrary()">Write the missing library guides</button> <span id="guide-lib-msg" style="font-size:12px"></span></div>';
+}
+async function writeGuideLibrary(){
+  const msg=document.getElementById('guide-lib-msg'),btn=document.getElementById('guide-lib-btn');
+  const say=t=>{if(msg)msg.textContent=t;};
+  if(btn)btn.disabled=true;
+  try{
+    const first=await aiRequest('guide_write',{},30000);
+    if(first.error)throw new Error(first.error.message);
+    const todo=first.missing||[];
+    if(!todo.length){say('Every library guide is written.');return;}
+    // 8 at a time, waiting for each batch to land (or 3 minutes) before the next
+    for(let i=0;i<todo.length;i+=8){
+      const batch=todo.slice(i,i+8);
+      say('Writing '+(i+1)+'-'+(i+batch.length)+' of '+todo.length+'...');
+      const r=await aiRequest('guide_write',{names:batch},30000);
+      if(r.error)throw new Error(r.error.message);
+      const keys=batch.map(guideKey),t0=Date.now();
+      while(Date.now()-t0<180000){
+        await new Promise(res=>setTimeout(res,10000));
+        const {count}=await sb.from('exercise_guides').select('key',{count:'exact',head:true}).in('key',keys);
+        if((count||0)>=keys.length)break;
+      }
+    }
+    const left=await aiRequest('guide_write',{},30000);
+    say(left.missing?.length?left.missing.length+' could not be written - run it again later.':'Done - every library guide is written.');
+  }catch(e){say('Stopped: '+e.message);}
+  finally{if(btn)btn.disabled=false;loadGuideAdmin().catch(()=>{});}
 }
 
 function accountCardHtml(){
