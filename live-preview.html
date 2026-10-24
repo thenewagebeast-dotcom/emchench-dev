@@ -707,6 +707,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
   <div class="tab" id="tab-wall">
     <div class="pg-title">The Wall 🔥</div>
     <div class="pg-sub">Talk trash. Celebrate wins. No filter.</div>
+    <div style="font-size:12px;color:var(--tx3);margin:-6px 0 12px">Choose what the app posts for you in Profile &gt; The Wall.</div>
     <div class="wall-comp">
       <textarea class="wall-inp" id="wall-inp" placeholder="Say something..." rows="1" onkeydown="wallKey(event)"></textarea>
       <button class="btn btn-sm" onclick="postWall()">Post</button>
@@ -1111,6 +1112,14 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
         </div>
         <input class="finput" id="ob-rap5-other" placeholder="Anything else? (optional)" style="margin-top:8px">
       </div>
+      <div class="frow" id="ob-wall-row">
+        <label class="flbl">Share your wins on the Wall? (please choose one)</label>
+        <div style="font-size:12px;color:var(--tx2);line-height:1.55;margin-bottom:8px">The Wall is where everyone in the app cheers each other on. If you share, the app posts things like "Alex just crushed Session 2 - NEW PB!" or "Alex won a challenge". It never posts your weight, measurements, calories, or anything about your health or plans unless you choose to in Profile. You can change this any time in Profile &gt; The Wall.</div>
+        <div class="pills" id="ob-wall-pick">
+          <div class="pill" data-wall="share" onclick="selSingle(this,'ob-wall-pick')">Share my wins</div>
+          <div class="pill" data-wall="off" onclick="selSingle(this,'ob-wall-pick')">Keep me off the Wall</div>
+        </div>
+      </div>
       <div style="display:flex;gap:10px"><button class="btn btn-ghost" onclick="obBack(6)">← Back</button><button class="btn" style="flex:1" onclick="obNext(6)">Save My Answers ✓</button></div>
     </div>
 
@@ -1357,7 +1366,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='24 Oct click-through fixes';
+const APP_BUILD='24 Oct wall choices';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -3347,7 +3356,7 @@ async function saveWeighIn(){
           <div style="font-size:12px;color:var(--tx3);margin-top:10px">Your meals stay the same. Each recipe will show its portion resized to match, so the change is spread across the whole day.</div>`;
         openModal('cal-adj-modal');
       }else{
-        postAutoWall(`📊 ${CU.username} completed their weekly weigh-in!`);
+        postAutoWall(`📊 ${CU.username} completed their weekly weigh-in!`,'body');
         celebrateMsg('weighInDone','📊','Weigh-In Done!');
       }
     }
@@ -3372,7 +3381,7 @@ async function confirmCalAdj(){
         await dbUpdate('meal_plans',ri+1,row);
       }
     }
-    postAutoWall(`📊 ${CU.username} completed their weekly weigh-in and adjusted their calorie target!`);
+    postAutoWall(`📊 ${CU.username} completed their weekly weigh-in and adjusted their calorie target!`,'body');
     celebrateMsg('caloriesAdjusted','📊','Calories Adjusted!',{cals:userMealPlan.meals.daily_targets.calories});
   }catch(e){console.error('Cal adj save:',e);alert('Your calorie adjustment could not be saved and may not survive a refresh. Please try again: '+e.message);}
   // Redraw so the resized portions show straight away
@@ -3806,7 +3815,7 @@ async function generatePlan(){
     isGenerating=false;
 
     renderDashboard();renderMealPlan();renderTrainingPlan();renderSupps();genHowToGuide();
-    postAutoWall(`⚡ ${CU.username} just generated their Month ${monthNumber} plan. The work begins NOW.`);
+    postAutoWall(`⚡ ${CU.username} just generated their Month ${monthNumber} plan. The work begins NOW.`,'plan');
 
     if(useAssessment){
       celebrateMsg('planReadyAssessment','💪','Plan Ready!');
@@ -4681,7 +4690,7 @@ async function confirmPatternAdj(){
   if(saveFailed){
     alert('Your nutrition update may not have fully saved. Please check your connection - if the change is not reflected after a refresh, try again.');
   }else{
-    postAutoWall(`📊 ${CU.username} completed a 3-week nutrition review and updated their calorie target to ${userMealPlan.meals.daily_targets.calories} kcal`);
+    postAutoWall(`📊 ${CU.username} completed a 3-week nutrition review`,'body');
     celebrateMsg('nutritionUpdated','📊','Nutrition Updated!',{cals:userMealPlan.meals.daily_targets.calories});
   }
   // Redraw so the resized portions show straight away
@@ -5375,7 +5384,7 @@ async function confirmMealSwap(btn){
     if(persistFailed){
       alert('The new meal was generated but could not be saved - it may not survive a refresh. Please try the swap again.');
     }else{
-      postAutoWall(`🔄 ${CU.username} swapped a meal in their plan`);
+      postAutoWall(`🔄 ${CU.username} swapped a meal in their plan`,'plan');
       celebrateMsg('mealSwapped','🔄','Meal Swapped!',{name:newName});
     }
 
@@ -6130,7 +6139,7 @@ async function confirmSwap(swap){
         await dbUpdate('training_plans',ri+1,row);
       }
     }
-    postAutoWall(`🔄 ${CU.username} swapped an exercise in their plan`);
+    postAutoWall(`🔄 ${CU.username} swapped an exercise in their plan`,'plan');
     renderTrainingPlan();
     celebrateMsg('exerciseSwapped','🔄','Exercise Swapped!');
   }catch(e){
@@ -6586,7 +6595,7 @@ async function logWorkout(sidx){
   }else if(!counted){
     showInfo('Session Logged','<p>Under half of the sets were recorded, so this one earns no points and does not count toward your week. If you did more, fill in the rest of your sets and log it again.</p>');
   }else{
-    postAutoWall(`💪 ${CU.username} just crushed ${s.name}!${award.pb?' NEW PB! 🏆':''}${award.total?' (+'+award.total+' pts)':''}`);
+    postAutoWall(`💪 ${CU.username} just crushed ${s.name}!${award.pb?' NEW PB! 🏆':''}${award.total?' (+'+award.total+' pts)':''}`,'training');
     celebrate(award.pb?'pb':'workout',award.pb?'🏆':'💪');
   }
   const uid=CU.user_id;
@@ -6886,7 +6895,7 @@ async function setHoliday(){
     renderBody();renderDashboard();
     if(reason==='Holiday'){
       celebrateMsg('holidaySet','🏖️','Holiday Mode Set!',{start,end});
-      postAutoWall(`🏖️ ${CU.username} is going on holiday! Streak is protected. Lucky thing!`);
+      postAutoWall(`🏖️ ${CU.username} is going on holiday! Streak is protected. Lucky thing!`,'life');
     }else{
       // Illness and injury are private - nothing is posted to the wall
       showInfo('Pause Set',adviceHtml(reason)+'<p>Your streaks are frozen for these dates and will pick up where they left off.</p>',reason==='Injury');
@@ -6948,7 +6957,7 @@ async function saveMeasurements(){
     await addPoints({pts:statsPts});
     closeModal('meas-modal');hideLoad();renderBody();
     celebrate('measurement','📏');
-    postAutoWall(`📏 ${CU.username} just logged their measurements. Progress is being tracked!`);
+    postAutoWall(`📏 ${CU.username} just logged their measurements. Progress is being tracked!`,'body');
   }catch(e){hideLoad();alert('Error saving measurements: '+e.message);console.error(e);}
 }
 
@@ -7248,7 +7257,7 @@ async function createComp(){
     await dbAppend('competitions',[cid,CU.username,new Date().toISOString(),type,label,'','',diff,pts,CU.username,opp,'active','','']);
     competitions.push({competition_id:cid,created_by:CU.username,type,challenge:label,difficulty:diff,points_value:pts,participant_1:CU.username,participant_2:opp,status:'active'});
     closeModal('comp-modal');hideLoad();
-    postAutoWall(type==='h2h'?`⚔️ ${CU.username} challenged ${opp} to: "${label}" - ${pts} pts on the line!`:`🎯 ${CU.username} set a challenge: "${label}" - ${pts} pts to win!`);
+    postAutoWall(type==='h2h'?`⚔️ ${CU.username} challenged ${opp} to: "${label}" - ${pts} pts on the line!`:`🎯 ${CU.username} set a challenge: "${label}" - ${pts} pts to win!`,'wins');
     renderCompete();
   }catch(e){hideLoad();alert('Error creating challenge: '+e.message);}
 }
@@ -7273,7 +7282,7 @@ async function completeComp(cid){
       }
     }
     comp.status='completed';hideLoad();
-    postAutoWall(`🏆 ${CU.username} COMPLETED: "${comp.challenge}"! +${comp.points_value} pts!`);
+    postAutoWall(`🏆 ${CU.username} COMPLETED: "${comp.challenge}"! +${comp.points_value} pts!`,'wins');
     celebrateMsg('challengeComplete','🏆','Challenge Complete!',{pts:comp.points_value});
     renderCompete();renderDashboard();
   }catch(e){hideLoad();alert('Error completing challenge: '+e.message);}
@@ -7325,7 +7334,11 @@ async function postWall(){
   inp.value='';renderWall();
 }
 
-async function postAutoWall(msg){
+// Which automatic posts a person shares (training, wins, plan, body, life). Here everything is
+// posted as before; the new backend's layer replaces this with the person's own choices.
+function wallShareAllows(group){return true;}
+async function postAutoWall(msg,group){
+  if(group&&!wallShareAllows(group))return;
   const p={post_id:'wp_'+Date.now(),user_id:'system',username:'E=MC-HENCH',posted_at:new Date().toISOString(),message:msg,post_type:'auto'};
   wallPosts.push(p);
   await dbAppend('wall_posts',[p.post_id,p.user_id,p.username,p.posted_at,p.message,p.post_type,'']);
@@ -7454,6 +7467,7 @@ function renderProfile(){
     </div>
 
     ${accountCardHtml()}
+    ${wallCardHtml()}
     ${aiAdminCardHtml()}
     <div class="card" style="display:none">
       <div class="card-lbl">Change PIN</div>
@@ -7731,7 +7745,7 @@ async function updateGoal(){
     if(!patched){alert('Could not save - your profile was not found. Please sign out and back in.');return;}
   }catch(e){hideLoad();alert('Error saving goal: '+e.message);return;}
   CU.goal=goal;CU.goal_updated='true';
-  postAutoWall(`🎯 ${CU.username} updated their goal to: ${goal.toUpperCase()}`);
+  postAutoWall(`🎯 ${CU.username} updated their goal to: ${goal.toUpperCase()}`,'body');
   renderDashboard();renderProfile();
   celebrateMsg('goalUpdated','🎯','Goal Updated!');
   // Regenerate how-to guide so it reflects the new goal, and confirm once it's actually done
@@ -8233,7 +8247,7 @@ async function addPoints({pts=0,sessions_logged=0,meals_logged=0,pbs_logged=0,ch
   if((p.season_points||0)>=1500&&!((p.season_wins||0)>0)){
     p.season_wins=1;
     celebrateMsg('seasonWin','🏆','SEASON WIN!');
-    postAutoWall(`🏆 ${myUsername} just won the season with ${p.season_points} points! LEGEND.`);
+    postAutoWall(`🏆 ${myUsername} just won the season with ${p.season_points} points! LEGEND.`,'wins');
   }
   p.sessions_logged=(p.sessions_logged||0)+sessions_logged;
   p.meals_logged=(p.meals_logged||0)+meals_logged;
@@ -9053,7 +9067,7 @@ async function confirmEventBank(){
     hideLoad();
     pendingEventBank=null;
     renderDashboard();
-    postAutoWall(`🎉 ${CU.username} is planning ahead for ${ev.name} - calories being banked!`);
+    postAutoWall(`🎉 ${CU.username} is planning ahead for an event - calories being banked!`,'life');
     celebrateMsg('eventPlanned','🎉','Event Planned!',{reduction:ev.dailyReduction,days:ev.leadUpDays,bank:ev.totalBank,name:ev.name});
 
   }catch(e){hideLoad();alert(describeAiError(e,'Request timed out. Please try again.')||('Error planning event: '+e.message));console.error(e);}
@@ -9487,7 +9501,9 @@ function profileToCU(p,user){
     weekly_budget:p.weekly_budget||'Mid-range - good ingredients, sensible spend',
     occupation:p.occupation||'Light activity - some walking',train_time:p.train_time||'Morning',meal_sync_with:'',
     preferred_days:(p.preferred_days||[]).join(','),preferred_ab_days:(p.preferred_ab_days||[]).join(','),
-    is_admin:!!p.is_admin,email:user?.email||''
+    is_admin:!!p.is_admin,email:user?.email||'',
+    // What the app posts on the Wall for them (029); missing groups take the "share my wins" defaults
+    wall_share:Object.assign({training:true,wins:true,plan:true,body:false,life:false},p.wall_share||{})
   };
 }
 function friendlyDbError(error){
@@ -9904,13 +9920,53 @@ async function postWall(){
   }catch(e){alert(e.message);}
 }
 // Automatic posts belong to the person they are about. They never stop what triggered them.
-async function postAutoWall(msg){
+// A post with a group goes out only if the person shares that group (Profile > The Wall);
+// one without a group (a shop added to the list) is a notice for everyone.
+function wallShareAllows(group){return !!CU?.wall_share?.[group];}
+async function postAutoWall(msg,group){
+  if(group&&!wallShareAllows(group))return;
   try{
     const {data,error}=await sb.from('wall_posts').insert({message:msg,post_type:'auto'}).select(WALL_COLS).single();
     if(error)throw error;
     wallPosts.push(wallRowToPost(data));
   }catch(e){console.error('Auto wall post:',e);}
 }
+// Profile > The Wall (WALL-CHOICES-SPEC-2026-10-24.md). Each switch saves straight away.
+const WALL_GROUPS=[
+  ['training','Training','Sessions done and PBs'],
+  ['wins','Wins','Challenges you set and win, season wins'],
+  ['plan','Plan','A new monthly plan, meal and exercise swaps'],
+  ['body','Body and food','Weigh-ins, measurements, nutrition reviews, goal changes'],
+  ['life','Life','Holiday pauses and social events (never the event\'s name)']];
+const WALL_SHARE_WINS={training:true,wins:true,plan:true,body:false,life:false};
+const WALL_SHARE_OFF={training:false,wins:false,plan:false,body:false,life:false};
+function wallCardHtml(){
+  const w=CU?.wall_share||WALL_SHARE_WINS;
+  const none=WALL_GROUPS.every(([k])=>!w[k]);
+  const row=(key,label,sub,on)=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--b1)">
+      <div><div style="font-size:14px;font-weight:500">${label}</div><div style="font-size:12px;color:var(--tx2)">${sub}</div></div>
+      <label class="toggle"><input type="checkbox" data-wall="${key}" ${on?'checked':''} onchange="saveWallShare(this)"><div class="tslider"></div></label>
+    </div>`;
+  return`<div class="card" id="wall-card">
+    <div class="card-lbl">The Wall</div>
+    <div style="font-size:12px;color:var(--tx2);line-height:1.55;margin-bottom:6px">What the app posts on the Wall for you. Anything you type yourself always posts.</div>
+    ${WALL_GROUPS.map(([k,l,s])=>row(k,l,s,!!w[k])).join('')}
+    ${row('none','Post nothing about me automatically','Turns every switch above off',none)}
+  </div>`;
+}
+async function saveWallShare(el){
+  const key=el.dataset.wall;
+  // "Post nothing" on = all off; off again = back to sharing your wins
+  const next=key==='none'?{...(el.checked?WALL_SHARE_OFF:WALL_SHARE_WINS)}:{...CU.wall_share,[key]:el.checked};
+  try{
+    const {data,error}=await sb.from('profiles').update({wall_share:next}).eq('id',CU.user_id).select('wall_share').maybeSingle();
+    if(error)throw new Error(friendlyDbError(error));
+    if(!data)throw new Error('Your profile could not be found.');
+    CU.wall_share={...WALL_SHARE_WINS,...data.wall_share};
+  }catch(e){alert('Could not save that: '+e.message);}
+  const card=document.getElementById('wall-card');if(card)card.outerHTML=wallCardHtml();
+}
+
 async function deleteWallPost(postId){
   if(!confirm('Delete this post?'))return;
   try{
@@ -9978,6 +10034,9 @@ async function approveShop(btn){
   try{
     const {error}=await sb.from('shops').update({status:'approved'}).eq('id',btn.dataset.shopId);
     if(error)throw new Error(friendlyDbError(error));
+    // Announced only now that everyone can see it, without the name of whoever added it
+    const shop=shopList.find(x=>x.shop_id===btn.dataset.shopId);
+    if(shop)postAutoWall('🛒 New on the shop list: '+shop.shop_name);
     await loadShopList();
   }catch(e){alert('Could not approve the shop: '+e.message);}
 }
@@ -9993,6 +10052,7 @@ async function addShop(){
     const {error}=await sb.from('shops').insert({name,best_for:bestFor,url:url||null,description:desc,...(CU.is_admin?{status:'approved'}:{})});
     if(error)throw new Error(friendlyDbError(error));
     closeModal('shop-modal');hideLoad();
+    if(CU.is_admin)postAutoWall('🛒 New on the shop list: '+name);
     await loadShopList();
     if(!CU.is_admin)alert('Thanks - '+name+' will show for everyone once the admin approves it.');
   }catch(e){hideLoad();alert('Error adding store: '+e.message);}
@@ -10145,7 +10205,7 @@ async function createComp(){
     if(e1)throw new Error(friendlyDbError(e1));
     if(opp){const {error:e2}=await sb.from('competition_members').insert({competition_id:c.id,user_id:opp});if(e2)throw new Error(friendlyDbError(e2));}
     closeModal('comp-modal');hideLoad();
-    postAutoWall(type==='h2h'?`⚔️ ${CU.username} challenged ${nameOf(opp)} to: "${label}" - ${pts} pts on the line!`:`🎯 ${CU.username} set a challenge: "${label}" - ${pts} pts to win!`);
+    postAutoWall(type==='h2h'?`⚔️ ${CU.username} challenged ${nameOf(opp)} to: "${label}" - ${pts} pts on the line!`:`🎯 ${CU.username} set a challenge: "${label}" - ${pts} pts to win!`,'wins');
     await loadCompetitions();renderCompete();
   }catch(e){hideLoad();alert('Error creating challenge: '+e.message);}
 }
@@ -10384,7 +10444,7 @@ async function settleComp(btn){
     hideLoad();
     if(outcome==='won'){
       celebrateMsg('challengeComplete','🏆','Challenge Complete!',{pts:c.points_value});
-      postAutoWall(`🏆 ${CU.username} won: "${c.challenge}"!`);
+      postAutoWall(`🏆 ${CU.username} won: "${c.challenge}"!`,'wins');
       refreshPointsAndStreaks(CU.user_id).catch(e=>console.error('Points refresh:',e));
     }else if(outcome==='tie'){alert('A tie - you both win the points (up to 2 challenge wins a week).');refreshPointsAndStreaks(CU.user_id).catch(e=>console.error('Points refresh:',e));}
     else if(outcome==='lost')alert(nameOf(c._other)+' won this one.');
@@ -10810,12 +10870,16 @@ async function createUser(){
   const waterTarget=Math.min(Math.max(Math.round((parseFloat(weight)||75)*30),1500),2500);
   const injFull=[injuries,injDetail].filter(Boolean).join(' - ');
   const uid=sbUser.id; // the login id - not saved, profiles are keyed by it already
+  // The Wall question at the end of sign-up - required, nothing chosen for them
+  const wallPick=document.querySelector('#ob-wall-pick .pill.on')?.dataset.wall;
+  if(!wallPick){alert('Please choose whether to share your wins on the Wall - it is the last question.');document.getElementById('ob-wall-row')?.scrollIntoView({behavior:'smooth'});return;}
   showLoad('Saving','Setting up your profile...');
   try{
     // The same 47 values the Sheets version sent, translated column by column
     const values=[uid,username,pin,age,sex,weight,height,goal,exp,days,equipment,cardio,dietary,allergies,flavours,region,new Date().toISOString(),health,injFull,avoid,apiKey,planLen,planType,obAvatar,waterTarget,'',kitchen,mealsPerDay,snackStyle,motStyle,baselineType,knownNums,'true',weighInDay,batchCooking,ingredientDislikes,foodLoves,spiceLevel,batchDays,cookTime,lunchSituation,weeklyBudget,occupation,trainTime,'',preferredDays,preferredAbDays];
     const fields={};values.forEach((v,i)=>{fields[i]=v;});
-    const {data:p,error}=await sb.from('profiles').update(sheetPatchToProfile(fields)).eq('id',sbUser.id).select().maybeSingle();
+    const wall_share=wallPick==='share'?WALL_SHARE_WINS:WALL_SHARE_OFF;
+    const {data:p,error}=await sb.from('profiles').update({...sheetPatchToProfile(fields),wall_share}).eq('id',sbUser.id).select().maybeSingle();
     if(error)throw new Error(friendlyDbError(error));
     if(!p)throw new Error('Your profile could not be found. Please log out and back in.');
     clearOnboardingProgress();
