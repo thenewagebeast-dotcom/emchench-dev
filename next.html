@@ -1368,7 +1368,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='24 Oct wall choices';
+const APP_BUILD='24 Oct supplement examples';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -7394,8 +7394,84 @@ function renderSupps(){
     +p.cards.map(card).join('')
     +(p.leftOut.length?`<div class="alert" style="margin-top:12px;font-size:13px"><strong>Left out for you:</strong> ${p.leftOut.map(x=>escapeHtml(x.name+' ('+x.why+')')).join(', ')}. These are left out to keep things safe - your GP or pharmacist can tell you if they are right for you.</div>`:'');
 }
-// Product examples under a card (part D) - none yet
-function suppProductsHtml(card){return'';}
+// ---- product examples (part D, 24 Oct 2026) ----
+// Real products read from the shop pages on 24 Oct 2026 (labels: SUPPLEMENTS-AND-ICELAND-SPEC-2026-10-24.md part D).
+// c = contains, may = may contain / made in a factory that handles (null = the label says nothing),
+// free = what the label says it is free from, d = diet it suits (vegan / vegetarian / pescatarian / any),
+// fit = how good a choice it is from the label (clean label, dose, testing). Never a product with yohimbine,
+// synephrine (bitter orange) or a similar stim, ginkgo, or high-dose niacin. Allergy groups match ALLERGY_GROUP.
+const SUPP_PRODUCTS=[
+  {card:'Creatine Monohydrate',n:'Reflex Creapure Creatine',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/reflex-creapure-250/2374',d:'vegan',c:[],may:null,free:[],fit:3,why:'Creapure - the tested pure form'},
+  {card:'Creatine Monohydrate',n:'Applied Nutrition Creatine Monohydrate',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/applied-nutrition-creatine-monohydrate-250g/167984',d:'vegan',c:[],may:['dairy','soy','eggs','fish','gluten'],free:[],fit:2},
+  {card:'Creatine Monohydrate',n:'Bulk Creatine Monohydrate',shop:'Bulk',u:'https://www.bulk.com/uk/products/creatine-monohydrate/bpb-cmon-0000',d:'vegan',c:[],may:['dairy','soy','gluten','sesame'],free:[],fit:2},
+  {card:'Whey Protein',n:'Bulk Pure Whey Isolate',shop:'Bulk',u:'https://www.bulk.com/uk/products/pure-whey-isolate-90/bpb-wpi9-0000',d:'vegetarian',c:['dairy'],may:['soy','gluten','sesame'],free:[],fit:3,why:'isolate, few ingredients'},
+  {card:'Whey Protein',n:'USN BlueLab 100% Whey',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/usn-bluelab-100-percent-whey-protein-2-kg/176700',d:'any',c:['dairy'],may:['soy'],free:[],fit:2},
+  {card:'Whey Protein',n:'Applied Nutrition Critical Whey',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/applied-nutrition-critical-whey-2-kg-new-look/454794',d:'any',c:['dairy'],may:['soy','eggs','fish','gluten'],free:[],fit:2},
+  {card:'Plant-Based Protein',n:'Nuzest Clean Lean Protein (pea)',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/nuzest-clean-lean-protein-1000g/151158',d:'vegan',c:[],may:null,free:['gluten','dairy','soy'],fit:3},
+  {card:'Plant-Based Protein',n:'Sunwarrior Warrior Blend (pea and hemp)',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/sunwarrior-protein-warrior-blend-750g/208161',d:'vegan',c:[],may:null,free:['soy','gluten','dairy'],fit:3},
+  {card:'Plant-Based Protein',n:'Pulsin Pea Protein Isolate',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/pulsin-pea-protein-isolate-1000g/29053',d:'vegan',c:[],may:['soy','nuts','dairy'],free:[],fit:2},
+  {card:'Pre-Workout',n:'Animal Fury',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/animal-fury-30-servings/129985',d:'any',c:[],may:['dairy','soy','eggs','nuts','fish','shellfish','gluten'],free:[],caff:350,fit:2},
+  {card:'Pre-Workout',n:'Ghost Legend V4',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/ghost-legend-v4-30-servings/440574',d:'vegan',c:[],may:null,free:['soy','gluten'],caff:300,herbs:true,fit:2},
+  {card:'Pre-Workout',n:'Applied Nutrition ABE',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/applied-nutrition-abe-375g/407851',d:'any',c:[],may:null,free:[],caff:250,creatine:true,fit:2},
+  {card:'Pre-Workout',n:'SCI-MX XPLODE',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/sci-mx-xplode-pre-workout-300g/326895',d:'vegan',c:[],may:null,free:[],caff:250,herbs:true,fit:2},
+  {card:'Caffeine-Free Pre-Workout',n:'Applied Nutrition Pump 3G Zero',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/applied-nutrition-pump-3g-zero/205382',d:'any',c:[],may:null,free:[],creatine:true,fit:2},
+  {card:'Caffeine-Free Pre-Workout',n:'Bulk Dope Caffeine Free',shop:'Bulk',u:'https://www.bulk.com/uk/products/dope-pre-workout-caffeine-free/bble-docf',d:'vegan',c:[],may:['dairy','soy','gluten','sesame'],free:[],creatine:true,salt:true,fit:2},
+  {card:'Vitamin D3',n:'Together Health Vitamin D3 1,000 IU (vegan, from lichen)',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/together-vegan-vitamin-d3-food-supplement-30-capsules/243017',d:'vegan',c:[],may:null,free:['gluten','dairy','soy'],iu:1000,fit:3},
+  {card:'Vitamin D3',n:'Lamberts Vegan Vitamin D3 1,000 IU',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/lamberts-vegan-vitamin-d3-1000-iu-90-capsules/240122',d:'vegan',c:[],may:null,free:[],iu:1000,fit:2},
+  {card:'Vitamin D3',n:'Solgar Vitamin D3 1,000 IU tablets',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/solgar-vitamin-d3-1000-iu-90-tablets/46881',d:'vegetarian',c:[],may:null,free:['gluten','dairy','soy'],iu:1000,fit:2},
+  {card:'Vitamin D3',n:'Natures Aid Vitamin D3 1,000 IU tablets',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/natures-aid-vitamin-d3-1000-iu-90-tablets/142588',d:'vegetarian',c:[],may:null,free:['gluten'],iu:1000,fit:1},
+  {card:'Vitamin B12',n:'Solgar Vitamin B12 1,000 mcg nuggets',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/solgar-vitamin-b12-1000ug-100-nuggets/46982',d:'vegan',c:[],may:null,free:['gluten','dairy','soy'],fit:3},
+  {card:'Vitamin B12',n:'Lamberts Vitamin B12 1,000 mcg',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/lamberts-vitamin-b12-1000-g-60-tablets/240132',d:'vegan',c:[],may:null,free:[],fit:2},
+  {card:'Algae Omega-3',n:'Together Natural Algae DHA Omega 3',shop:'Holland & Barrett',u:'https://www.hollandandbarrett.com/shop/product/together-natural-algae-dha-omega-3-softgels-60010638',d:'vegan',c:[],may:null,free:[],fit:3},
+  {card:'Algae Omega-3',n:'Bulk Vegan Super Strength Omega 3',shop:'Bulk',u:'https://www.bulk.com/uk/products/vegan-super-strength-omega-3-softgels/vser-o3ss',d:'vegan',c:[],may:['soy','gluten','fish','shellfish'],free:[],fit:2},
+  {card:'Omega-3 Fish Oil',n:"Wiley's Finest Peak EPA (fish gelatine capsule)",shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/wileys-finest-wild-alaskan-fish-oil-peak-epa-60-capsules/232819',d:'pescatarian',c:['fish'],may:[],free:['gluten','dairy','nuts','shellfish','eggs','soy'],fit:3}
+];
+// The examples for one card and one person, best fit first (Dolphin only breaks a tie). Empty when the card
+// says "Speak to..." first, for iron, folic acid and under-18s, for a 400 IU vitamin D dose, and when the
+// person has an allergy we have no group for (we cannot read that on a label for them).
+function suppProducts(card,u){
+  if(!card||/^Speak to/.test(card.when)||parseInt(u.age)<18)return[];
+  if(card.name==='Vitamin D3'&&!/^1,000 IU/.test(card.when))return[];
+  const groups=[];
+  for(const raw of u.allergies||[]){
+    const a=String(raw).trim().toLowerCase();
+    if(!a||a==='none')continue;
+    const g=ALLERGY_GROUP[a];
+    if(!g)return[];
+    if(!groups.includes(g))groups.push(g);
+  }
+  const f=healthFlags([u.health_conditions,u.medicines,(u.allergies||[]).join(', ')].join(' \n '));
+  const diet=String(u.dietary_type||'').toLowerCase();
+  const okDiet={vegan:['vegan'],vegetarian:['vegan','vegetarian'],pescatarian:['vegan','vegetarian','pescatarian']}[diet]||null;
+  const w=parseFloat(u.weight_kg)||0;
+  const caffTarget=w?Math.min(w*4.5,350):300,caffMax=w?w*6:400;
+  const list=SUPP_PRODUCTS.filter(p=>{
+    if(p.card!==card.name)return false;
+    if(okDiet&&!okDiet.includes(p.d))return false;
+    for(const g of groups){
+      if(p.c.includes(g)||(p.may&&p.may.includes(g)))return false;
+      if(p.may===null&&!p.free.includes(g))return false;
+    }
+    if(p.herbs&&(f.has('warfarin')||f.has('anticoag')||f.has('bleeding')||f.has('heart')||f.has('bp')))return false;
+    if(p.salt&&(f.has('lithium')||f.has('kidney')||f.has('bp')||f.has('heart')))return false;
+    if(p.caff&&p.caff>caffMax)return false;
+    return true;
+  });
+  const score=p=>p.fit-(p.caff?Math.abs(p.caff-caffTarget)/100:0);
+  return list.sort((a,b)=>score(b)-score(a)||(b.shop==='Dolphin')-(a.shop==='Dolphin')).slice(0,3);
+}
+// The "e.g." block under a card (UK shops only)
+function suppProductsHtml(card){
+  if(!CU||userRegion()==='us')return'';
+  const list=suppProducts(card,CU);
+  if(!list.length)return'';
+  const extra=p=>[p.caff?p.caff+' mg caffeine':'',p.creatine?'has creatine':''].filter(Boolean).join(', ');
+  return`<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--b1)">
+    <div style="font-size:12px;color:var(--tx2);margin-bottom:4px">Examples that fit your diet and allergies:</div>
+    ${list.map(p=>`<div style="font-size:12px;margin-bottom:3px">e.g. <a href="${escapeHtml(p.u)}" target="_blank" rel="noopener" style="color:var(--ac)">${escapeHtml(p.n)}</a> <span style="color:var(--tx3)">(${escapeHtml(p.shop)}${extra(p)?', '+escapeHtml(extra(p)):''})</span></div>`).join('')}
+    <div style="font-size:11px;color:var(--tx3);margin-top:4px">Always read the label before you buy - recipes change.</div>
+  </div>`;
+}
 // ---- supplements end ----
 
 // ============================================================
