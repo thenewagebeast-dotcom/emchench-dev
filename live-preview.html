@@ -243,6 +243,10 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .det-lbl{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--tx3);margin-bottom:6px;font-weight:600;}
 .ingr{font-size:13px;color:var(--tx2);line-height:1.9;margin-bottom:12px;}
 .method{counter-reset:step;}
+.msec{font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--tx2);margin:12px 0 6px;}
+.msec:first-child{margin-top:0;}
+.ingr-sec{font-size:12px;font-weight:700;color:var(--tx2);margin:8px 0 4px;}
+.ingr-list{margin:0 0 6px 18px;padding:0;font-size:13px;line-height:1.6;}
 .mstep{counter-increment:step;font-size:13px;line-height:1.6;padding-left:22px;position:relative;margin-bottom:6px;}
 .mstep::before{content:counter(step);position:absolute;left:0;top:1px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ac);font-weight:700;}
 
@@ -1373,7 +1377,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='24 Oct no failed plans';
+const APP_BUILD='24 Oct recipe sections';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -3922,8 +3926,6 @@ Greek: Dried oregano, lemon juice and good olive oil are the backbone of most di
 
 French: A proper mirepoix (onion, carrot, celery) underpins most sauces and stews, cooked gently until soft before other ingredients are added. Herbes de Provence used with a light hand, not dumped in. Butter is used deliberately, often finishing a sauce off the heat for shine and richness. Salt and season in layers throughout cooking rather than only at the end - this is the single biggest difference between competent and flat French cooking.
 
-ALL RECIPES: End every method with this exact sentence as the final step: "Always taste as you cook - recipes are a guide, your palate is the final word."
-
 BUDGET ENFORCEMENT RULES - strictly enforced:
 
 If user weekly budget is "Budget - keep it as cheap as possible":
@@ -4010,7 +4012,12 @@ function ingredientsHtml(recipe){
   if(r==='us'&&us&&userMealPlan?.meals?.built_for?.region==='us'){
     return`<div class="det-lbl">Ingredients (US) - Serves ${escapeHtml(serves)}</div><div class="ingr">${us}</div>${metric?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">Metric: ${metric}</div>`:''}`;
   }
-  return(metric?`<div class="det-lbl">Ingredients (UK) - Serves ${escapeHtml(serves)}</div><div class="ingr">${metric}</div>`:'')
+  // Grouped one per line (24 Oct 2026), resized like the rest; otherwise the list split at its semicolons
+  const groups=(Array.isArray(recipe.ingredient_groups)?recipe.ingredient_groups:[]).filter(g=>g&&Array.isArray(g.items)&&g.items.length);
+  const lines=String(recipe.ingredients_uk||'').split(/;\s*/).map(x=>x.trim()).filter(Boolean);
+  const list=items=>'<ul class="ingr-list">'+items.map(i=>`<li>${escapeHtml(scaleIngredientText(String(i)))}</li>`).join('')+'</ul>';
+  const body=groups.length?groups.map(g=>(g.title?`<div class="ingr-sec">${escapeHtml(g.title)}</div>`:'')+list(g.items)).join(''):lines.length>=3?list(lines):metric;
+  return(metric||groups.length?`<div class="det-lbl">Ingredients (UK) - Serves ${escapeHtml(serves)}</div><div class="ingr">${body}</div>`:'')
     +(r!=='uk'&&us?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">US: ${us}</div>`:'');
 }
 
@@ -4314,10 +4321,11 @@ INGREDIENT QUANTITY RULE - required: every ingredient, including every spice and
 INGREDIENT STATE RULE - required: list every ingredient in its raw, as-purchased state, and make sure the method actually cooks or prepares every ingredient listed - never list something as an ingredient without a step that uses it.
 DISH NAME CONSISTENCY - required: if the dish name specifies a particular type of an ingredient, the ingredients list must use that exact type, not a different or more generic one - and name the specific variety of anything that genuinely has meaningfully different common types, rather than defaulting to a generic term.
 METHOD SPECIFICITY - required: every cooking step involving heat must state an actual temperature and time, never vague terms like "cook until done" on their own.
-METHOD: one action per step (usually 6 to 12 steps, each up to 30 words), naming the pan or tray and its size, the heat level and time, what to look for and any resting time.
+METHOD: in sections, in cooking order - each section a short heading (e.g. "Make the sauce", "Cook the pasta", "Bring it together", "To serve") and its steps; a simple dish can have one section. One action per step, as many steps as the dish genuinely needs - each step up to 60 words, written for a beginner: the pan or tray and its size, the heat level and time, what it should look, smell or feel like when it is ready (e.g. "until golden at the edges"), any resting time, and a quick fix where things often go wrong (e.g. "if it starts to stick, add a splash of water"). Explain any cooking term in brackets the first time it appears (e.g. "al dente (cooked through but still with a slight bite)"). No filler steps.
+INGREDIENT GROUPS: the same ingredients as ingredients_uk, grouped under headings that match the method sections (e.g. "For the sauce", "For the pasta") - one ingredient with its quantity per item, every ingredient in ingredients_uk exactly once and nothing extra.
 ${recipeDetailLimits()}
 ${recipeQualityRules()}
-Reply ONLY with valid JSON: {"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"servings":1,"ingredients_uk":"","ingredients_us":"","method":[],${RECIPE_DETAIL_FIELDS},"micronutrients":"","bulk_cook":false}`;
+Reply ONLY with valid JSON: {"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"servings":1,"ingredients_uk":"","ingredients_us":"","ingredient_groups":[{"title":"","items":[""]}],"method":[{"title":"","steps":[""]}],${RECIPE_DETAIL_FIELDS},"micronutrients":"","bulk_cook":false}`;
 }
 
 // Replaces every flagged recipe with a new one written for the current rules,
@@ -4909,7 +4917,7 @@ function recipeDetailLimits(){
   return`prep_list: 2 to 8 items, each up to 12 words - what to chop, weigh and get out before cooking starts.
 equipment: up to 8 items - the pans, trays and tools needed, with a size where it matters (e.g. "28cm non-stick frying pan").
 tips: 1 to 3 items, each up to 25 words - why a key step matters or a common mistake to avoid, written for a beginner.
-storage: ONLY when bulk_cook is true - how many days in the fridge, how many months in the freezer and how to reheat, up to 35 words. An empty string for every other recipe.
+storage: when bulk_cook is true or the recipe is a lunch - how many days in the fridge, how many months in the freezer (or "do not freeze") and how to reheat or carry it, up to 35 words. An empty string for every other recipe.
 swaps: cheaper, quicker and if_missing - each up to 20 words, and every swap must follow this person's diet, allergies, dislikes and health swaps.
 serving: up to 20 words - how to plate it or what to serve it with, without changing the macros given.
 shopping: every ingredient once, as bought - item (plain shop name, e.g. "red onion", "soya mince"), amount (a number, for the whole recipe as written), unit ("g", "ml", or "" for a count of whole items), aisle (one of: ${SHOPPING_AISLES.join(', ')}).`;
@@ -4934,7 +4942,7 @@ function buildChosenRecipesPrompt(chosenMeals, batch){
   // What each meal is built around (its checked key ingredients, NO-FAILED-PLANS-SPEC part 0)
   const built=Object.values(chosenMeals||{}).flat().filter(m=>m&&m.name&&Array.isArray(m.key_ingredients)&&m.key_ingredients.length).map(m=>`- ${m.name}: ${m.key_ingredients.join(', ')}`).join('\n');
   if(!allMeals.trim())return'{}';
-  const sc=`{"name":"","bulk_cook":false,"batch_portions":1,"difficulty":"easy","servings":1,"calories":0,"protein":0,"carbs":0,"fats":0,"micronutrients":"","ingredients_uk":"","ingredients_us":"","method":[],${RECIPE_DETAIL_FIELDS},"prep_time_mins":0}`;
+  const sc=`{"name":"","bulk_cook":false,"batch_portions":1,"difficulty":"easy","servings":1,"calories":0,"protein":0,"carbs":0,"fats":0,"micronutrients":"","ingredients_uk":"","ingredients_us":"","ingredient_groups":[{"title":"","items":[""]}],"method":[{"title":"","steps":[""]}],${RECIPE_DETAIL_FIELDS},"prep_time_mins":0}`;
   const schemaKeys=Object.entries(cats).filter(([,names])=>names.length).map(([cat])=>`"${cat}":[${sc}]`).join(',');
 
   const catTargets=`STRICT MACRO TARGETS - portions MUST be scaled so macros land within 5% of these:
@@ -4964,7 +4972,8 @@ ${catTargets}
 FIELD LIMITS - these are ceilings to stop rambling, not targets to hit. Include every necessary detail (a quantity for every ingredient, a temperature and time for every heated step, real technique) and stop once the recipe is genuinely complete. Never pad to fill space, and never cut a necessary detail just to stay under a number.
 ingredients_uk: up to 130 words, every single ingredient with its own specific quantity.
 ${regionFieldLimit()}
-method: one action per step, as many steps as the dish genuinely needs (usually 6 to 12) - each step up to 30 words and, where it applies, names the pan or tray and its size, the heat level and time, what to look for (e.g. "until golden at the edges") and any resting time.
+method: in sections, in cooking order - each section a short heading (e.g. "Make the sauce", "Cook the pasta", "Bring it together", "To serve") and its steps; a simple dish can have one section. One action per step, as many steps as the dish genuinely needs - each step up to 60 words, written for a beginner: the pan or tray and its size, the heat level and time, what it should look, smell or feel like when it is ready (e.g. "until golden at the edges"), any resting time, and a quick fix where things often go wrong (e.g. "if it starts to stick, add a splash of water"). Explain any cooking term in brackets the first time it appears (e.g. "al dente (cooked through but still with a slight bite)"). No filler steps.
+ingredient_groups: the same ingredients as ingredients_uk, grouped under headings that match the method sections (e.g. "For the sauce", "For the pasta") - one ingredient with its quantity per item, every ingredient in ingredients_uk exactly once and nothing extra.
 micronutrients: up to 15 words.
 ${recipeDetailLimits()}
 INGREDIENT QUANTITY RULE - required, not optional: every single ingredient, including every spice and seasoning, must have a specific measured quantity (tsp, tbsp, g, ml, or a count). Never list a spice or ingredient by name alone with no amount - "turmeric" on its own is not acceptable, "1 tsp turmeric" is. This applies even when several vegetables get blended or cooked together - "400g onion, tomato, garlic, ginger" is not acceptable because there is no way to tell how much of each; write "100g onion, 100g tomato, 2 cloves garlic, 20g ginger" instead, even if they all go in the blender at the same time.
@@ -5770,6 +5779,8 @@ function recipeAfterHtml(meal){
   return html;
 }
 function fmtMethod(m){
+  // Sections (24 Oct 2026): [{title, steps}] - numbering runs on across sections
+  if(Array.isArray(m)&&m.some(x=>x&&typeof x==='object'))return m.map(sec=>(sec?.title?`<div class="msec">${escapeHtml(sec.title)}</div>`:'')+(Array.isArray(sec?.steps)?sec.steps:[]).map(s=>`<div class="mstep">${escapeHtml(s)}</div>`).join('')).join('');
   if(Array.isArray(m))return m.map(s=>`<div class="mstep">${escapeHtml(s)}</div>`).join('');
   if(typeof m==='string')return m.split(/\d+\.\s+/).filter(Boolean).map(s=>`<div class="mstep">${escapeHtml(s.trim())}</div>`).join('');
   return escapeHtml(String(m));
@@ -9605,8 +9616,9 @@ async function callAIFeature(feature,args){
 }
 
 // The request callAI sends - shared with the server, which sends the same for plan generation
-function callAIBody(prompt,systemPrompt,maxTokens=30000,model=AI_MODEL){
-  return{model,max_tokens:maxTokens,fallbacks:'default',output_config:{effort:model===AI_MODEL_TRAINING?'medium':'low'},system:[{type:'text',text:systemPrompt,cache_control:{type:'ephemeral'}}],messages:[{role:'user',content:prompt}]};
+// effort: optional - the server's recipe writing asks for 'medium' (24 Oct 2026, user: quality before price)
+function callAIBody(prompt,systemPrompt,maxTokens=30000,model=AI_MODEL,effort=null){
+  return{model,max_tokens:maxTokens,fallbacks:'default',output_config:{effort:effort||(model===AI_MODEL_TRAINING?'medium':'low')},system:[{type:'text',text:systemPrompt,cache_control:{type:'ephemeral'}}],messages:[{role:'user',content:prompt}]};
 }
 async function callAI(apiKey, prompt, systemPrompt, maxTokens=30000, model=AI_MODEL){
   const controller=new AbortController();
