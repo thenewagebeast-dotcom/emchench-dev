@@ -842,7 +842,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
         </div>
       </div>
       <div class="frow"><label class="flbl">Dietary Type</label><select class="fsel" id="ob-dietary"><option value="meat-eater">Meat Eater</option><option value="pescatarian">Pescatarian</option><option value="vegetarian">Vegetarian</option><option value="vegan">Vegan</option></select></div>
-      <div class="frow"><label class="flbl">Allergies / Intolerances</label><div class="pills" id="ob-allergies"><div class="pill" onclick="tpill(this)">Gluten</div><div class="pill" onclick="tpill(this)">Dairy</div><div class="pill" onclick="tpill(this)">Nuts</div><div class="pill" onclick="tpill(this)">Eggs</div><div class="pill" onclick="tpill(this)">Soy</div><div class="pill" onclick="tpill(this)">None</div></div></div>
+      <div class="frow"><label class="flbl">Allergies / Intolerances</label><div class="pills" id="ob-allergies"><div class="pill" onclick="tpill(this)">Gluten</div><div class="pill" onclick="tpill(this)">Dairy</div><div class="pill" onclick="tpill(this)">Nuts</div><div class="pill" onclick="tpill(this)">Eggs</div><div class="pill" onclick="tpill(this)">Soy</div><div class="pill" onclick="tpill(this)">None</div></div><input class="finput" id="ob-allergies-other" style="margin-top:8px" placeholder="Anything else? e.g. shellfish, sesame, lactose intolerant"></div>
       <div class="frow">
         <label class="flbl">Ingredients You Dislike or Want to Avoid</label>
         <div class="pills" id="ob-dislikes" style="gap:6px">
@@ -1080,7 +1080,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
     <div class="modal-title">Generate Plan</div>
     <input type="hidden" id="gen-len" value="3month">
     <input type="hidden" id="gen-type" value="progressive">
-    <div class="alert alert-info" style="font-size:12px">Plans are generated one month at a time based on your results. Month 2 uses your actual logged data to build a smarter programme than any upfront plan could.</div>
+    <div class="alert alert-info" style="font-size:12px">Plans are generated one month at a time based on your results. Each new plan uses your actual logged data to build a smarter programme than any upfront plan could.</div>
     <div class="alert alert-warn" style="font-size:12px">⏱️ This takes 15-25 minutes. Partway through, you'll be asked to pick your favourite meals - keep this tab open and check back on it during that time.</div>
     <div class="frow" id="gen-change-row"><label class="flbl">How Much to Change?</label><select class="fsel" id="gen-change"><option value="fresh">Completely fresh</option><option value="mix">Mix it up a bit</option><option value="keep">Keep most of it</option></select></div>
     <div id="gen-rapport-row">
@@ -1288,7 +1288,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='24 Oct plan weeks from day made';
+const APP_BUILD='24 Oct test run fixes';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -2589,8 +2589,26 @@ function showFirstTimeWelcome(){
   showCelebration('🎉','Welcome!',msgs[style]||msgs['Mix of Everything']);
 }
 
+// The sign-up form as the page first loaded it. Signing out puts it back, so nothing one person typed -
+// health notes, medicines - is waiting for the next person (24 Oct 2026 test-account run, F1)
+function snapshotObForm(){
+  const snap={fields:{},pills:[]};
+  try{
+    document.querySelectorAll('.ob-step input, .ob-step select, .ob-step textarea').forEach(e=>{if(e.id)snap.fields[e.id]=e.type==='checkbox'?e.checked:e.value;});
+    document.querySelectorAll('.ob-step .pill').forEach(p=>snap.pills.push(p.classList.contains('on')));
+  }catch(e){}
+  return snap;
+}
+const obFormDefaults=snapshotObForm();
+function resetObForm(){
+  try{
+    for(const [id,v] of Object.entries(obFormDefaults.fields)){const e=document.getElementById(id);if(!e)continue;if(e.type==='checkbox')e.checked=v;else e.value=v;}
+    document.querySelectorAll('.ob-step .pill').forEach((p,i)=>p.classList.toggle('on',!!obFormDefaults.pills[i]));
+  }catch(e){}
+}
 function signOut(){
   clearSavedSession();
+  resetObForm();
   _lastSyncRefresh=0;
   // End the server session and drop the token. Not awaited - signing out must never wait on the network.
   if(SESSION_TOKEN){const t=SESSION_TOKEN;SESSION_TOKEN=null;apiCall({action:'logout',token:t}).catch(()=>{});}
@@ -4001,15 +4019,21 @@ const ALLERGY_GROUP={gluten:'gluten',wheat:'gluten',coeliac:'gluten',celiac:'glu
 // The food groups one set of rules rules out, as {key:{label,words,safe}}
 function bannedGroups(rules){
   const out={};
+  let lactoseOnly=false,milkAllergy=false;
   for(const k of DIET_BANS[String(rules.dietary_type||'').toLowerCase()]||[])out[k]=FOOD_GROUPS[k];
   for(const raw of rules.allergies||[]){
     const a=String(raw).trim().toLowerCase();
     if(!a||a==='none')continue;
-    const found=allergyGroupsOf(a).groups;
-    if(found.length){for(const k of found)out[k]=FOOD_GROUPS[k];}
+    const r=allergyGroupsOf(a),found=r.groups;
+    if(r.lactose)lactoseOnly=true;
+    else if(found.includes('dairy'))milkAllergy=true;
+    if(found.length){for(const k of found)if(!(k==='dairy'&&r.lactose))out[k]=FOOD_GROUPS[k];}
     // Anything typed that we have no list for: look for the word itself
     else out['x:'+a]={label:String(raw).trim(),words:[a.replace(/s$/,'')],safe:new RegExp(a.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'[- ]free','i')};
   }
+  // Lactose intolerance alone (no milk allergy, dairy not already out by the diet): dairy is out, but
+  // products labelled lactose-free are fine (user decision 24 Oct 2026, F2)
+  if(lactoseOnly&&!milkAllergy&&!out.dairy)out.dairy={...FOOD_GROUPS.dairy,safe:new RegExp(FOOD_GROUPS.dairy.safe.source+'|lactose[- ]free','i'),lactoseFree:true};
   return out;
 }
 // Groups ruled out now that were NOT ruled out when the plan was written
@@ -4026,7 +4050,7 @@ function wordFlagRecipe(recipe,groups){
       // A safe phrase ("dairy-free yoghurt") excuses the phrase - except the words that are always that food
       const excused=g.safe&&g.safe.test(phrase);
       for(const w of g.words){
-        if(excused&&!(g.always||[]).includes(w))continue;
+        if(excused&&(!(g.always||[]).includes(w)||(g.lactoseFree&&/lactose[- ]free/i.test(phrase))))continue;
         if(new RegExp('\\b'+esc(w)+'(?:e?s)?\\b','i').test(phrase)){
           // "500ml water for mince" only points back to an ingredient the recipe already
           // named as a safe version ("200g soya mince") - not a new ingredient (23 Oct 2026)
@@ -4064,7 +4088,7 @@ const FOOD_CHECK_SYS='You are a careful food safety checker for a meal planning 
 function foodCheckPrompt(rules,recipes){
   return`Check each recipe below against this person's food rules.
 RULES NOW - Diet: ${rules.dietary_type||'not set'}. Allergies and intolerances: ${normAllergies(rules.allergies)||'none'}.
-Decide whether ANY ingredient breaks a rule. Include hidden sources: pesto contains nuts and cheese, soy sauce contains gluten and soy, Worcestershire sauce contains fish, mayonnaise contains egg, stock and gravy often contain gluten, many protein powders contain milk. Be strict - if an ingredient commonly contains a ruled-out food and the recipe does not say a free-from version, flag it. Do not flag an ingredient that is clearly a free-from or plant-based version.
+${/lactose/i.test(normAllergies(rules.allergies))&&!/\b(milk|dairy)\b/i.test(normAllergies(rules.allergies))&&!/vegan/i.test(rules.dietary_type||'')?'Lactose intolerance only (no milk allergy): products labelled lactose-free are fine.\n':''}Decide whether ANY ingredient breaks a rule. Include hidden sources: pesto contains nuts and cheese, soy sauce contains gluten and soy, Worcestershire sauce contains fish, mayonnaise contains egg, stock and gravy often contain gluten, many protein powders contain milk. Be strict - if an ingredient commonly contains a ruled-out food and the recipe does not say a free-from version, flag it. Do not flag an ingredient that is clearly a free-from or plant-based version.
 RECIPES:
 ${recipes.map(({meal},i)=>`${i+1}. ${meal.name} :: ${String(meal.ingredients_uk||'').replace(/\s+/g,' ').slice(0,900)}`).join('\n')}
 Return ONLY this JSON, with one entry per recipe that breaks a rule and an empty list if none do:
@@ -5006,7 +5030,7 @@ Build working weights from these numbers at 70-75% for Week 1.`;
 - Every exercise has a "muscle" field naming its ONE main muscle: chest, back, quads, glutes, hamstrings, side delts, rear delts, front delts, biceps, triceps, calves, traps, abs or forearms.
 REP RANGES: heavy compounds 6-10, other presses and rows 8-12, isolation work 10-20, some machine or cable isolation 15-30 - about half of each muscle\'s weekly sets in the 10-20 range.
 REST: rest_seconds as a guide - 120-180 for heavy compounds, 60-90 for isolation work.`;
-  const effortBlock=`EFFORT: the app shows the user an effort target each week - how many reps to leave in the tank - and works out lighter weeks itself. ${style==='block'?'This user follows a progressive block: effort rises from 3 reps left in the tank in week 1 to 1 in week 3, then a lighter week.':'This user repeats the same sessions every week, leaving '+(beginner?'2-3':'1-2')+' reps in the tank on working sets.'} Never programme sets to failure on heavy barbell squats, bench presses or deadlifts. Do NOT write deload or lighter weeks into the plan.`;
+  const effortBlock=`EFFORT: the app shows the user an effort target each week - how many reps to leave in the tank - and works out lighter weeks itself. ${style==='block'?'This user follows a progressive block: effort rises from 3 reps left in the tank in week 1 to 1 in week 3, then a lighter week.':'This user repeats the same sessions every week, leaving '+(beginner?'2-3':'1-2')+' reps in the tank on working sets.'} Never programme sets to failure on heavy barbell squats, bench presses or deadlifts. Do NOT write deload or lighter weeks into the plan, and do not write how many reps to leave in the tank in the exercise notes - the app shows that itself.`;
 
   // Fix 6 - Cardio scheduling with timing rules
   const cardioTiming=trainTime==='Morning'
@@ -5080,17 +5104,24 @@ Training time: ${trainTime}. Occupation: ${occupation}.${monthContext}${rapportC
 
 ${baselineBlock}
 
-${useAssessment?`ASSESSMENT WEEK PROTOCOL - applies to EVERY exercise, not just compound lifts:
+${useAssessment?`ASSESSMENT WEEK PROTOCOL - two kinds of exercise:
 
-Every exercise in assessment week sessions gets exactly 5 sets structured as follows:
+COMPOUND LIFTS (squats, deadlifts and other hinges, bench and other presses, rows, pull-downs and pull-ups, lunges and split squats, hip thrusts) get exactly 5 sets structured as follows:
 - Set 1: 30% of perceived max, 12 reps. Movement pattern only. No grinding.
 - Set 2: 50% of perceived max, 8 reps. Starting to feel the weight.
 - Set 3: 65% of perceived max, 5 reps. Working weight, controlled.
 - Set 4: 75% of perceived max, 3 reps. Challenging but not maximal.
 - Set 5: Genuine 3-rep max attempt. Full effort. Record this weight.
 
-For every exercise: sets:5, reps:"12/8/5/3/3RM", reps_per_set:["12","8","5","3","3RM"].
-Notes field for each assessment exercise: "Record every weight from every set. Your Month 1 programme is built from Set 5. Estimated 1RM = Set 5 weight x 1.1 (Epley formula for 3 reps)."
+For each compound lift: sets:5, reps:"12/8/5/3/3RM", reps_per_set:["12","8","5","3","3RM"].
+Notes field for each compound lift: "Record every weight from every set. Your Month 1 programme is built from Set 5. Estimated 1RM = Set 5 weight x 1.1 (Epley formula for 3 reps)."
+
+ISOLATION LIFTS (curls, triceps extensions and pushdowns, lateral and rear delt raises, flies, leg extensions, leg curls, calf raises) are never taken to a 3-rep max. They get exactly 3 sets:
+- Set 1: about 50% of perceived max, 15 reps. Warm-up.
+- Set 2: about 70%, 12 reps.
+- Set 3: a genuine 10-12 rep max - the most weight for 10-12 clean reps. Record this weight and the reps.
+For each isolation lift: sets:3, reps:"15/12/10-12RM", reps_per_set:["15","12","10-12RM"].
+Notes field for each isolation lift: "Record every weight. Set 3 is your 10-12 rep max - your Month 1 weights are built from it."
 Session names: "Assessment - [focus area]" e.g. "Assessment - Upper Body Push", "Assessment - Lower Body".`:''}
 
 ${useAssessment?`TEST WEEK: every session in this plan is an assessment session using the protocol above - the weekly sets per muscle and effort targets start with the first full month, which is built from these results. Across the week, test every main muscle at least once with exercises the user can safely do (injuries, avoided exercises and equipment first), and give every exercise its "muscle" field.`:`${volumeBlock}
@@ -6445,7 +6476,7 @@ async function setLighterWeek(choice){
 function trainWeekHeadHtml(){
   const w=trainWeekInfo();
   if(w.test)return`<div style="font-size:12px;color:var(--tx2);margin-bottom:4px">Test week</div>
-  <div style="font-size:13px;color:var(--ac);margin-bottom:12px">🎯 Follow each set's target - Set 5 is your 3-rep max. Record every weight: your Month 1 is built from them.</div>`;
+  <div style="font-size:13px;color:var(--ac);margin-bottom:12px">🎯 Follow each set's target. Big lifts: Set 5 is your 3-rep max. Smaller lifts: Set 3 is your 10-12 rep max. Record every weight - your Month 1 is built from them.</div>`;
   const label=w.style==='block'?`Week ${blockWeek(w.weekNo)} of 4 - ${TRAIN_STYLES.block}`:`Week ${w.weekNo} - ${TRAIN_STYLES.steady}`;
   const effort=effortFor({},w);
   const style=CU?.mot_style||'Mix of Everything';
@@ -6892,10 +6923,11 @@ async function logWorkout(sidx){
           try{
             const exData=JSON.parse(log[6]||'[]');
             for(const ex of exData){
-              const set5=ex.sets?.[4];
+              // Compound lifts: Set 5 (the 3-rep max). Isolation lifts have 3 sets: the last (a 10-12 rep max)
+              const set5=(ex.sets||[]).length>=5?ex.sets[4]:ex.sets?.[ex.sets.length-1];
               if(set5?.weight_kg>0){
                 // Epley: weight x (1 + reps/30) - x 1.1 for the 3-rep test (was x 1.0667, the 2-rep factor)
-                const r5=Math.min(10,Math.max(1,parseInt(set5.reps)||3));
+                const r5=Math.min(12,Math.max(1,parseInt(set5.reps)||3));
                 const est1rm=Math.round(set5.weight_kg*(1+r5/30));
                 knownNums.push(`${ex.name}: ${set5.weight_kg}kg x ${set5.reps}reps (est 1RM: ${est1rm}kg)`);
               }
@@ -8971,7 +9003,7 @@ function obNext(n){
   }
   if(n===3){
     if(!getOnPills('ob-kitchen')){alert('Please select the kitchen appliances you have.');return;}
-    if(!getOnPills('ob-allergies')){alert('Please select your allergies or tap None.');return;}
+    if(!getOnPills('ob-allergies')&&!(document.getElementById('ob-allergies-other')?.value||'').trim()){alert('Please select your allergies, type them in "Anything else?", or tap None.');return;}
   }
   if(n===4){
     if(!getOnPills('ob-snack-style')){alert('Please select your snack style.');return;}
@@ -9175,7 +9207,10 @@ async function createUser(){
   const batchCooking=batchDetail?`${batchCookingBase} (${batchDetail})`:batchCookingBase;
   const batchDays=getOnPills('ob-batch-days')||'All week - cook once eat all week';
   const dietary=document.getElementById('ob-dietary').value;
-  const allergies=getOnPills('ob-allergies');
+  // The pills plus anything typed in "Anything else?" (F6); "None" only counts on its own
+  let allergies=[...getOnPills('ob-allergies').split(','),...(document.getElementById('ob-allergies-other')?.value||'').split(',')].map(x=>x.trim()).filter(Boolean);
+  if(allergies.some(a=>a.toLowerCase()!=='none'))allergies=allergies.filter(a=>a.toLowerCase()!=='none');
+  allergies=allergies.join(',');
   const health=document.getElementById('ob-health').value;
   const injuries=getOnPills('ob-injuries');
   const injDetail=document.getElementById('ob-inj-detail').value;
