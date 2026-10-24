@@ -1288,7 +1288,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='24 Oct audit fixes';
+const APP_BUILD='24 Oct plan weeks from day made';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -6291,14 +6291,19 @@ function isHeavyBarbell(name){
   const n=String(name||'');
   return/barbell|\b(back|front) squat\b|\bbench press\b|\bdeadlift\b/i.test(n)&&!/dumbbell|\bdb\b|machine|smith|goblet|cable|kettlebell|leg press/i.test(n);
 }
-// Week 1 = the Monday-to-Sunday week the plan started in. Keys are YYYY-MM-DD.
+// Plan weeks run 7 days from the day the plan was made (user, 24 Oct 2026: "a plan should start from the
+// day it's made"): days 0-6 are week 1, days 7-13 week 2... Keys are YYYY-MM-DD.
+const dayMs=k=>{const p=String(k||'').split('-').map(Number);return p.length===3&&!p.some(isNaN)?Date.UTC(p[0],p[1]-1,p[2]):NaN;};
 function planWeekNo(planStartKey,todayKey){
-  const monday=k=>{const p=String(k||'').split('-').map(Number);if(p.length!==3||p.some(isNaN))return NaN;const t=Date.UTC(p[0],p[1]-1,p[2]);return t-((new Date(t).getUTCDay()+6)%7)*86400000;};
-  // A plan made Thursday to Sunday starts its week 1 on the following Monday (24 Oct 2026 audit T6)
-  const late=p=>{const q=String(p||'').split('-').map(Number);return q.length===3&&((new Date(Date.UTC(q[0],q[1]-1,q[2])).getUTCDay()+6)%7)>=3;};
-  const a=monday(planStartKey)+(late(planStartKey)?7*86400000:0),b=monday(todayKey);
+  const a=dayMs(planStartKey),b=dayMs(todayKey);
   if(isNaN(a)||isNaN(b))return 1;
-  return Math.max(1,Math.round((b-a)/(7*86400000))+1);
+  return Math.max(1,Math.floor(Math.round((b-a)/86400000)/7)+1);
+}
+// The first day of the plan week that todayKey falls in (the key a block-style lighter-week choice is saved under)
+function planWeekStart(planStartKey,todayKey){
+  const a=dayMs(planStartKey);
+  if(isNaN(a)||isNaN(dayMs(todayKey)))return String(todayKey||'');
+  return new Date(a+(planWeekNo(planStartKey,todayKey)-1)*7*86400000).toISOString().slice(0,10);
 }
 // Where a week sits in a 4-week block: 1-3 building, 4 the lighter week (a plan used for longer repeats)
 function blockWeek(n){return((Math.max(1,parseInt(n)||1)-1)%4)+1;}
@@ -6386,9 +6391,10 @@ function trainSession(sidx){
 }
 // This week of the plan: its number, the style, and whether it is a lighter week (train rules above)
 function trainCtx(){
-  const today=dayKey(new Date());
-  const c={style:userTrainingPlan?.style==='block'?'block':'steady',weekNo:planWeekNo(dayKey(userTrainingPlan?.created)||today,today),
-    weekKey:weekStart(today),deloads:userTrainingPlan?.deloads||{},experience:CU?.experience||'intermediate'};
+  const today=dayKey(new Date()),start=dayKey(userTrainingPlan?.created)||today;
+  const style=userTrainingPlan?.style==='block'?'block':'steady';
+  const c={style,weekNo:planWeekNo(start,today),
+    weekKey:style==='block'?planWeekStart(start,today):weekStart(today),deloads:userTrainingPlan?.deloads||{},experience:CU?.experience||'intermediate'};
   c.lighter=isLighterWeek(c);
   return c;
 }
@@ -6417,7 +6423,7 @@ function trainWeekInfo(){
 // "Take a lighter week" / "Not yet" - saved on the plan (training_plans column 17), so every phone sees it
 async function setLighterWeek(choice){
   if(!userTrainingPlan)return;
-  const wk=weekStart(dayKey(new Date()));
+  const wk=trainCtx().weekKey;
   const before={...(userTrainingPlan.deloads||{})};
   userTrainingPlan.deloads={...before,[wk]:choice};
   renderTrainingPlan();
@@ -6495,7 +6501,8 @@ function lastTimeFor(exName){
   const n=String(exName||'').trim().toLowerCase();
   // Lighter weeks are skipped (half the sets, lighter weights) - unless that is all there is
   const base=trainCtx();
-  const lighter=w=>{if(!w.day)return false;const wk=weekStart(w.day);return isLighterWeek({...base,weekKey:wk,weekNo:planWeekNo(dayKey(userTrainingPlan?.created)||w.day,w.day)});};
+  const pstart=dayKey(userTrainingPlan?.created);
+  const lighter=w=>{if(!w.day)return false;const st=pstart||w.day;return isLighterWeek({...base,weekKey:base.style==='block'?planWeekStart(st,w.day):weekStart(w.day),weekNo:planWeekNo(st,w.day)});};
   const all=activityLogs.workouts.filter(w=>!w.cardio&&Array.isArray(w.exercises));
   const normal=all.filter(w=>!lighter(w));
   const logs=(normal.length?normal:all).sort((a,b)=>String(b.at||b.day).localeCompare(String(a.at||a.day)));
