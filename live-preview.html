@@ -1357,7 +1357,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='23 Oct whey fix';
+const APP_BUILD='24 Oct click-through fixes';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -2897,6 +2897,7 @@ function renderDashboard(){
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-sm" onclick="goTab('meallog')">Log Meals -></button>
           <button class="event-plan-btn" onclick="enjoyFreely()">I'm just going to enjoy tonight 🥂</button>
+          <button class="btn btn-ghost btn-sm" onclick="cancelEvent()">Event called off</button>
         </div>
       </div>`;
   }else if(todayEventCals&&activeEvent){
@@ -2920,7 +2921,8 @@ function renderDashboard(){
       <div style="font-size:13px;color:var(--ac);margin-bottom:4px">${todayEventCals} kcal <span style="font-size:11px;color:var(--tx3)">(reduced for event banking)</span></div>
       <div style="font-size:12px;color:var(--tx2);font-family:'JetBrains Mono',monospace">P:${userMealPlan?.meals?.daily_targets?.protein||0}g C:${userMealPlan?.meals?.daily_targets?.carbs||0}g F:${userMealPlan?.meals?.daily_targets?.fats||0}g</div>
       <div style="font-size:11px;color:var(--tx3);margin-top:6px">Banked so far: ${activeEvent.daily_reduction*((activeEvent.lead_up_days||14)-daysLeft)||0} kcal of ${activeEvent.calories_banked} kcal total</div>
-      <button class="btn btn-sm" style="margin-top:10px" onclick="goTab('meallog')">Log Meals -></button>`;
+      <button class="btn btn-sm" style="margin-top:10px" onclick="goTab('meallog')">Log Meals -></button>
+      <button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="cancelEvent()">Cancel this event</button>`;
   }else if(userMealPlan?.meals?.daily_targets){
     const t=userMealPlan.meals.daily_targets;
     nEl.innerHTML=`<div style="font-size:13px;color:var(--ac);margin-bottom:4px">${t.calories} kcal</div>
@@ -4793,7 +4795,8 @@ shopping: every ingredient once, as bought - item (plain shop name, e.g. "red on
 function recipeQualityRules(){
   return`FLAVOUR RULE - required: give every recipe as much flavour as this person's rules allow, built in layers - aromatics (onion, garlic, ginger, chilli to their spice level), browning or searing, toasting the spices, a marinade where the cook time allows, acid (citrus or vinegar) to lift it, fresh herbs, and a finishing touch (zest, toasted seeds, a drizzle). Never add more salt or sugar than their health line allows - get the flavour from herbs, garlic, citrus and spices instead.
 PRODUCT NAMES RULE - required: for any free-from or plant-based item, name the actual product type every time it appears - in ingredients_uk, ingredients_us, the method and shopping (e.g. "200g soya mince", "300ml oat milk", "150g lactose-free Greek-style yoghurt", "40g vegan cheddar-style cheese") - never "mince", "milk", "yoghurt" or "cheese" on its own for these. No brand names.
-MACROS RULE - required: work out each recipe's calories, protein, carbs and fats from its own ingredients and amounts, per serving - never write the meal slot's target as the recipe's numbers. If the amounts do not reach the target, change the amounts, not the numbers.`;
+MACROS RULE - required: work out each recipe's calories, protein, carbs and fats from its own ingredients and amounts, per serving - never write the meal slot's target as the recipe's numbers. If the amounts do not reach the target, change the amounts, not the numbers.
+NAME MATCH RULE - required: keep each meal name exactly as given, and use every food the name promises in that form - "Smoked Salmon" means smoked salmon (not tinned), "Chicken Thigh" means thigh (not breast). Make the ingredients fit the name, never the other way round.`;
 }
 
 function buildChosenRecipesPrompt(chosenMeals, batch){
@@ -5868,7 +5871,9 @@ async function genShoppingList(){
   }
 
   shopBuy=buildShoppingList(Object.entries(mealCounts).map(([name,count])=>({recipe:recipeMap[name],count})),portionScale());
-  shopTickWeek=shopWeekKey(new Date());
+  // Ticks belong to the list they were made on: "Next week" keeps its own (Both shares this week's)
+  const tickDay=new Date();if(choice==='next')tickDay.setDate(tickDay.getDate()+7);
+  shopTickWeek=shopWeekKey(tickDay);
   shopTicked=await shopTicksLoad(shopTickWeek);
   const weekLabel={this:'this week',next:'next week',both:'this week and next'}[choice];
   out.innerHTML=`<div class="card">
@@ -6456,7 +6461,9 @@ function trainSessionHtml(){
   const rows=draftRows(ei);
   const last=lastTimeFor(ex.name);
   const nudge=weightNudge(ex,last,isAssessment);
-  const kgHint=i=>nudge&&nudge.weight?nudge.weight:(last&&last[Math.min(i,last.length-1)]&&parseFloat(last[Math.min(i,last.length-1)].weight_kg))||'kg';
+  // A timed hold or carry ("30-45s", "1 min"): the second box is seconds, weight only if one is used
+  const timed=/\d\s*(s|secs?|seconds?|mins?|minutes?)\b/i.test(String(ex.reps||''));
+  const kgHint=i=>nudge&&nudge.weight?nudge.weight:(last&&last[Math.min(i,last.length-1)]&&parseFloat(last[Math.min(i,last.length-1)].weight_kg))||(timed?'-':'kg');
   const tempoHelp=`showHowTo('What is Tempo?','Tempo is the speed of each phase of the lift. Format: seconds down - pause - seconds up. Example: 2-1-2 means 2 seconds lowering, 1 second pause, 2 seconds lifting. Controlling tempo builds more muscle and reduces injury risk.')`;
   const grid='display:grid;grid-template-columns:34px 1fr 1fr 44px;gap:8px;align-items:center';
   return head+`
@@ -6474,7 +6481,7 @@ function trainSessionHtml(){
     </div>
     ${last?`<div style="background:var(--s2);border:1px solid var(--b1);border-radius:8px;padding:9px 12px;font-size:13px;color:var(--tx2);margin-bottom:8px">Last time: <span style="font-family:'JetBrains Mono',monospace;color:var(--tx)">${escapeHtml(lastTimeText(last))}</span></div>`:''}
     ${nudge?`<div style="background:rgba(0,200,120,.1);border:1px solid var(--ok);color:var(--ok);border-radius:8px;padding:9px 12px;font-size:13px;margin-bottom:8px">📈 ${nudge.text}</div>`:''}
-    <div style="${grid};font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--tx3);font-weight:600;margin:12px 0 6px"><div>Set</div><div style="text-align:center">kg</div><div style="text-align:center">Reps</div><div></div></div>
+    <div style="${grid};font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--tx3);font-weight:600;margin:12px 0 6px"><div>Set</div><div style="text-align:center">${timed?'kg if any':'kg'}</div><div style="text-align:center">${timed?'Seconds':'Reps'}</div><div></div></div>
     ${rows.map((r,i)=>`<div style="${grid};margin-bottom:8px">
       <div class="set-num">S${i+1}</div>
       <input class="set-inp" type="number" inputmode="decimal" step=".5" placeholder="${kgHint(i)}" value="${escapeHtml(r.w)}" oninput="trainSetInput(${ei},${i},'w',this.value)" style="padding:10px 8px;font-size:15px">
@@ -6674,6 +6681,8 @@ function renderMealLog(){
   const el=document.getElementById('meallog-content');
   if(!userMealPlan?.meals)return;
   const t=userMealPlan.meals.daily_targets||{};
+  // During a social event's lead-up (and on the day) the target is the event's, as on the dashboard
+  const eventCals=getTodayEventCalories();
 
   // Work out which week of the rotation we are in based on plan creation date
   // Fall back to week 1 if creation date is unavailable
@@ -6689,7 +6698,8 @@ function renderMealLog(){
   }
   const today=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][new Date().getDay()];
   const todaySlots=rotation?.[weekIndex]?.days?.[today]||{};
-  const todayMealNames=Object.values(todaySlots).filter(Boolean);
+  // In day order - never Object.values: the new database stores the slots re-sorted (breakfast came last)
+  const todayMealNames=SHOP_SLOTS.map(s=>todaySlots[s]).filter(Boolean);
 
   // Build recipe lookup from library
   const recipeMap={};
@@ -6705,7 +6715,7 @@ function renderMealLog(){
   mealLogPlannedToday=todayMealNames.length?new Set(allMeals.map(m=>m.name)).size:null;
 
   let html=`<div class="stats-grid">
-    <div class="stat"><div class="stat-v">${t.calories||0}</div><div class="stat-l">Target kcal</div></div>
+    <div class="stat"><div class="stat-v">${eventCals||t.calories||0}</div><div class="stat-l">${eventCals?(isEventDay()?'Event day kcal':'Kcal (event banking)'):'Target kcal'}</div></div>
     <div class="stat"><div class="stat-v">${t.protein||0}g</div><div class="stat-l">Protein</div></div>
     <div class="stat"><div class="stat-v">${t.carbs||0}g</div><div class="stat-l">Carbs</div></div>
     <div class="stat"><div class="stat-v">${t.fats||0}g</div><div class="stat-l">Fats</div></div>
@@ -9065,6 +9075,27 @@ function getActiveEvent(){
   })||null;
 }
 
+// Calls off a planned event: the normal calorie target is back from today
+async function cancelEvent(){
+  const ev=activeEvent;
+  if(!ev)return;
+  if(!confirm(`Cancel "${ev.event_name}"? Your normal calorie target comes back from today.`))return;
+  showLoad('Saving','Cancelling your event...');
+  try{
+    const sd=await dbGet('social_events');
+    const ri=(sd.values||[]).findIndex(r=>String(r[0])===String(ev.event_id)&&r[1]===CU.user_id);
+    if(ri<0)throw new Error('Event not found');
+    const row=[...sd.values[ri]];
+    while(row.length<11)row.push('');
+    row[10]='cancelled';
+    await dbUpdate('social_events',ri+1,row);
+    ev.status='cancelled';
+    activeEvent=getActiveEvent();
+    hideLoad();
+    renderDashboard();renderMealLog();
+  }catch(e){hideLoad();alert('Error cancelling the event: '+e.message);}
+}
+
 function isEventDay(){
   if(!activeEvent)return false;
   const today=new Date();
@@ -10189,8 +10220,13 @@ function compCardHtml(c){
     lines.push(`<div style="font-size:13px;margin:6px 0">${myM?'You':escapeHtml(nameOf(c.created_by))} vs <strong>${them}</strong></div>`);
   }
   let actions='';
+  // A head to head that ran out before the other person accepted: nobody can win it, it can only be closed
+  const neverAccepted=c.type==='h2h'&&acceptByOf(c)<=new Date()&&mem.some(m=>!m.accepted);
   if(c.status==='active'){
-    if(myM&&!myM.accepted){
+    if(neverAccepted){
+      lines.push(`<div style="font-size:12px;color:var(--tx3);margin-top:6px">${myM&&!myM.accepted?'This ran out before you accepted it.':'Time ran out before it was accepted - nobody wins.'}</div>`);
+      if(myM&&!myM.accepted)actions+=btn('Remove it','declineComp');
+    }else if(myM&&!myM.accepted){
       actions+=btn('Accept ✓','acceptComp')+btn('Say no','declineComp');
     }else if(myM){
       if(entry){
@@ -10200,7 +10236,7 @@ function compCardHtml(c){
       }else lines.push(`<div style="font-size:12px;color:var(--tx3);margin-top:6px">Worked out from the logs when the time is up.</div>`);
       if(ended)actions+=btn('Finish and see who won','settleComp');
     }
-    if(c.created_by===me&&!compResults.some(r=>r.competition_id===c.id))actions+=btn('Cancel challenge','cancelComp');
+    if(c.created_by===me&&!compResults.some(r=>r.competition_id===c.id))actions+=btn(neverAccepted?'Close it':'Cancel challenge','cancelComp');
   }else if(c.status==='disputed'){
     lines.push(`<div style="font-size:12px;color:var(--warn);margin-top:6px">Disputed - waiting for the admin to decide.</div>`);
     for(const m of mem){const r=res(m.user_id);if(r)lines.push(compResultHtml(c,r,m.user_id===me));}
@@ -10222,6 +10258,9 @@ function compCardHtml(c){
       <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:900;color:var(--ac)">${c.points_value} pts</div>
     </div>${actions}</div>`;
 }
+// The last moment an invite can be accepted (the same rule as the database, 027): the end of the
+// challenge, or for a one-session challenge (which ends as soon as it is made) 7 days after it was made
+function acceptByOf(c){return c.length==='session'?new Date(new Date(c.created_at).getTime()+7*864e5):new Date(c.ends_at);}
 function renderCompete(){
   const ruleEl=document.getElementById('compete-rule');if(ruleEl)ruleEl.textContent=seasonRuleText();
   renderCompeteLeaderboard();
