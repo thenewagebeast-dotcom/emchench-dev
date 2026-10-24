@@ -1368,7 +1368,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='24 Oct supplements v2';
+const APP_BUILD='24 Oct supplements v3';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -7405,8 +7405,11 @@ function renderSupps(){
 // free = what the label says it is free from, d = diet it suits (vegan / vegetarian / pescatarian / any),
 // fit = how good a choice it is from the label (clean label, dose, testing). Never a product with yohimbine,
 // synephrine (bitter orange) or a similar stim, ginkgo, or high-dose niacin. Allergy groups match ALLERGY_GROUP.
-// Every caffeinated pre-workout is a full mix (caffeine plus citrulline and beta-alanine - user decision 24 Oct
-// 2026); starter:true = a lighter one (125-200 mg) offered separately to anyone new to pre-workouts.
+// Pre-workouts (user decisions 24 Oct 2026): citrulline 6 g or more a serving (citrulline malate counts - "6 g
+// of citrulline malate will be fine for most"; under 5 g is under-dosed), beta-alanine a bonus not a must, caffeine
+// 250-350 mg for the main ones; starter:true = a lighter one (about 200 mg) for anyone new to pre-workouts.
+// cit = citrulline mg, pure = L-citrulline (not malate). herbs:true also covers huperzine A and naringin (medicine
+// interactions). Never: PEA-type stims (phenethylamine, N-phenethyl dimethylamine), isopropylnorsynephrine, kanna.
 const SUPP_PRODUCTS=[
   {card:'Creatine Monohydrate',n:'Reflex Creapure Creatine',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/reflex-creapure-250/2374',d:'vegan',c:[],may:null,free:[],fit:3,why:'Creapure - the tested pure form'},
   {card:'Creatine Monohydrate',n:'Applied Nutrition Creatine Monohydrate',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/applied-nutrition-creatine-monohydrate-250g/167984',d:'vegan',c:[],may:['dairy','soy','eggs','fish','gluten'],free:[],fit:2},
@@ -7417,16 +7420,18 @@ const SUPP_PRODUCTS=[
   {card:'Plant-Based Protein',n:'Nuzest Clean Lean Protein (pea)',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/nuzest-clean-lean-protein-1000g/151158',d:'vegan',c:[],may:null,free:['gluten','dairy','soy'],fit:3},
   {card:'Plant-Based Protein',n:'Sunwarrior Warrior Blend (pea and hemp)',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/sunwarrior-protein-warrior-blend-750g/208161',d:'vegan',c:[],may:null,free:['soy','gluten','dairy'],fit:3},
   {card:'Plant-Based Protein',n:'Pulsin Pea Protein Isolate',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/pulsin-pea-protein-isolate-1000g/29053',d:'vegan',c:[],may:['soy','nuts','dairy'],free:[],fit:2},
-  {card:'Pre-Workout',n:'Animal Fury',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/animal-fury-30-servings/129985',d:'any',c:[],may:['dairy','soy','eggs','nuts','fish','shellfish','gluten'],free:[],caff:350,fit:2},
-  {card:'Pre-Workout',n:'Ghost Legend V4',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/ghost-legend-v4-30-servings/440574',d:'vegan',c:[],may:null,free:['soy','gluten'],caff:300,herbs:true,fit:2},
-  {card:'Pre-Workout',n:'Applied Nutrition ABE',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/applied-nutrition-abe-375g/407851',d:'any',c:[],may:null,free:[],caff:250,creatine:true,fit:2},
-  {card:'Pre-Workout',n:'SCI-MX XPLODE',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/sci-mx-xplode-pre-workout-300g/326895',d:'vegan',c:[],may:null,free:[],caff:250,herbs:true,fit:2},
-  // Lighter ones for anyone new to pre-workouts - still the full mix (citrulline, beta-alanine), less caffeine
-  {card:'Pre-Workout',starter:true,n:'USN B4 Bomb',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/usn-b4-bomb-300g-new-formula/252133',d:'vegan',c:[],may:null,free:[],caff:200,creatine:true,herbs:true,fit:2},
-  {card:'Pre-Workout',starter:true,n:'Optimum Nutrition Gold Standard Pre-Workout',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/optimum-nutrition-gold-standard-pre-workout-30-servings-new-formula/248410',d:'any',c:[],may:['dairy','gluten','eggs','soy','nuts'],free:[],caff:175,creatine:true,fit:2},
-  {card:'Pre-Workout',starter:true,n:'Reflex Pre-Workout',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/reflex-pre-workout-30-servings/104959',d:'vegetarian',c:[],may:['dairy','eggs','gluten','soy'],free:[],caff:125,fit:1},
-  {card:'Caffeine-Free Pre-Workout',n:'Applied Nutrition Pump 3G Zero',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/applied-nutrition-pump-3g-zero/205382',d:'any',c:[],may:null,free:[],creatine:true,fit:2},
-  {card:'Caffeine-Free Pre-Workout',n:'Bulk Dope Caffeine Free',shop:'Bulk',u:'https://www.bulk.com/uk/products/dope-pre-workout-caffeine-free/bble-docf',d:'vegan',c:[],may:['dairy','soy','gluten','sesame'],free:[],creatine:true,salt:true,fit:2},
+  {card:'Pre-Workout',n:'Animal Fury',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/animal-fury-30-servings/129985',d:'any',c:[],may:['dairy','soy','eggs','nuts','fish','shellfish','gluten'],free:[],caff:350,cit:6000,fit:2},
+  {card:'Pre-Workout',n:'Murdered Out Insidious',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/murdered-out-insidious-463g/330923',d:'any',c:[],may:null,free:[],caff:350,cit:6000,fit:2},
+  {card:'Pre-Workout',n:'Ghost Legend V4',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/ghost-legend-v4-30-servings/440574',d:'vegan',c:[],may:null,free:['soy','gluten'],caff:300,cit:6000,pure:true,herbs:true,fit:3},
+  {card:'Pre-Workout',n:'Redcon1 Total War',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/redcon1-total-war-30-servings/172648',d:'any',c:[],may:null,free:[],caff:320,cit:6000,herbs:true,fit:2},
+  {card:'Pre-Workout',n:'Kaged Pre-Kaged',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/kaged-muscle-pre-kaged-638g/139025',d:'any',c:['nuts'],may:null,free:[],caff:274,cit:6500,pure:true,fit:3},
+  {card:'Pre-Workout',n:'SCI-MX XPLODE',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/sci-mx-xplode-pre-workout-300g/326895',d:'vegan',c:[],may:null,free:[],caff:250,cit:6000,herbs:true,fit:2},
+  // Lighter ones for anyone new to pre-workouts - the same citrulline, less caffeine
+  {card:'Pre-Workout',starter:true,n:'Optimum Nutrition Platinum Pre-Workout',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/optimum-nutrition-platinum-pre-workout-20-servings/410347',d:'any',c:[],may:null,free:[],caff:200,cit:6000,pure:true,fit:3},
+  {card:'Pre-Workout',starter:true,n:'Protein Dynamix Dynamo',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/protein-dynamix-dynamo-200g/222780',d:'any',c:[],may:null,free:[],caff:200,cit:10000,creatine:true,fit:2},
+  {card:'Pre-Workout',starter:true,n:'USN B4 Bomb',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/usn-b4-bomb-300g-new-formula/252133',d:'vegan',c:[],may:null,free:[],caff:200,cit:6000,creatine:true,herbs:true,fit:2},
+  {card:'Caffeine-Free Pre-Workout',n:'Scitec Hot Blood Infinity No-Stim',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/scitec-hot-blood-infinity-no-stim-350g/481741',d:'any',c:[],may:['dairy','eggs','gluten','soy','nuts','fish','shellfish'],free:[],cit:8000,pure:true,creatine:true,fit:3},
+  {card:'Caffeine-Free Pre-Workout',n:'Per4m PUMP Stim Free',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/per4m-pump-pre-workout-495g/456672',d:'any',c:[],may:['nuts','dairy','eggs','soy','fish'],free:[],cit:10000,pure:true,herbs:true,salt:true,fit:2},
   {card:'Vitamin D3',n:'Together Health Vitamin D3 1,000 IU (vegan, from lichen)',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/together-vegan-vitamin-d3-food-supplement-30-capsules/243017',d:'vegan',c:[],may:null,free:['gluten','dairy','soy'],iu:1000,fit:3},
   {card:'Vitamin D3',n:'Lamberts Vegan Vitamin D3 1,000 IU',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/lamberts-vegan-vitamin-d3-1000-iu-90-capsules/240122',d:'vegan',c:[],may:null,free:[],iu:1000,fit:2},
   {card:'Vitamin D3',n:'Solgar Vitamin D3 1,000 IU tablets',shop:'Dolphin',u:'https://www.dolphinfitness.co.uk/en/solgar-vitamin-d3-1000-iu-90-tablets/46881',d:'vegetarian',c:[],may:null,free:['gluten','dairy','soy'],iu:1000,fit:2},
@@ -7475,8 +7480,8 @@ function suppCandidates(card,u){
       if(p.may===null&&!p.free.includes(g))check.push(SUPP_ALLERGY_WORD[g]);
     }
     if(hide)continue;
-    // Herbal extras (ginseng, bacopa and the like): not with medicines, blood thinners, heart, blood pressure or thyroid notes
-    if(p.herbs&&(onMeds||['warfarin','anticoag','bleeding','heart','bp','thyroidMeds','hyperthyroid'].some(k=>f.has(k))))continue;
+    // Herbal extras (ginseng, bacopa, huperzine A, naringin and the like): not with medicines, blood thinners, heart, blood pressure or thyroid notes
+    if(p.herbs&&(onMeds||['warfarin','anticoag','bleeding','heart','bp','thyroidMeds','hyperthyroid','epilepsy'].some(k=>f.has(k))))continue;
     if(p.salt&&(f.has('lithium')||f.has('kidney')||f.has('bp')||f.has('heart')))continue;
     if(p.caff&&p.caff>caffMax)continue;
     out.push({...p,check,score:p.fit-(p.caff&&!p.starter?Math.abs(p.caff-caffTarget)/100:0)-check.length*0.5});
@@ -7492,7 +7497,7 @@ function suppProductsHtml(card){
   if(!CU||userRegion()==='us')return'';
   const list=suppProducts(card,CU),starter=suppStarter(card,CU);
   if(!list.length&&!starter)return'';
-  const extra=p=>[p.caff?p.caff+' mg caffeine':'',p.creatine?'has creatine':''].filter(Boolean).join(', ');
+  const extra=p=>[p.caff?p.caff+' mg caffeine':'',p.cit?(p.cit/1000)+' g '+(p.pure?'L-citrulline':'citrulline malate'):'',p.creatine?'has creatine':''].filter(Boolean).join(', ');
   const line=p=>`<div style="font-size:12px;margin-bottom:3px">e.g. <a href="${escapeHtml(p.u)}" target="_blank" rel="noopener" style="color:var(--ac)">${escapeHtml(p.n)}</a> <span style="color:var(--tx3)">(${escapeHtml(p.shop)}${extra(p)?', '+escapeHtml(extra(p)):''})</span>${p.check.length?`<div style="font-size:11px;color:var(--warn)">The label does not say about ${escapeHtml(p.check.join(', '))} - check the label and ingredients before you buy.</div>`:''}</div>`;
   return`<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--b1)">
     ${list.length?`<div style="font-size:12px;color:var(--tx2);margin-bottom:4px">Examples that fit your diet and allergies:</div>${list.map(line).join('')}`:''}
