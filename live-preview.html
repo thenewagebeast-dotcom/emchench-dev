@@ -5487,11 +5487,15 @@ function recipeBeforeHtml(meal){
 const BRAND_LIST_CHECKED='23 Oct 2026';
 const BRAND_LIST=[
   {type:'Soya mince',find:/(?<!dried\s)\b(soya|soy|plant[- ]based|meat[- ]free|vegan|veggie)\s+mince\b|\bvegemince\b/i,own:true,brands:[
-    {n:"THIS Isn't Beef",c:['soy','gluten']},{n:"Linda McCartney's Vegemince",c:['soy','gluten']},{n:'Vivera',c:['soy','gluten']},{n:'Meatless Farm',c:['soy','gluten']}]},
+    {n:"THIS Isn't Beef",c:['soy','gluten']},{n:"Linda McCartney's Vegemince",c:['soy','gluten']},{n:'Vivera',c:['soy','gluten']},{n:'Meatless Farm',c:['soy','gluten']},
+    // Seen at Iceland 24 Oct 2026; label: textured soya protein, "Contains: Soya" - no gluten
+    {n:'The No Meat Company No Meat Mince',c:['soy']}]},
   {type:'Quorn',find:/\b(quorn|mycoprotein)\b/i,brands:[
     {n:'Quorn Vegan Pieces',c:['gluten']},{n:'Quorn Vegetarian Mince or Chicken Style Pieces',c:['eggs','gluten']}]},
   {type:'Plant-based chicken pieces',find:/\b(vegan|plant[- ]based|meat[- ]free|no[- ]chicken|vegetarian)\s+(chicken[- ]style\s+|chicken\s+)?(pieces|chunks|strips)\b|\bchicken[- ]style pieces\b|\bvegan chicken\b|\bplant[- ]based chicken\b/i,own:true,brands:[
-    {n:"THIS Isn't Chicken",c:['soy','gluten']},{n:'Vivera',c:['soy','gluten']},{n:'Richmond No Chicken',c:['soy','gluten']},{n:'Squeaky Bean',c:['soy','gluten']},{n:"Linda McCartney's Vegan Shredded Chicken",c:['soy','gluten']}]},
+    {n:"THIS Isn't Chicken",c:['soy','gluten']},{n:'Vivera',c:['soy','gluten']},{n:'Richmond No Chicken',c:['soy','gluten']},{n:'Squeaky Bean',c:['soy','gluten']},{n:"Linda McCartney's Vegan Shredded Chicken",c:['soy','gluten']},
+    // Seen at Iceland 24 Oct 2026; label: soya protein concentrate, "Contains: Soya" - no gluten
+    {n:'Oumph! Garlic & Herb Pieces',c:['soy']}]},
   {type:'Seitan',find:/\bseitan\b/i,brands:[{n:'The Tofoo Co. Original Seitan',c:['gluten']}]},
   {type:'Silken tofu',find:/\bsilken\s+tofu\b/i,brands:[{n:'Yutaka',c:['soy']},{n:'Clearspring',c:['soy']},{n:'Morinaga Mori-Nu',c:['soy']},{n:'The Tofoo Co. Silken',c:['soy']}]},
   {type:'Tofu',find:/(?<!silken\s)\btofu\b/i,own:true,brands:[{n:'The Tofoo Co.',c:['soy']},{n:'Cauldron',c:['soy']},{n:'Clearspring Organic',c:['soy']}]},
