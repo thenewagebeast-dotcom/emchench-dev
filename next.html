@@ -10251,7 +10251,8 @@ function compCardHtml(c){
     const txt=!w.length?(c.type==='solo'?'Goal not reached this time.':'No winner.'):w.includes(me)?`🏆 You won! +${c.points_value} pts`:`🏆 ${w.map(id=>escapeHtml(nameOf(id))).join(' and ')} won`;
     lines.push(`<div style="font-size:12px;margin-top:6px">${txt}${w.length>1?' (a tie)':''}</div>`);
   }else lines.push(`<div style="font-size:12px;color:var(--tx3);margin-top:6px">Cancelled</div>`);
-  const when=c.status==='active'?(ended?'Time is up':'Ends '+fmtTime(c.ends_at)):'';
+  // A one-session challenge ends as soon as it is made - "Time is up" would read as if it were over
+  const when=c.status==='active'?(c.length==='session'?'One session':ended?'Time is up':'Ends '+fmtTime(c.ends_at)):'';
   return`<div class="comp-card">
     <div class="comp-hd"><div class="comp-title">${escapeHtml(c.challenge)}</div><span class="ctype ${c.type==='h2h'?'ctype-h2h':'ctype-solo'}">${c.type==='h2h'?'Head to Head':'Solo'}</span></div>
     ${lines.join('')}
