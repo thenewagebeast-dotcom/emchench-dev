@@ -1617,7 +1617,7 @@ function formatRapportContext(history){
   };
   const lines=[];
   for(const round of history){
-    const roundLabel=round.round===1?'From onboarding':`From before Month ${round.round}`;
+    const roundLabel=round.round===1?'From onboarding':`From before ${monthLabel(round.round)}`;
     for(const [key,val] of Object.entries(round.answers)){
       if(val&&labels[key])lines.push(`${roundLabel} - ${labels[key]}: ${val}`);
     }
@@ -2143,11 +2143,11 @@ const msgTemplates={
     'Mix of Everything':'Target updated to {cals} kcal. Confirmed and locked in.'
   },
   planReadyAssessment:{
-    'Tough Love':'Week 1 is your assessment week. Do not max out - be honest. Weeks 2-5 get built from what you actually do.',
-    'Gentle Encouragement':'Your plan is ready! Week 1 is a gentle assessment week - just be honest with yourself. Weeks 2-5 will be built around your real results.',
-    'Humour':'Plan ready! Week 1 is assessment week - resist the urge to be a hero. Weeks 2-5 are built from your actual numbers, not your ego.',
-    'Science Facts':'Plan ready. Week 1 establishes baseline data at sub-maximal effort. Weeks 2-5 are algorithmically built from your logged results.',
-    'Mix of Everything':'Week 1 is your assessment week. Go through the sessions honestly - not maxing out. Your weeks 2-5 will be built from your real results.'
+    'Tough Love':'This is your test week. Be honest on every set. Once every test session is logged, generate Month 1 - it is built from what you actually lift.',
+    'Gentle Encouragement':'Your plan is ready! This is your test week - just be honest with yourself. Once every test session is logged, generate Month 1 and it will be built around your real results.',
+    'Humour':'Plan ready! This is test week - resist the urge to be a hero. Log every test session, then generate Month 1, built from your actual numbers, not your ego.',
+    'Science Facts':'Plan ready. The test week establishes your baseline. Once every test session is logged, Month 1 is generated from your recorded results.',
+    'Mix of Everything':'This is your test week. Go through the sessions honestly. Once every test session is logged, generate Month 1 - it will be built from your real results.'
   },
   nutritionUpdated:{
     'Tough Love':'Target adjusted to {cals} kcal based on 3 weeks of real data. No guessing - just what actually happened.',
@@ -2199,11 +2199,11 @@ const msgTemplates={
     'Mix of Everything':'Your plan has been permanently updated. Good adapting!'
   },
   assessmentComplete:{
-    'Tough Love':'Baseline lifts recorded. Month 2 gets built from real numbers now, not guesses. Generate when ready.',
-    'Gentle Encouragement':'All your baseline lifts are recorded! Well done getting through assessment week. Your Month 2 programme will be built around your real results.',
-    'Humour':'Assessment complete. Your baseline lifts are locked in - no more excuses about what you "could probably lift". Generate Month 2 when ready.',
-    'Science Facts':'Baseline data captured across all tested movement patterns. Month 2 programming will derive working weights from these figures.',
-    'Mix of Everything':'All your baseline lifts are recorded. Your Month 2 programme will be built from these numbers. Generate your next plan when ready.'
+    'Tough Love':'Baseline lifts recorded. Month 1 gets built from real numbers now, not guesses. Generate when ready.',
+    'Gentle Encouragement':'All your baseline lifts are recorded! Well done getting through your test week. Your Month 1 programme will be built around your real results.',
+    'Humour':'Test week complete. Your baseline lifts are locked in - no more excuses about what you "could probably lift". Generate Month 1 when ready.',
+    'Science Facts':'Baseline data captured across all tested movement patterns. Month 1 programming will derive working weights from these figures.',
+    'Mix of Everything':'All your baseline lifts are recorded. Your Month 1 programme will be built from these numbers. Generate it when ready.'
   },
   deloadCheck:{
     'Tough Love':'4 solid weeks in. A lighter week means half the sets and a bit less weight, so your body catches up with the work. Feeling strong? Not yet. Beaten up? Take it. Be honest.',
@@ -3835,7 +3835,7 @@ async function generatePlan(){
     isGenerating=false;
 
     renderDashboard();renderMealPlan();renderTrainingPlan();renderSupps();genHowToGuide();
-    postAutoWall(`⚡ ${CU.username} just generated their Month ${monthNumber} plan. The work begins NOW.`,'plan');
+    postAutoWall(`⚡ ${CU.username} just generated their ${monthLabel(monthNumber)} plan. The work begins NOW.`,'plan');
 
     if(useAssessment){
       celebrateMsg('planReadyAssessment','💪','Plan Ready!');
@@ -4731,7 +4731,7 @@ function buildMealNamesPrompt(changeLevel='fresh', monthNumber=1, progressionCon
   const mt=getMealTargets();
   const batchPref=u.batch_cooking||'mix';
   const snackStyle=u.snack_style||'both';
-  const monthNote=monthNumber>1?`This is Month ${monthNumber} of the programme. The user has real logged data now. Adjust meal variety and calorie targets based on the changeLevel parameter.`:'Month 1 - building from profile data.';
+  const monthNote=monthNumber>1?`This is ${monthLabel(monthNumber)} of the programme. The user has real logged data now. Adjust meal variety and calorie targets based on the changeLevel parameter.`:'Month 1 - building from profile data.';
   // Build prior meal names list so AI knows what to avoid repeating if user wants variety
   const priorMeals=userMealPlan?.meals?.meals
     ?Object.values(userMealPlan.meals.meals).flat().map(m=>m.name).filter(Boolean).join(', ')
@@ -4894,7 +4894,7 @@ function buildRotationPrompt(mealNames, monthNumber=1, progressionContext='', us
   const hasSnack3=midSnacks>=3;
   const eveningNames=(mealNames.evening_snacks||[]).concat(mealNames.protein_desserts||[]);
   const monthNote=monthNumber>1
-    ?`This is Month ${monthNumber} of the programme. The user has been following this plan for ${monthNumber-1} month${monthNumber-1>1?'s':''} already. Increase meal variety compared to Month 1 - introduce different flavour profiles and cooking methods where possible while still using only the exact meal names listed above. Do not repeat the same weekly pattern from Month 1.`
+    ?`This is ${monthLabel(monthNumber)} of the programme. ${hadTestWeek()&&monthNumber===2?'The user has just finished their test week.':`The user has been following this plan for ${monthNumber-1} month${monthNumber-1>1?'s':''} already.`} Increase meal variety compared to the last plan - introduce different flavour profiles and cooking methods where possible while still using only the exact meal names listed above. Do not repeat the same weekly pattern as the last plan.`
     :'Month 1 - build the rotation from the meal names listed above.';
   const batchPref=u.batch_cooking||'mix';
   const batchDays=u.batch_days||'All week - cook once eat all week';
@@ -4954,6 +4954,14 @@ ${weekBlocks.join(',\n')}
 Fill every day completely. Evening slot required every day.`;
 }
 
+// The name of plan number n (24 Oct 2026, user: "month 1"). Someone who opted for the test week at
+// sign-up has it as plan 1, so plan 1 is "Test week" and plan 2 "Month 1". baseline_type is set only at sign-up.
+function hadTestWeek(){return CU?.baseline_type==='Assessment Week (Recommended)';}
+function monthLabel(n){
+  n=parseInt(n)||1;
+  if(!hadTestWeek())return'Month '+n;
+  return n<=1?'Test week':'Month '+(n-1);
+}
 // Last plan's training, for the next month's plan (TRAINING-STYLE-SPEC-2026-10-24.md section 6): per
 // exercise the best set in the first and last week it was logged, sessions logged, the average session
 // rating and early stops. Read from this plan's logs; '' when there are none.
@@ -5022,7 +5030,7 @@ function buildTrainingPrompt(useAssessment, monthNumber=1, useRealBaseline=false
       baselineLines=CU.known_numbers.split(' | ').map(s=>s.trim()).filter(Boolean).join('\n');
     }
     baselineBlock=`BASELINE DATA - REAL MEASURED NUMBERS FROM ASSESSMENT WEEK:
-This is Month ${monthNumber} of the programme. The following 1RM estimates were calculated from the user's actual Set 5 weights during assessment week using the Epley formula (weight x 1.0667). These are real numbers, not estimates from profile stats. Build all working weights, progression targets, and set/rep schemes directly from these numbers.
+This is ${monthLabel(monthNumber)} of the programme. The following 1RM estimates were calculated from the user's actual Set 5 weights during assessment week using the Epley formula (weight x 1.0667). These are real numbers, not estimates from profile stats. Build all working weights, progression targets, and set/rep schemes directly from these numbers.
 
 ${baselineLines}
 
@@ -5039,7 +5047,7 @@ Build working weights from these numbers at 70-75% for Week 1.`;
   }
 
   const monthContext=monthNumber>1
-    ?`\nPROGRAMME MONTH: This is Month ${monthNumber} of a progressive programme. ${hasRealBaseline?'Real assessment data is provided above - use it as the foundation for all loading decisions.':'Build on the previous month.'}`+trainingLogSummary()
+    ?`\nPROGRAMME MONTH: This is ${monthLabel(monthNumber)} of a progressive programme. ${hasRealBaseline?'Real assessment data is provided above - use it as the foundation for all loading decisions.':'Build on the previous month.'}`+trainingLogSummary()
     :'';
 
   // Weekly sets per muscle, effort and lighter weeks (TRAINING-STYLE-SPEC-2026-10-24.md). Targets, not rigid
@@ -7262,7 +7270,7 @@ function progressPlanLine(){
   const tp=userTrainingPlan,t=userMealPlan?.meals?.daily_targets;
   const sessions=tp?.sessions||[];
   const parts=[];
-  if(sessions.length)parts.push(`Training plan (Month ${tp.month||1}): ${sessions.length} sessions a week - ${sessions.map(x=>x.name).join(', ')}.`);
+  if(sessions.length)parts.push(`Training plan (${monthLabel(tp.month||1)}): ${sessions.length} sessions a week - ${sessions.map(x=>x.name).join(', ')}.`);
   else parts.push('No training plan yet.');
   if(t?.calories)parts.push(`Daily food target: ${t.calories} kcal, ${t.protein}g protein.`);
   return parts.join(' ');
@@ -11267,9 +11275,9 @@ function genAlertHtml(){
     <div style="margin-top:8px"><button class="btn btn-sm" onclick="openGenPicker()">Choose my meals</button></div></div>`;
   if(g.step==='building'||g.step==='finishing'){
     const progress=g.step==='finishing'?'Putting it all together...':(g.total?`${g.done||0} of ${g.total} parts done.`:'');
-    return`<div class="alert alert-info">⚙️ Your Month ${g.month||''} plan is being built. ${progress}<br><span style="font-size:12px;color:var(--tx2)">You can close the app - it will be ready in about 5 minutes and waiting here when you come back.</span></div>`;
+    return`<div class="alert alert-info">⚙️ Your ${g.month?monthLabel(g.month):'new'} plan is being built. ${progress}<br><span style="font-size:12px;color:var(--tx2)">You can close the app - it will be ready in about 5 minutes and waiting here when you come back.</span></div>`;
   }
-  if(g.step==='done'&&recent&&!genSeen(g.run_id))return`<div class="alert alert-ok">✅ Your new Month ${g.month||''} plan is ready!
+  if(g.step==='done'&&recent&&!genSeen(g.run_id))return`<div class="alert alert-ok">✅ Your new ${g.month?monthLabel(g.month):''} plan is ready!
     <div style="margin-top:8px"><button class="btn btn-sm" onclick="genSeeNewPlan()">See my plan</button></div></div>`;
   if(g.step==='failed'&&recent&&!genSeen(g.run_id))return`<div class="alert alert-warn">⚠️ Your plan could not be built this time. It does not count toward your 2 plans a week - tap Generate Plan to try again.
     <div style="font-size:11px;color:var(--tx3);margin-top:4px">${escapeHtml(g.error||'')}</div>
