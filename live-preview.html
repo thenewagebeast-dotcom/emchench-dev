@@ -1373,7 +1373,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='24 Oct hard cheeses';
+const APP_BUILD='24 Oct no failed plans';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -2992,7 +2992,7 @@ function renderDashboard(){
   if(!userMealPlan&&!userTrainingPlan)aEl.innerHTML+=`<div class="alert alert-info">👋 Welcome! Hit "Generate Plan" to get your personalised programme.</div>`;
   aEl.innerHTML+=genAlertHtml();
   aEl.innerHTML+=seasonAlertHtml();
-  if(userMealPlan)aEl.innerHTML+=planRuleWarningHtml();
+  if(userMealPlan)aEl.innerHTML+=planRuleWarningHtml()+mealSwapNoteHtml();
   if(CU.goal_updated==='true')aEl.innerHTML+=`<div class="alert alert-warn">⚡ Goal updated. Generate a new plan to reflect your changes.</div>`;
   // 4 week progress photo prompt. Remembered on this device, so it shows once
   // every 4 weeks (counted from sign-up, then from the last dismissal) and stays
@@ -4033,6 +4033,12 @@ function planRuleChanges(){
   if(normAllergies(b.allergies).toLowerCase()!==normAllergies(CU.allergies).toLowerCase())out.push(`your allergies are now ${normAllergies(CU.allergies)||'none'} (this plan was written for ${normAllergies(b.allergies)||'none'})`);
   return out;
 }
+// Meals the server swapped because they could not be made to fit the food rules (NO-FAILED-PLANS-SPEC part 3)
+function mealSwapNoteHtml(){
+  const sw=userMealPlan?.meals?.swaps;
+  if(!Array.isArray(sw)||!sw.length)return'';
+  return`<div class="alert alert-info" style="font-size:13px">${sw.map(x=>`We swapped <strong>${escapeHtml(x.from)}</strong> for <strong>${escapeHtml(x.to)}</strong> - it could not be made to fit your food rules.`).join('<br>')}</div>`;
+}
 function planRuleWarningHtml(){
   const changes=planRuleChanges();
   if(!changes.length)return'';
@@ -4112,6 +4118,17 @@ function lactoseRuleText(rules){
   if(!lactoseOnlyOf(rules))return'';
   const ok=okHardCheeses(rules).map(([n])=>n);
   return'LACTOSE INTOLERANCE (not a milk allergy): use dairy only where it is labelled lactose-free'+(ok.length?' - these aged hard cheeses are also fine for this person: '+ok.join(', ')+' (no other cheese)':' - no regular cheese, not even hard cheese')+'.';
+}
+// The checker's own food rules in words, for every recipe-writing instruction (NO-FAILED-PLANS-SPEC part 1):
+// the words that count as each ruled-out group, and how a safe swap has to be written to pass. Built from
+// bannedGroups, so the AI and the checker can never disagree.
+function foodRuleWordsText(rules){
+  const groups=Object.values(bannedGroups(rules||{}));
+  if(!groups.length)return'';
+  return'\nFOOD RULE WORDS - required: every recipe is checked word by word against this person\'s rules. Never use these, not even in a note such as "no cheese" or "instead of butter" - leave them out entirely:\n'
+    +groups.map(g=>'- '+g.label+': '+g.words.join(', ')).join('\n')
+    +'\nA swap only passes when its name says so every time it appears - e.g. "dairy-free yoghurt", "lactose-free milk", "sesame-free bread", "gluten-free pasta", "egg-free mayonnaise", "nut-free pesto", "soya mince".'
+    +(lactoseRuleText(rules)?'\n'+lactoseRuleText(rules):'');
 }
 // The food groups named in one allergy as typed (24 Oct 2026 audit S1): "milk allergy", "cow's milk",
 // "lactose intolerant", "peanut allergy", "coeliac". lactose:true when it is lactose intolerance only.
@@ -4291,7 +4308,7 @@ function mealRecipePrompt(intro,cat){
   const target=catTargetMap[cat]||mt.lunch;
   return`You are E=MC-HENCH. ${intro}
 Macro targets: ${target.calories}kcal, ${target.protein}g protein, ${target.carbs}g carbs, ${target.fats}g fats (within 5%).
-Dietary: ${CU.dietary_type||'any'}. Allergies: ${CU.allergies?.join(',')||'none'}. Dislikes: ${CU.ingredient_dislikes||'none'}.${getHealthDietLine()}
+Dietary: ${CU.dietary_type||'any'}. Allergies: ${CU.allergies?.join(',')||'none'}. Dislikes: ${CU.ingredient_dislikes||'none'}.${getHealthDietLine()}${foodRuleWordsText(currentFoodRules())}
 Kitchen: ${CU.kitchen||'standard'}. Cook time max: ${CU.cook_time||'20 mins'}. Budget: ${CU.weekly_budget||'mid-range'}. Spice: ${CU.spice_level||'Medium'}.${regionPromptLine()}
 INGREDIENT QUANTITY RULE - required: every ingredient, including every spice and seasoning, must have a specific measured quantity (tsp, tbsp, g, ml, or a count) - never list a spice by name alone with no amount. This applies even when several vegetables get blended or cooked together - give each one its own quantity, not one shared total for the group.
 INGREDIENT STATE RULE - required: list every ingredient in its raw, as-purchased state, and make sure the method actually cooks or prepares every ingredient listed - never list something as an ingredient without a step that uses it.
@@ -4826,7 +4843,7 @@ Dietary:${u.dietary_type}, Allergies:${u.allergies?.join(',')||'none'}
 Cuisines:${u.flavour_prefs?.join(',')||'varied'}, Spice level:${u.spice_level||'Medium'}
 Snack style:${snackStyle}, Meals/day:${mt.mpd} (${mt.snackCount} snack slot${mt.snackCount!==1?'s':''}), Batch pref:${batchPref}
 INGREDIENT DISLIKES - NEVER use these: ${u.ingredient_dislikes||'none'}
-FOOD LOVES - incorporate these where possible: ${u.food_loves||'varied'}${getHealthDietLine()}
+FOOD LOVES - incorporate these where possible: ${u.food_loves||'varied'}${getHealthDietLine()}${foodRuleWordsText(currentFoodRules())}
 ${MEAL_NAME_RULE}
 COOKING TIME PER SLOT - strictly enforce these limits in every recipe:
 ${u.cook_time||'Breakfast:Under 5 mins, Lunch:5 to 15 mins, Dinner:15 to 30 mins, Snacks:Grab and go - no prep'}
@@ -4851,9 +4868,9 @@ ${changeInstruction}${getDislikedMealsLine()}
 
 Return ONLY this JSON:
 \`\`\`json
-{"daily_targets":{"calories":${mt.daily.calories},"protein":${mt.daily.protein},"carbs":${mt.daily.carbs},"fats":${mt.daily.fats},"water_ml":${mt.daily.water_ml}},"meals":{"breakfasts":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":""}],"snacks":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":""}],"lunches":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":""}],"dinners":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":""}],"evening_snacks":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":""}]}}
+{"daily_targets":{"calories":${mt.daily.calories},"protein":${mt.daily.protein},"carbs":${mt.daily.carbs},"fats":${mt.daily.fats},"water_ml":${mt.daily.water_ml}},"meals":{"breakfasts":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":"","key_ingredients":[""]}],"snacks":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":"","key_ingredients":[""]}],"lunches":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":"","key_ingredients":[""]}],"dinners":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":"","key_ingredients":[""]}],"evening_snacks":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":"","key_ingredients":[""]}]}}
 \`\`\`
-Exactly 10 per category including evening_snacks. Macros per meal must match per-meal targets above. Varied, creative, matched to user preferences. Names only - no ingredients, no method.
+Exactly 10 per category including evening_snacks. Macros per meal must match per-meal targets above. Varied, creative, matched to user preferences. Names only - no method. key_ingredients: the 3-8 ingredients that make the dish what it is, including any cheese or other dairy, nuts, seeds, sauces, breads or wraps - the recipe is built from these, so they must follow every food rule above.
 VARIETY - required: within each category spread the 10 options evenly across the user's chosen cuisines, use at least 4 different main proteins, and never offer two options that are basically the same dish. Fill in cuisine (one of the user's cuisines) and main_protein (the single main protein source) for every option.`;}
 
 function buildExtraNamesPrompt(){
@@ -4862,13 +4879,13 @@ function buildExtraNamesPrompt(){
   const goal=u.goal||'maintain';
   const wantsBulking=goal==='bulk'||goal==='strength';
   const wantsLowCal=goal==='cut'||goal==='endurance';
-  const ns=`{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":""}`;
+  const ns=`{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":"","key_ingredients":[""]}`;
   return`Generate 10 extra meal name options per category. Names, macros, difficulty and prep time ONLY - no recipes.
 
 USER: ${u.username}, goal:${goal}, dietary:${u.dietary_type}, allergies:${u.allergies?.join(',')||'none'}
 Cuisines:${u.flavour_prefs?.join(',')||'varied'}, Spice level:${u.spice_level||'Medium'}
 INGREDIENT DISLIKES - NEVER use these: ${u.ingredient_dislikes||'none'}
-FOOD LOVES - incorporate these where possible: ${u.food_loves||''}${getHealthDietLine()}
+FOOD LOVES - incorporate these where possible: ${u.food_loves||''}${getHealthDietLine()}${foodRuleWordsText(currentFoodRules())}
 ${MEAL_NAME_RULE}
 COOKING TIME PER SLOT: ${u.cook_time||'Breakfast:Under 5 mins, Lunch:5 to 15 mins, Dinner:15 to 30 mins, Snacks:Grab and go - no prep'}. All recipes must fit within their slot's time limit.
 BUDGET: ${u.weekly_budget||'Mid-range'}. Budget = cheap staples only. No limit = premium fine.
@@ -4881,7 +4898,7 @@ Return ONLY this JSON:
 \`\`\`json
 {"protein_desserts":[${ns}]${wantsLowCal?`,"low_calorie_meals":[${ns}]`:''}${wantsBulking?`,"bulking_meals":[${ns}]`:''}}
 \`\`\`
-Exactly 10 per category. Macros must match targets above. Names only - no ingredients, no method.
+Exactly 10 per category. Macros must match targets above. key_ingredients: the 3-8 ingredients that make the dish what it is, including any cheese or other dairy, nuts, seeds, sauces, breads or wraps - they must follow every food rule above. Names only - no ingredients, no method.
 VARIETY - required: within each category spread the 10 options evenly across the user's chosen cuisines, use at least 4 different main proteins, and never offer two options that are basically the same dish. Fill in cuisine (one of the user's cuisines) and main_protein (the single main protein source) for every option.${getDislikedMealsLine()}`;}
 
 // ---- Recipe detail (Phase 4c, agreed 23 Oct 2026) - one source for every recipe the AI
@@ -4914,6 +4931,8 @@ function buildChosenRecipesPrompt(chosenMeals, batch){
   const cats={breakfasts:[],snacks:[],lunches:[],dinners:[],evening_snacks:[],protein_desserts:[],low_calorie_meals:[],bulking_meals:[]};
   for(const [cat,meals] of Object.entries(chosenMeals)){if(cats[cat]!==undefined)cats[cat]=meals.map(m=>m.name).filter(Boolean);}
   const allMeals=Object.entries(cats).filter(([,names])=>names.length).map(([cat,names])=>`${cat}: ${names.join(', ')}`).join('\n');
+  // What each meal is built around (its checked key ingredients, NO-FAILED-PLANS-SPEC part 0)
+  const built=Object.values(chosenMeals||{}).flat().filter(m=>m&&m.name&&Array.isArray(m.key_ingredients)&&m.key_ingredients.length).map(m=>`- ${m.name}: ${m.key_ingredients.join(', ')}`).join('\n');
   if(!allMeals.trim())return'{}';
   const sc=`{"name":"","bulk_cook":false,"batch_portions":1,"difficulty":"easy","servings":1,"calories":0,"protein":0,"carbs":0,"fats":0,"micronutrients":"","ingredients_uk":"","ingredients_us":"","method":[],${RECIPE_DETAIL_FIELDS},"prep_time_mins":0}`;
   const schemaKeys=Object.entries(cats).filter(([,names])=>names.length).map(([cat])=>`"${cat}":[${sc}]`).join(',');
@@ -4931,12 +4950,12 @@ DAILY TOTAL: ${mt.breakfast.calories} + (${mt.midSnacks}x${mt.snack.calories}) +
 
   return`Generate full recipes for ONLY these exact meal names:
 ${allMeals}
-
+${built?`BUILT AROUND - each meal's main ingredients, already checked against this person's food rules (keep to them, add nothing that breaks a rule):\n${built}\n`:''}
 USER: ${u.username}, dietary:${u.dietary_type}, allergies:${u.allergies?.join(',')||'none'}${regionPromptLine()}
 Kitchen:${u.kitchen||'standard'}, Air fryer:${hasAirFryer}, Batch pref:${batchPref}
 Spice level: ${u.spice_level||'Medium'} - calibrate all heat/spice to this level
 INGREDIENT DISLIKES - NEVER use these ingredients: ${u.ingredient_dislikes||'none'}
-FOOD LOVES - include these where it makes sense: ${u.food_loves||''}${getHealthDietLine()}
+FOOD LOVES - include these where it makes sense: ${u.food_loves||''}${getHealthDietLine()}${foodRuleWordsText(currentFoodRules())}
 COOKING TIME PER SLOT - hard limits per slot: ${u.cook_time||'Breakfast:Under 5 mins, Lunch:5 to 15 mins, Dinner:15 to 30 mins, Snacks:Grab and go - no prep'}. Match each recipe to its slot's limit. 'Batch cook it' means write a bulk recipe - see BATCH PORTION SIZING below for how many portions.
 LUNCH SITUATION: ${u.lunch_situation||'fridge and microwave at work'}. Lunches must work for this - if no fridge, all lunch recipes must be safe unrefrigerated for 4+ hours and clearly portable.
 BUDGET: ${u.weekly_budget||'Mid-range'}. Match ingredient quality and variety to this - budget means cheap staples, no limit means premium ingredients are fine.
@@ -5325,7 +5344,7 @@ function renderMealPlan(){
     <div class="stat"><div class="stat-v">${t.fats||0}g</div><div class="stat-l">Fats</div></div>
   </div>`;
 
-  html+=planRuleWarningHtml();
+  html+=planRuleWarningHtml()+mealSwapNoteHtml();
   if(portionScale()!==1){
     html+=`<div class="alert alert-info" style="margin-bottom:16px">⚖️ Your target has moved from ${planBaseCalories()} to ${t.calories} kcal since this plan was written, so every portion is shown at <strong>${Math.round(portionScale()*100)}%</strong>. Open any meal to see its resized amounts. Your next plan will be written at the new target.</div>`;
   }
