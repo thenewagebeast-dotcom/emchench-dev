@@ -679,7 +679,6 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
   <div class="tab" id="tab-supps">
     <div class="pg-title">Supplement Stack</div>
     <div class="pg-sub">Personalised to your plan and diet - food first, always</div>
-    <div class="alert alert-warn">A good diet covers most needs. These are suggested additions only - not medical advice.</div>
     <div id="supps-content"><div class="empty"><div class="empty-icon">💊</div><div class="empty-title">Generate Your Plan First</div><div class="empty-text">Supplement suggestions are based on your meal plan and goal</div></div></div>
   </div>
 
@@ -7237,8 +7236,9 @@ function supplementPlan(u){
     }else{
       const range=weight?'for you ('+Math.round(weight)+' kg) that is roughly '+Math.round(weight*3/10)*10+'-'+Math.round(weight*6/10)*10+' mg':'work it out from your weight';
       add({name:'Pre-Workout',reason:'Stimulant (caffeine) for energy and focus, plus "pump" ingredients like citrulline and beta-alanine. Most now combine both.',
-        when:'How much caffeine: research on performance uses about 3-6 mg per kg of body weight - '+range+'. Strong pre-workouts are usually 300-350 mg a serving. New to a product? Start with half a serving to see how you react.',
-        notes:['Your whole day: the safety guide for healthy adults is under 400 mg of caffeine a day from everything - a 350 mg pre-workout plus two coffees takes you well over. No caffeine within 6 hours of bed.',
+        when:'20-30 minutes before training, one serving.',
+        notes:['How much caffeine: research on performance uses about 3-6 mg per kg of body weight - '+range+'. Strong pre-workouts are usually 300-350 mg a serving. New to a product? Start with half a serving to see how you react.',
+          'Your whole day: the safety guide for healthy adults is under 400 mg of caffeine a day from everything - a 350 mg pre-workout plus two coffees takes you well over. No caffeine within 6 hours of bed.',
           'Creatine: many contain it - if yours does, skip the separate creatine.',
           'Extreme stims - yohimbine and synephrine (bitter orange): a stronger kick, but they can cause anxiety, cold sweats, shakes, a racing heart and high blood pressure, and have been linked to rare serious heart problems. Not for anyone with a heart, blood pressure or anxiety condition, or on medicines. Start low.']});
     }
