@@ -898,7 +898,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
         </div>
       </div>
       <div class="frow"><label class="flbl">Dietary Type</label><select class="fsel" id="ob-dietary"><option value="meat-eater">Meat Eater</option><option value="pescatarian">Pescatarian</option><option value="vegetarian">Vegetarian</option><option value="vegan">Vegan</option></select></div>
-      <div class="frow"><label class="flbl">Allergies / Intolerances</label><div class="pills" id="ob-allergies"><div class="pill" onclick="tpill(this)">Gluten</div><div class="pill" onclick="tpill(this)">Dairy</div><div class="pill" onclick="tpill(this)">Nuts</div><div class="pill" onclick="tpill(this)">Eggs</div><div class="pill" onclick="tpill(this)">Soy</div><div class="pill" onclick="tpill(this)">None</div></div><input class="finput" id="ob-allergies-other" style="margin-top:8px" placeholder="Anything else? e.g. shellfish, sesame, lactose intolerant"></div>
+      <div class="frow"><label class="flbl">Allergies / Intolerances</label><div class="pills" id="ob-allergies"><div class="pill" onclick="tpill(this)">Gluten</div><div class="pill" onclick="tpill(this)">Dairy</div><div class="pill" onclick="tpill(this)">Nuts</div><div class="pill" onclick="tpill(this)">Eggs</div><div class="pill" onclick="tpill(this)">Soy</div><div class="pill" onclick="tpill(this)">None</div></div><input class="finput" id="ob-allergies-other" style="margin-top:8px" placeholder="Anything else? e.g. shellfish, sesame, lactose intolerant"><div style="margin-top:10px"><div style="font-size:12px;color:var(--tx2);line-height:1.5;margin-bottom:6px">Lactose intolerant? These aged hard cheeses have almost no lactose and many people eat them fine. Tick only the ones that agree with you (or none).</div><div class="pills" id="ob-hardcheese"><div class="pill" data-cheese="Parmesan" onclick="tpill(this)">Parmesan</div><div class="pill" data-cheese="Grana Padano" onclick="tpill(this)">Grana Padano</div><div class="pill" data-cheese="Pecorino" onclick="tpill(this)">Pecorino</div><div class="pill" data-cheese="Mature Cheddar" onclick="tpill(this)">Mature Cheddar</div><div class="pill" data-cheese="Gruyère" onclick="tpill(this)">Gruyère</div><div class="pill" data-cheese="Comté" onclick="tpill(this)">Comté</div><div class="pill" data-cheese="Manchego" onclick="tpill(this)">Manchego</div><div class="pill" data-cheese="Emmental" onclick="tpill(this)">Emmental</div></div></div></div>
       <div class="frow">
         <label class="flbl">Ingredients You Dislike or Want to Avoid</label>
         <div class="pills" id="ob-dislikes" style="gap:6px">
@@ -1375,7 +1375,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='24 Oct sesame-free fix';
+const APP_BUILD='24 Oct hard cheeses';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -2088,11 +2088,19 @@ PROGRESSION RULE: ${lib.progression}`);
 // food rules and their own stated substitutes, not medical advice.
 function getHealthDietLine(){
   const h=(CU?.health_conditions||'').trim();
+  // Lactose intolerance and the hard cheeses they said are fine (24 Oct 2026)
+  const lac=CU?lactoseRuleText(currentFoodRules()):'';
+  if(lac)return(h?`\nDIETARY RESTRICTIONS FROM HEALTH CONDITIONS - leave out foods that conflict with these, and use the user's own stated substitutes where given: ${h}`:'')+'\n'+lac+getHealthDietLineMeds();
   // The medicines answer (24 Oct 2026, user decision: the meal and training AI see it too)
-  const m=medsText(CU);
-  const medLine=m?`\nMEDICINES THE USER TAKES - keep meals consistent with them (for example a steady amount of vitamin K foods with warfarin, no grapefruit with medicines it affects, low-tyramine foods with MAOIs) and never give medical advice: ${m}`:'';
+  const medLine=getHealthDietLineMeds();
   if(!h)return medLine;
   return `\nDIETARY RESTRICTIONS FROM HEALTH CONDITIONS - leave out foods that conflict with these, and use the user's own stated substitutes where given: ${h}`+medLine;
+}
+// The medicines line of getHealthDietLine
+function getHealthDietLineMeds(){
+  const m=medsText(CU);
+  const medLine=m?`\nMEDICINES THE USER TAKES - keep meals consistent with them (for example a steady amount of vitamin K foods with warfarin, no grapefruit with medicines it affects, low-tyramine foods with MAOIs) and never give medical advice: ${m}`:'';
+  return medLine;
 }
 
 function getMotMessage(){
@@ -4016,7 +4024,7 @@ function normAllergies(list){
   return(list||[]).map(x=>String(x).trim()).filter(x=>x&&x.toLowerCase()!=='none').sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1).join(', ');
 }
 function currentFoodRules(){
-  return{dietary_type:CU.dietary_type||'',allergies:[...(CU.allergies||[])],region:userRegion()};
+  return{dietary_type:CU.dietary_type||'',allergies:[...(CU.allergies||[])],region:userRegion(),hard_cheeses:[...(CU.hard_cheeses||[])]};
 }
 // A list of plain-text differences between the plan's rules and the profile now
 function planRuleChanges(){
@@ -4082,6 +4090,31 @@ const FOOD_GROUPS={
   sesame:{label:'sesame',words:['sesame','tahini','hummus','houmous'],safe:/sesame[- ]free/i}   // 'sesame-free' is not sesame (24 Oct 2026 test run)
 };
 const DIET_BANS={vegan:['meat','fish','dairy','eggs','honey'],vegetarian:['meat','fish'],pescatarian:['meat'],'meat-eater':[]};
+// Aged hard cheeses with almost no lactose. Someone lactose intolerant ticks the ones that agree with them
+// (user decision 24 Oct 2026: "let them say which ones are ok for them"); stored in profiles.hard_cheeses (036).
+const HARD_CHEESES=[
+  ['Parmesan',/\b(parmesan|parmigiano(?:[- ]reggiano)?)\b/i],
+  ['Grana Padano',/\bgrana padano\b/i],
+  ['Pecorino',/\bpecorino\b/i],
+  ['Mature Cheddar',/\b(mature|extra[- ]mature|vintage|aged)\s+cheddar\b/i],
+  ['Gruyère',/\bgruy[eè]re\b/i],
+  ['Comté',/\bcomt[eé]\b/i],
+  ['Manchego',/\bmanchego\b/i],
+  ['Emmental',/\bemmental\b/i]];
+// Lactose intolerance alone: lactose intolerant (typed or the word), no milk allergy, dairy not ruled out by the diet
+function lactoseOnlyOf(rules){
+  let lac=false,milk=false;
+  for(const raw of rules?.allergies||[]){const r=allergyGroupsOf(raw);if(r.lactose)lac=true;else if(r.groups.includes('dairy'))milk=true;}
+  return lac&&!milk&&!(DIET_BANS[String(rules?.dietary_type||'').toLowerCase()]||[]).includes('dairy');
+}
+// The ticked cheeses that are on the list
+function okHardCheeses(rules){const t=(rules?.hard_cheeses||[]).map(x=>String(x).toLowerCase());return HARD_CHEESES.filter(([n])=>t.includes(n.toLowerCase()));}
+// The lactose rule in words, for the AI (meal instructions and the AI food check); '' when it does not apply
+function lactoseRuleText(rules){
+  if(!lactoseOnlyOf(rules))return'';
+  const ok=okHardCheeses(rules).map(([n])=>n);
+  return'LACTOSE INTOLERANCE (not a milk allergy): use dairy only where it is labelled lactose-free'+(ok.length?' - these aged hard cheeses are also fine for this person: '+ok.join(', ')+' (no other cheese)':' - no regular cheese, not even hard cheese')+'.';
+}
 // The food groups named in one allergy as typed (24 Oct 2026 audit S1): "milk allergy", "cow's milk",
 // "lactose intolerant", "peanut allergy", "coeliac". lactose:true when it is lactose intolerance only.
 function allergyGroupsOf(raw){
@@ -4118,7 +4151,8 @@ function bannedGroups(rules){
   }
   // Lactose intolerance alone (no milk allergy, dairy not already out by the diet): dairy is out, but
   // products labelled lactose-free are fine (user decision 24 Oct 2026, F2)
-  if(lactoseOnly&&!milkAllergy&&!out.dairy)out.dairy={...FOOD_GROUPS.dairy,safe:new RegExp(FOOD_GROUPS.dairy.safe.source+'|lactose[- ]free','i'),lactoseFree:true};
+  // ...and any aged hard cheeses they ticked as fine for them
+  if(lactoseOnly&&!milkAllergy&&!out.dairy)out.dairy={...FOOD_GROUPS.dairy,safe:new RegExp([FOOD_GROUPS.dairy.safe.source,'lactose[- ]free',...okHardCheeses(rules).map(([,re])=>re.source)].join('|'),'i'),lactoseFree:true};
   return out;
 }
 // Groups ruled out now that were NOT ruled out when the plan was written
@@ -4148,7 +4182,7 @@ function wordFlagRecipe(recipe,groups){
   }
   return'';
 }
-function rulesKey(rules){return String(rules.dietary_type||'').toLowerCase()+'|'+normAllergies(rules.allergies).toLowerCase();}
+function rulesKey(rules){const hc=okHardCheeses(rules).map(([n])=>n.toLowerCase()).sort().join(',');return String(rules.dietary_type||'').toLowerCase()+'|'+normAllergies(rules.allergies).toLowerCase()+(hc?'|hc:'+hc:'');}
 // ---- food check engine end ----
 
 const PLAN_CATS=['breakfasts','snacks','lunches','dinners','evening_snacks','protein_desserts','low_calorie_meals','bulking_meals'];
@@ -4173,7 +4207,7 @@ const FOOD_CHECK_SYS='You are a careful food safety checker for a meal planning 
 function foodCheckPrompt(rules,recipes){
   return`Check each recipe below against this person's food rules.
 RULES NOW - Diet: ${rules.dietary_type||'not set'}. Allergies and intolerances: ${normAllergies(rules.allergies)||'none'}.
-${/lactose/i.test(normAllergies(rules.allergies))&&!/\b(milk|dairy)\b/i.test(normAllergies(rules.allergies))&&!/vegan/i.test(rules.dietary_type||'')?'Lactose intolerance only (no milk allergy): products labelled lactose-free are fine.\n':''}Decide whether ANY ingredient breaks a rule. Include hidden sources: pesto contains nuts and cheese, soy sauce contains gluten and soy, Worcestershire sauce contains fish, mayonnaise contains egg, stock and gravy often contain gluten, many protein powders contain milk. Be strict - if an ingredient commonly contains a ruled-out food and the recipe does not say a free-from version, flag it. Do not flag an ingredient that is clearly a free-from or plant-based version.
+${lactoseRuleText(rules)?lactoseRuleText(rules)+'\n':''}Decide whether ANY ingredient breaks a rule. Include hidden sources: pesto contains nuts and cheese, soy sauce contains gluten and soy, Worcestershire sauce contains fish, mayonnaise contains egg, stock and gravy often contain gluten, many protein powders contain milk. Be strict - if an ingredient commonly contains a ruled-out food and the recipe does not say a free-from version, flag it. Do not flag an ingredient that is clearly a free-from or plant-based version.
 RECIPES:
 ${recipes.map(({meal},i)=>`${i+1}. ${meal.name} :: ${String(meal.ingredients_uk||'').replace(/\s+/g,' ').slice(0,900)}`).join('\n')}
 Return ONLY this JSON, with one entry per recipe that breaks a rule and an empty list if none do:
@@ -8447,6 +8481,7 @@ function renderFoodSetupCard(){
       <div class="card-lbl">Food and Kit</div>
       <div class="frow"><label class="flbl">Dietary Type</label><select class="fsel" id="prof-dietary">${obOptionsHtml('ob-dietary',CU.dietary_type)}</select></div>
       <div class="frow"><label class="flbl">Allergies / Intolerances</label>${al.html}${other('prof-allergies-other',al.other,'Anything else? e.g. shellfish, sesame')}</div>
+      ${hardCheeseProfHtml()}
       <div class="alert alert-warn" style="font-size:12px">Keep these up to date. Every recipe we write follows them, so if an allergy is missing here we cannot leave that food out. A change does not rewrite the plan you already have - generate a new plan after changing your diet or allergies.</div>
       <div class="frow"><label class="flbl">Cuisine Preferences</label>${fl.html}</div>
       <div class="frow"><label class="flbl">Snack Style</label>${sn.html}</div>
@@ -8488,11 +8523,17 @@ async function saveFoodSetup(){
       stamped=true;
       await saveMealPlanJson();
     }
-    const patched=await patchUserRow(CU.user_id,{10:equipment.join(','),11:cardio.join(','),12:diet,13:allergies.join(','),14:flavours.join(','),15:region,26:kitchen.join(','),27:mpd,28:snack.join(',')},CU);
+    const patch={10:equipment.join(','),11:cardio.join(','),12:diet,13:allergies.join(','),14:flavours.join(','),15:region,26:kitchen.join(','),27:mpd,28:snack.join(',')};
+    // The hard cheeses that are fine for them (only builds with the question - supabase/036)
+    const hcEl=document.getElementById('prof-hardcheese');
+    const hardCheeses=hcEl?[...hcEl.querySelectorAll('.pill.on')].map(p=>p.dataset.cheese).filter(Boolean):null;
+    if(hardCheeses)patch.hard_cheeses=hardCheeses;
+    const patched=await patchUserRow(CU.user_id,patch,CU);
     if(!patched)throw new Error('your profile was not found. Please sign out and back in.');
     CU.equipment=equipment;CU.cardio_options=cardio;CU.dietary_type=diet;CU.allergies=allergies;
     CU.flavour_prefs=flavours;CU.ingredient_region=region;CU.kitchen=kitchen.join(',');
     CU.meals_per_day=mpd;CU.snack_style=snack.join(',');
+    if(hardCheeses)CU.hard_cheeses=hardCheeses;
     hideLoad();
     renderProfile();renderDashboard();
     if(userMealPlan)renderMealPlan();
@@ -10092,6 +10133,8 @@ const PROFILE_COLS={
   17:v=>({health_conditions:String(v||'')}),18:v=>({injuries:String(v||'')}),19:v=>({avoided_exercises:String(v||'')}),
   // Not a sheet column: the medicines answer (24 Oct 2026, supabase/032), saved by Edit Stats
   medicines:v=>({medicines:String(v||'').slice(0,1000)}),
+  // Not a sheet column: the aged hard cheeses that are fine for someone lactose intolerant (036)
+  hard_cheeses:v=>({hard_cheeses:(Array.isArray(v)?v:String(v||'').split(',')).map(x=>String(x).trim()).filter(Boolean).slice(0,12)}),
   23:v=>({avatar:v||'💪'}),24:v=>({water_target_ml:parseInt(v)||2000}),25:v=>({goal_updated:String(v).toLowerCase()==='true'}),
   26:v=>({kitchen:sbList(v)}),27:v=>({meals_per_day:v?String(v):null}),28:v=>({snack_style:sbList(v)}),
   29:v=>({mot_style:v||null}),30:v=>({baseline_type:v||null}),
@@ -10135,7 +10178,9 @@ function profileToCU(p,user){
     // What the app posts on the Wall for them (029); missing groups take the "share my wins" defaults
     wall_share:Object.assign({training:true,wins:true,plan:true,body:false,life:false},p.wall_share||{}),
     // Same sessions each week (the default) or a progressive block (034)
-    training_style:p.training_style==='block'?'block':'steady'
+    training_style:p.training_style==='block'?'block':'steady',
+    // Aged hard cheeses that are fine for them if lactose intolerant (036)
+    hard_cheeses:[...(p.hard_cheeses||[])]
   };
 }
 function friendlyDbError(error){
@@ -10600,6 +10645,14 @@ async function saveWallShare(el){
     CU.wall_share={...WALL_SHARE_WINS,...data.wall_share};
   }catch(e){alert('Could not save that: '+e.message);}
   const card=document.getElementById('wall-card');if(card)card.outerHTML=wallCardHtml();
+}
+
+// ---- Hard cheeses (24 Oct 2026, supabase/036): Profile > Food and Kit ----
+function hardCheeseProfHtml(){
+  const on=(CU?.hard_cheeses||[]).map(x=>String(x).toLowerCase());
+  return`<div class="frow"><label class="flbl">Lactose intolerant? Aged hard cheeses that are fine for you</label>
+    <div style="font-size:12px;color:var(--tx2);margin-bottom:6px;line-height:1.5">These have almost no lactose and many people who are lactose intolerant eat them fine. Tick only the ones that agree with you - leave them all unticked if you are not sure.</div>
+    <div class="pills" id="prof-hardcheese">${HARD_CHEESES.map(([n])=>`<div class="pill${on.includes(n.toLowerCase())?' on':''}" data-cheese="${escapeHtml(n)}" onclick="tpill(this)">${escapeHtml(n)}</div>`).join('')}</div></div>`;
 }
 
 // ---- Training style (24 Oct 2026, TRAINING-STYLE-SPEC-2026-10-24.md, supabase/034) ----
@@ -11547,7 +11600,9 @@ async function createUser(){
     const medicines=(document.getElementById('ob-medicines')?.value||'').trim().slice(0,1000);
     // Training style (034): same sessions each week unless they picked the progressive block
     const training_style=document.querySelector('#ob-style-pick .pill.on')?.dataset.style==='block'?'block':'steady';
-    const {data:p,error}=await sb.from('profiles').update({...sheetPatchToProfile(fields),wall_share,medicines,training_style}).eq('id',sbUser.id).select().maybeSingle();
+    // The aged hard cheeses they ticked as fine (036)
+    const hard_cheeses=[...document.querySelectorAll('#ob-hardcheese .pill.on')].map(p=>p.dataset.cheese).filter(Boolean);
+    const {data:p,error}=await sb.from('profiles').update({...sheetPatchToProfile(fields),wall_share,medicines,training_style,hard_cheeses}).eq('id',sbUser.id).select().maybeSingle();
     if(error)throw new Error(friendlyDbError(error));
     if(!p)throw new Error('Your profile could not be found. Please log out and back in.');
     clearOnboardingProgress();
