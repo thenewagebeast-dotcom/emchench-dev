@@ -998,6 +998,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
         </div>
       </div>
       <div class="frow"><label class="flbl">Health Conditions and the Swaps You Use</label><textarea class="ftarea" id="ob-health" placeholder="e.g. Type 2 diabetes - no added sugar, I use sweetener and wholegrain rice. High blood pressure - low salt. Or leave blank"></textarea><div class="alert alert-warn" style="margin-top:8px;margin-bottom:0;font-size:12px">Be honest and specific here. Your plan is built around what you tell us - if a condition is left out, we cannot leave out the foods or exercises that conflict with it, and the plan will not be right for you. This is not medical advice - check with your GP if you are unsure.</div></div>
+      <div class="frow"><label class="flbl">Any medicines you take? (optional)</label><textarea class="ftarea" id="ob-medicines" style="min-height:50px" maxlength="1000" placeholder="e.g. blood thinners, blood pressure tablets, lithium, levothyroxine. Or leave blank"></textarea><div style="font-size:12px;color:var(--tx3);margin-top:6px">Only used to keep your plan and supplement suggestions safe.</div></div>
       <div class="frow"><label class="flbl">Injuries</label><div class="pills" id="ob-injuries"><div class="pill" onclick="tpill(this)">Knee pain</div><div class="pill" onclick="tpill(this)">Lower back pain</div><div class="pill" onclick="tpill(this)">Shoulder issues</div><div class="pill" onclick="tpill(this)">Wrist issues</div><div class="pill" onclick="tpill(this)">Hip problems</div><div class="pill" onclick="tpill(this)">Ankle issues</div><div class="pill" onclick="tpill(this)">Neck pain</div><div class="pill" onclick="tpill(this)">None</div></div><textarea class="ftarea" id="ob-inj-detail" placeholder="Any extra detail on injuries..." style="margin-top:8px"></textarea></div>
       <div class="frow"><label class="flbl">Exercises to Avoid</label><textarea class="ftarea" id="ob-avoid" placeholder="e.g. No overhead pressing, no deep squats, hate burpees..."></textarea></div>
       <div style="display:flex;gap:10px"><button class="btn btn-ghost" onclick="obBack(3)">← Back</button><button class="btn" style="flex:1" onclick="obNext(3)">Continue →</button></div>
@@ -2079,8 +2080,11 @@ PROGRESSION RULE: ${lib.progression}`);
 // food rules and their own stated substitutes, not medical advice.
 function getHealthDietLine(){
   const h=(CU?.health_conditions||'').trim();
-  if(!h)return'';
-  return `\nDIETARY RESTRICTIONS FROM HEALTH CONDITIONS - leave out foods that conflict with these, and use the user's own stated substitutes where given: ${h}`;
+  // The medicines answer (24 Oct 2026, user decision: the meal and training AI see it too)
+  const m=(CU?.medicines||'').trim();
+  const medLine=m?`\nMEDICINES THE USER TAKES - keep meals consistent with them (for example a steady amount of vitamin K foods with warfarin, no grapefruit with medicines it affects, low-tyramine foods with MAOIs) and never give medical advice: ${m}`:'';
+  if(!h)return medLine;
+  return `\nDIETARY RESTRICTIONS FROM HEALTH CONDITIONS - leave out foods that conflict with these, and use the user's own stated substitutes where given: ${h}`+medLine;
 }
 
 function getMotMessage(){
@@ -5051,7 +5055,8 @@ Each ab session: 3-4 exercises, 3 sets each, 12-20 reps, 30 second rest. progres
   const equipText=(u.equipment||[]).join(',');
   const hasCables=equipText.includes('Full Commercial Gym')||/cable/i.test(equipText);
   const cableLine=hasCables?`\nCABLE PREFERENCE: this user has a cable machine. For isolation work (tricep kickbacks and pushdowns, flys, lateral raises, rear delt work, curls) prefer the cable version over dumbbells - it keeps constant tension and allows finer weight control. Injury and avoided-exercise rules always take priority over this preference.`:'';
-  const healthLine=(u.health_conditions||'').trim()?`\nHEALTH CONDITIONS - account for these and keep intensity and exercise selection conservative: ${u.health_conditions.trim()}`:'';
+  const healthLine=((u.health_conditions||'').trim()?`\nHEALTH CONDITIONS - account for these and keep intensity and exercise selection conservative: ${u.health_conditions.trim()}`:'')
+    +((u.medicines||'').trim()?`\nMEDICINES THE USER TAKES - account for these (for example beta-blockers keep the heart rate low, so judge effort by feel rather than heart rate) and never give medical advice: ${u.medicines.trim()}`:'');
 
   return`Generate 1-month training plan. JSON only. No meals.
 
@@ -7207,55 +7212,189 @@ function showHowToError(detail){
 // ============================================================
 // SUPPLEMENTS
 // ============================================================
-function renderSupps(){
-  const el=document.getElementById('supps-content');
-  if(!userMealPlan||!CU)return;
-  const goal=CU.goal||'maintain';
-  const dietary=CU.dietary_type||'meat-eater';
-  const dislikes=(CU.ingredient_dislikes||'').toLowerCase();
-  const loves=(CU.food_loves||'').toLowerCase();
-  const supps=[];
+// ---- supplements start ----
+// The Supplements tab (24 Oct 2026). Wording signed off in SUPPLEMENTS-TAB-WORDING-2026-10-24.md;
+// the health rules and their sources are in SUPPLEMENTS-AND-ICELAND-SPEC-2026-10-24.md section 5.
+// Reads diet, allergies, goal, age, weight, dislikes, the health conditions box and the medicines
+// answer. Never medical advice - every card says so. Checked by dev-seed/check-supplements.js.
+const HEALTH_KEYWORDS={
+  kidney:/\b(kidney (disease|failure|problems?|function|damage|transplant)|ckd|renal|dialysis)\b/i,
+  stones:/\b(kidney stones?|renal stones?)\b/i,
+  bp:/\b(high blood pressure|hypertension|blood pressure (tablets?|medicines?|meds|medication)|amlodipine|ramipril|lisinopril|losartan|candesartan|bisoprolol|atenolol|perindopril|doxazosin)\b/i,
+  heart:/\b(heart (condition|disease|problems?|failure|attack)|cardiac|arrhythmia|atrial fibrillation|af|palpitations|angina)\b/i,
+  anxiety:/\b(anxiety|anxious|panic)\b/i,
+  insomnia:/\b(insomnia|can'?t sleep|trouble sleeping)\b/i,
+  pregnancy:/\b(pregnan\w*|trying (for a baby|to conceive)|ivf)\b/i,
+  breastfeeding:/\bbreast[- ]?feeding\b/i,
+  epilepsy:/\b(epilep\w*|seizures?)\b/i,
+  lithium:/\b(lithium|bipolar)\b/i,
+  maoi:/\b(maois?|phenelzine|tranylcypromine|isocarboxazid|moclobemide)\b/i,
+  fluvoxamine:/\bfluvoxamine\b/i,
+  warfarin:/\bwarfarin\b/i,
+  anticoag:/\b(apixaban|rivaroxaban|edoxaban|dabigatran|clopidogrel|ticagrelor|aspirin|blood thinners?|anticoagulants?)\b/i,
+  bleeding:/\b(bleeding disorder|haemophilia|hemophilia|von willebrand)\b/i,
+  thyroidMeds:/\b(levothyroxine|thyroxine)\b/i,
+  ironOverload:/\b(haemochromatosis|hemochromatosis|iron overload)\b/i,
+  bloodCond:/\b(sickle cell|thalassa?emia|stomach ulcer|crohn'?s|colitis|ibd|stomach surgery|gastric bypass|bariatric)\b/i,
+  calcium:/\b(sarcoidosis|high calcium|hypercalca?emia|hyperparathyroidism)\b/i,
+  thiazide:/\b(thiazides?|bendroflumethiazide|indapamide|hydrochlorothiazide)\b/i,
+  digoxin:/\bdigoxin\b/i,
+  pku:/\b(pku|phenylketonuria)\b/i,
+  lactose:/\blactose\b/i,
+  liver:/\b(liver disease|cirrhosis|hepatitis|fatty liver)\b/i,
+  eating:/\b(eating disorder|anorexia|bulimia|binge eating)\b/i,
+  nitrates:/\b(gtn|nitrates?|isosorbide|sildenafil|tadalafil|viagra|cialis)\b/i
+};
+// Which of the keys above appear in a piece of text (the health box, medicines and allergies together)
+function healthFlags(text){
+  const t=String(text||'');
+  return new Set(Object.keys(HEALTH_KEYWORDS).filter(k=>HEALTH_KEYWORDS[k].test(t)));
+}
+const SUPP_NOT_ADVICE='Not medical advice.';
+// The cards for one person: {cards:[{name,reason,when,notes:[]}], leftOut:[{name,why}], topNote}
+function supplementPlan(u){
+  const allergyText=(u.allergies||[]).join(', ');
+  const f=healthFlags([u.health_conditions,u.medicines,allergyText].join(' \n '));
+  const diet=String(u.dietary_type||'').toLowerCase();
+  const vegan=diet==='vegan',veggie=vegan||diet==='vegetarian',pesc=diet==='pescatarian';
+  const al=allergyText.toLowerCase();
+  const dairyA=/\b(dairy|milk)\b/.test(al),soyA=/\bsoy/.test(al),fishA=/\bfish\b/.test(al),shellA=/shellfish|crustacean|mollusc/.test(al);
+  const age=parseInt(u.age)||30,minor=age<18,weight=parseFloat(u.weight_kg)||0;
+  const dislikes=String(u.ingredient_dislikes||'').toLowerCase();
+  const avoidsFish=/\b(fish|salmon|tuna|seafood|shellfish|mackerel|sardines?)\b/.test(dislikes);
+  const lowMeat=veggie||/\b(red meat|beef|lamb|pork)\b/.test(dislikes);
+  const has=k=>f.has(k);
+  const kidney=has('kidney'),preg=has('pregnancy'),bf=has('breastfeeding'),eating=has('eating');
+  const cards=[],leftOut=[];
+  const why=(...ks)=>{const names={kidney:'your kidney notes',pregnancy:'pregnancy',breastfeeding:'breastfeeding',eating:'your health notes',maoi:'your medicines',minor:'your age',ironOverload:'your iron overload notes'};return ks.map(k=>names[k]).filter(Boolean).join(', ');};
+  const add=c=>{c.notes=c.notes||[];cards.push(c);return c;};
 
-  // Creatine - universal. Note if they dislike red meat (common creatine source)
-  const lowMeat=dietary==='vegan'||dietary==='vegetarian'||dislikes.includes('lamb')||dislikes.includes('pork');
-  supps.push({name:'Creatine Monohydrate',reason:'Increases phosphocreatine stores, improving strength output and power. One of the most extensively researched performance supplements available.',when:'5g daily. Timing relative to your session does not significantly affect results - consistency matters far more than timing. Take it at the same time each day to build the habit. Post-workout with your protein is a convenient default.',note:lowMeat?'Your diet is lower in red meat which is the main dietary source of creatine. Supplementing is particularly valuable for you - full saturation unlikely from food alone.':'Most people get some from red meat. Supplementing ensures full saturation regardless of diet.'});
+  // Creatine
+  if(kidney||minor||preg||eating)leftOut.push({name:'Creatine',why:why(kidney&&'kidney',minor&&'minor',preg&&'pregnancy',eating&&'eating')});
+  else{
+    const c=add({name:'Creatine Monohydrate',reason:'One of the most researched supplements for strength and power.',
+      when:'3-5 g a day, any time - taking it every day matters more than when. With your post-workout meal is an easy habit.'});
+    if(lowMeat)c.notes.push('You eat little or no red meat, the main food source of creatine, so a supplement makes more difference for you.');
+    if(bf||has('stones')||has('liver'))c.when='Speak to your GP or pharmacist first (your '+[bf&&'breastfeeding',has('stones')&&'kidney stone',has('liver')&&'liver'].filter(Boolean).join(' and ')+' notes).';
+  }
 
-  // Whey protein - check if they dislike dairy before recommending
-  const dairyFree=dislikes.includes('dairy')||(CU.allergies||[]).some(a=>String(a).toLowerCase().includes('dairy'));
-  if(goal==='cut'||goal==='maintain'){
-    if(dairyFree){
-      supps.push({name:'Plant-Based Protein Powder',reason:'Convenient protein source to reliably hit daily targets. Pea and rice blends match whey in muscle-building research when leucine content is sufficient.',when:'20-40g within 2 hours post-workout for maximum muscle protein synthesis benefit. Also effective any time of day as a top-up when meals are falling short of your protein target. Do not rely on it as a meal replacement.',note:'You have a dairy preference or allergy noted - plant-based blends (pea + rice) are the best alternative.'});
+  // Protein (every goal)
+  if(!eating){
+    if(minor){
+      add({name:'Protein',reason:'Most teenagers get enough protein from meals - a shake is only a top-up when meals fall short.',when:'Food first. If you use one, 20-30 g after training.'});
     }else{
-      supps.push({name:'Whey Protein',reason:'Fast-digesting protein that drives muscle protein synthesis. Convenient way to reliably hit daily protein targets.',when:'20-40g within 2 hours post-workout is the evidence-backed window for peak muscle protein synthesis. Also effective any time as a top-up. Whey before bed is less optimal than casein - use it around training.',note:'Check your meal plan first. If food is already covering your protein target on training days, this is optional not essential.'});
+      const plant=vegan||dairyA||has('lactose');
+      const c=add({name:plant?'Plant-Based Protein':'Whey Protein',
+        reason:plant?'Pea and rice blends work as well as whey for building muscle when the leucine is high enough.':'A convenient way to reach your daily protein target.',
+        when:'20-40 g after training, or any time your meals fall short. Not a meal replacement.'});
+      c.notes.push('Check your meal plan first - if food already covers your target, this is optional.');
+      c.notes.push('Avoid "diet" or "lean" blends unless you have read the label - they often add green tea extract (caffeine), CLA and soy.');
+      if(soyA)c.notes.push(plant?'Choose pea, rice or fava - many plant proteins contain soya.':'Most whey contains soy lecithin - check the label.');
+      if(plant&&dairyA)c.notes.push('Many plant proteins are made where milk is handled - choose one that says free from dairy.');
+      if(plant&&has('lactose')&&!dairyA&&!vegan)c.notes.push('Whey can contain lactose - a plant protein is the safe choice.');
+      if(has('pku'))c.notes.push('Choose one without aspartame - look for "contains a source of phenylalanine" on the label.');
+      if(has('stones'))c.notes.push('A very high protein diet can make kidney stones more likely to come back - check with your GP.');
+      if(kidney)c.when='Speak to your kidney team first - extra protein is often not needed with kidney disease.';
+      else if(preg)c.when='Speak to your GP or midwife first.';
+      if(bf)c.notes.push('Check with your GP or health visitor first while breastfeeding.');
     }
   }
 
-  // Pre-workout - check if they are sensitive to caffeine or spice (no strong link but flag if they avoid stimulants)
-  if(goal==='bulk'||goal==='strength'){
-    supps.push({name:'Pre-Workout (Caffeine + Beta-Alanine)',reason:'Caffeine combined with beta-alanine improves training intensity and delays fatigue during sessions.',when:'20-30 minutes before training. Never within 6 hours of your intended sleep time - caffeine has a half-life of 5-6 hours, meaning half is still active 5 hours after taking it. Avoid becoming dependent - cycle off for 2 weeks every 2 months.',note:'Dolphin Fitness and Bulk stock good options. Start with half a serving to assess tolerance.'});
+  // Pre-workout (every goal)
+  const preOut=minor||preg||bf||has('maoi')||kidney||eating;
+  if(preOut)leftOut.push({name:'Pre-workout',why:why(minor&&'minor',preg&&'pregnancy',bf&&'breastfeeding',has('maoi')&&'maoi',kidney&&'kidney',eating&&'eating')});
+  else{
+    const gpFirst=has('bp')||has('heart')||has('nitrates');
+    const noCaffeine=gpFirst||has('anxiety')||has('insomnia')||has('epilepsy')||has('lithium')||has('fluvoxamine');
+    if(noCaffeine){
+      add({name:'Caffeine-Free Pre-Workout',reason:'Citrulline and beta-alanine without the stimulants - picked for you because of your health notes.',
+        when:gpFirst?'Speak to your GP or pharmacist first - citrulline and arginine can lower blood pressure, and some contain a lot of salt.':'20-30 minutes before training, one serving.',
+        notes:['Some contain creatine - if yours does, skip the separate creatine.','The tingling from beta-alanine is harmless.']});
+    }else{
+      const range=weight?'for you ('+Math.round(weight)+' kg) that is roughly '+Math.round(weight*3/10)*10+'-'+Math.round(weight*6/10)*10+' mg':'work it out from your weight';
+      add({name:'Pre-Workout',reason:'Stimulant (caffeine) for energy and focus, plus "pump" ingredients like citrulline and beta-alanine. Most now combine both.',
+        when:'How much caffeine: research on performance uses about 3-6 mg per kg of body weight - '+range+'. Strong pre-workouts are usually 300-350 mg a serving. New to a product? Start with half a serving to see how you react.',
+        notes:['Your whole day: the safety guide for healthy adults is under 400 mg of caffeine a day from everything - a 350 mg pre-workout plus two coffees takes you well over. No caffeine within 6 hours of bed.',
+          'Creatine: many contain it - if yours does, skip the separate creatine.',
+          'Extreme stims - yohimbine and synephrine (bitter orange): a stronger kick, but they can cause anxiety, cold sweats, shakes, a racing heart and high blood pressure, and have been linked to rare serious heart problems. Not for anyone with a heart, blood pressure or anxiety condition, or on medicines. Start low.']});
+    }
   }
 
-  if(dietary==='vegan'||dietary==='vegetarian'){
-    supps.push({name:'Vitamin B12',reason:'Critical for plant-based diets. B12 is found almost exclusively in animal products. Deficiency causes fatigue, nerve issues and anaemia.',when:'1000mcg daily with food. Take in the morning - B vitamins can interfere with sleep if taken late. Non-negotiable for vegans and vegetarians.',note:'This is not optional. Get your levels checked annually.'});
-    supps.push({name:'Omega-3 (Algae-based)',reason:'Plant-based EPA and DHA for joint health, inflammation reduction and cardiovascular support.',when:'Daily with your largest meal of the day. Fat-soluble - absorption is significantly improved when taken with food containing dietary fat. Algae-based works well for plant-based dieters.',note:'Fish oil is more bioavailable but algae-based is suitable for vegans and works well when taken consistently with food.'});
-  }else if(dislikes.includes('fish')||dislikes.includes('shellfish')||dislikes.includes('smoked fish')){
-    supps.push({name:'Omega-3 Fish Oil',reason:'EPA and DHA support joint health, inflammation reduction and cardiovascular function. Most people are deficient.',when:'1-2g EPA/DHA daily with your largest meal. Fat-soluble - always take with food for best absorption. Splitting the dose across two meals reduces the fish burp issue.',note:'You have fish marked as something you avoid in your meal plan. Supplementing covers the omega-3 gap without needing it in your diet.'});
+  // Vitamin D3 (everyone)
+  {
+    const low=preg||minor;
+    const c=add({name:'Vitamin D3',reason:'Most people in the UK need it from October to April.',
+      when:(low?'400 IU (10 mcg)':'1,000 IU (25 mcg)')+' a day with a meal that has some fat. Never more than 4,000 IU (100 mcg) a day from all supplements together, multivitamins included.'});
+    if(vegan)c.notes.push('Choose one labelled vegan (from lichen) - most D3 is made from sheep\'s wool.');
+    else if(diet==='vegetarian'||pesc)c.notes.push('Tablets or vegan capsules - many softgels use beef or fish gelatine.');
+    if(has('warfarin'))c.notes.push('Plain D3 only - never a D3 + K2 product while on warfarin.');
+    else if(has('anticoag'))c.notes.push('Tell your GP or pharmacist before adding a D3 + K2 product.');
+    const gp=[has('calcium')&&'calcium',has('stones')&&'kidney stone',has('thiazide')&&'water tablet',has('digoxin')&&'digoxin'].filter(Boolean);
+    if(gp.length)c.when='Speak to your GP first before taking vitamin D (your '+gp.join(' and ')+' notes).';
+    if(bf)c.notes.push('Check with your GP or health visitor first while breastfeeding.');
   }
 
-  supps.push({name:'Vitamin D3',reason:'UK deficiency is extremely common, especially October to April. Supports testosterone, immune function, bone density and mood.',when:'1000-4000 IU daily with your fattiest meal of the day. D3 is fat-soluble - absorption can drop by up to 30% when taken without dietary fat. Take at the same time as your omega-3 or any meal containing avocado, eggs, or oily fish.',note:'Your diet alone will not cover this in the UK. One of the few supplements almost everyone in Britain actually needs.'});
-
-  // Iron - flag for plant-based or if they avoid red meat
-  if((dietary==='vegan'||dietary==='vegetarian')&&(loves.includes('spinach')||loves.includes('lentil')||true)){
-    supps.push({name:'Iron (if blood test confirms deficiency)',reason:'Plant-based iron (non-haem) is absorbed at roughly a third of the rate of animal iron. Training increases demand further.',when:'As directed by a doctor based on blood test results only.',note:'Do not supplement iron without a confirmed deficiency - excess iron is harmful. Worth getting checked annually if plant-based.'});
+  // Vitamin B12 (vegan and vegetarian)
+  if(veggie&&!eating){
+    const c=add({name:'Vitamin B12',reason:'Found almost only in animal foods - essential if you eat little or none.',when:'1,000 mcg a day with food, in the morning.'});
+    if(preg)c.when='Speak to your GP or midwife first.';
   }
 
-  el.innerHTML=`<div class="alert alert-info" style="margin-bottom:16px">Your supplement recommendations are tailored to your goal, dietary type and food preferences. A well-structured meal plan covers most needs - supplements fill specific gaps only.</div>`+supps.map(s=>`<div class="supp-card">
-    <div class="supp-name">${s.name}</div>
-    <div class="supp-reason">${s.reason}</div>
-    <div style="font-size:12px;color:var(--ac);margin-bottom:4px">When: ${s.when}</div>
-    <div class="supp-note">${s.note}</div>
-  </div>`).join('');
+  // Omega-3
+  if(!eating){
+    const algae=veggie||fishA;
+    const fishOil=!algae&&avoidsFish;
+    if(algae||fishOil){
+      const c=add(algae?{name:'Algae Omega-3',reason:'Plant-based EPA and DHA for joints and heart health.',when:'Daily with your largest meal.'}
+        :{name:'Omega-3 Fish Oil',reason:'EPA and DHA for joints and heart health - covers the gap if you avoid fish in your meals.',when:'1-2 g EPA/DHA a day with your largest meal - never above the label dose.'});
+      if(fishOil&&pesc)c.notes.push('Many fish oil capsules use beef gelatine - check the capsule.');
+      if(shellA)c.notes.push('Never krill oil.');
+      if(preg)c.notes.push('Never cod liver oil while pregnant or trying for a baby - it is high in vitamin A.');
+      if(has('warfarin')||has('anticoag')||has('bleeding')||has('heart'))
+        c.when='Speak to your GP first - omega-3 can add to bleeding risk with blood thinners, and high doses can affect heart rhythm.';
+    }
+  }
+
+  // Iron (vegan and vegetarian)
+  if(veggie&&!eating){
+    if(has('ironOverload'))leftOut.push({name:'Iron',why:why('ironOverload')+' - avoid iron and vitamin C supplements'});
+    else{
+      const c=add({name:'Iron - only if a blood test shows you are low',reason:'Plant iron is absorbed less well, so it is worth a yearly check.',when:'Only as your GP advises.'});
+      if(has('bloodCond'))c.when='Speak to your GP first.';
+      if(has('thyroidMeds'))c.notes.push('Take it at a different time from levothyroxine - ask your pharmacist how far apart.');
+    }
+  }
+
+  // Folic acid (pregnant or trying)
+  if(preg)add({name:'Folic Acid',reason:'The NHS recommends it.',when:'400 mcg a day from before conception until 12 weeks.'});
+
+  // Kidney disease: no doses anywhere
+  if(kidney)for(const c of cards)c.when='Speak to your GP or kidney team before taking this - supplements can affect your kidneys or your medicines.';
+  // Pregnancy: only folic acid and vitamin D keep a dose
+  if(preg)for(const c of cards)if(!/^(Folic Acid|Vitamin D3)$/.test(c.name)&&!/^Speak to/.test(c.when))c.when='Speak to your GP or midwife first.';
+
+  return{cards,leftOut,flags:[...f],eatingNote:eating};
 }
+function renderSupps(){
+  const el=document.getElementById('supps-content');
+  if(!userMealPlan||!CU)return;
+  const p=supplementPlan(CU);
+  const card=s=>`<div class="supp-card">
+    <div class="supp-name">${escapeHtml(s.name)}</div>
+    <div class="supp-reason">${escapeHtml(s.reason)}</div>
+    <div style="font-size:12px;color:var(--ac);margin-bottom:4px">When: ${escapeHtml(s.when)}</div>
+    ${s.notes.map(n=>`<div class="supp-note">${escapeHtml(n)}</div>`).join('')}
+    <div style="font-size:11px;color:var(--tx3);margin-top:6px">${SUPP_NOT_ADVICE}</div>
+    ${suppProductsHtml(s)}
+  </div>`;
+  el.innerHTML=`<div class="alert alert-info" style="margin-bottom:16px">Your supplement suggestions are based on your goal, diet, allergies and health notes. A good meal plan covers most needs - these only fill gaps. If you have a health condition or take any medicines, check with your GP or pharmacist before starting anything new.</div>`
+    +(p.eatingNote?`<div class="alert alert-warn" style="margin-bottom:16px">Please speak to your GP or care team before starting any supplement.</div>`:'')
+    +p.cards.map(card).join('')
+    +(p.leftOut.length?`<div class="alert" style="margin-top:12px;font-size:13px"><strong>Left out for you:</strong> ${p.leftOut.map(x=>escapeHtml(x.name+' ('+x.why+')')).join(', ')}. These are left out to keep things safe - your GP or pharmacist can tell you if they are right for you.</div>`:'');
+}
+// Product examples under a card (part D) - none yet
+function suppProductsHtml(card){return'';}
+// ---- supplements end ----
 
 // ============================================================
 // COMPETE
@@ -7527,6 +7666,7 @@ function renderProfile(){
       <div class="frow"><label class="flbl">Injuries (update if changed)</label><textarea class="ftarea" id="prof-injuries" style="min-height:60px">${CU.injuries||''}</textarea></div>
       <div class="frow"><label class="flbl">Exercises to Avoid</label><textarea class="ftarea" id="prof-avoid" style="min-height:60px">${CU.avoided_exercises||''}</textarea></div>
       <div class="frow"><label class="flbl">Health Conditions and the Swaps You Use</label><textarea class="ftarea" id="prof-health" style="min-height:60px" placeholder="e.g. Type 2 diabetes - no added sugar, I use sweetener and wholegrain rice">${escapeHtml(CU.health_conditions||'')}</textarea><div class="alert alert-warn" style="margin-top:8px;margin-bottom:0;font-size:12px">Be honest and specific here. Your plan is built around what you tell us - if a condition is left out, we cannot leave out the foods or exercises that conflict with it, and the plan will not be right for you. This is not medical advice - check with your GP if you are unsure. Changes apply on your next plan generation.</div></div>
+      <div class="frow"><label class="flbl">Any medicines you take? (optional)</label><textarea class="ftarea" id="prof-medicines" style="min-height:50px" maxlength="1000" placeholder="e.g. blood thinners, blood pressure tablets, lithium, levothyroxine. Or leave blank">${escapeHtml(CU.medicines||'')}</textarea><div style="font-size:12px;color:var(--tx3);margin-top:6px">Only used to keep your plan and supplement suggestions safe.</div></div>
       <button class="btn btn-ghost btn-sm" onclick="saveStats()">Save Stats</button>
     </div>
 ${renderFoodSetupCard()}
@@ -7935,12 +8075,15 @@ async function saveStats(){
   const injuries=document.getElementById('prof-injuries')?.value;
   const avoid=document.getElementById('prof-avoid')?.value;
   const health=document.getElementById('prof-health')?.value;
+  // The medicines answer (24 Oct 2026) - only the new backend's builds have this box
+  const medicines=document.getElementById('prof-medicines')?.value;
   showLoad('Saving','Updating your stats...');
   const waterTarget=waterTargetFor(weight||CU.weight_kg);
   const patch={24:waterTarget};
   if(weight)patch[5]=weight;if(height)patch[6]=height;if(age)patch[3]=age;
   if(days)patch[9]=days;if(injuries!==undefined)patch[18]=injuries;if(avoid!==undefined)patch[19]=avoid;
   if(health!==undefined)patch[17]=health.trim();
+  if(medicines!==undefined)patch.medicines=medicines.trim().slice(0,1000);
   try{
     const patched=await patchUserRow(CU.user_id,patch,CU);
     if(patched){
@@ -7948,6 +8091,7 @@ async function saveStats(){
       CU.age=age||CU.age;CU.training_days=days||CU.training_days;
       CU.injuries=injuries;CU.avoided_exercises=avoid;CU.water_target_ml=waterTarget;
       if(health!==undefined)CU.health_conditions=health.trim();
+      if(medicines!==undefined)CU.medicines=medicines.trim().slice(0,1000);
     }
     hideLoad();celebrateMsg('statsUpdated','✅','Stats Updated!');
   }catch(e){hideLoad();alert('Error: '+e.message);}
@@ -9502,6 +9646,8 @@ const PROFILE_COLS={
   13:v=>({allergies:sbList(v)}),14:v=>({cuisines:sbList(v)}),
   15:v=>({region:['uk','us','both'].includes(String(v).toLowerCase())?String(v).toLowerCase():'uk'}),
   17:v=>({health_conditions:String(v||'')}),18:v=>({injuries:String(v||'')}),19:v=>({avoided_exercises:String(v||'')}),
+  // Not a sheet column: the medicines answer (24 Oct 2026, supabase/032), saved by Edit Stats
+  medicines:v=>({medicines:String(v||'').slice(0,1000)}),
   23:v=>({avatar:v||'💪'}),24:v=>({water_target_ml:parseInt(v)||2000}),25:v=>({goal_updated:String(v).toLowerCase()==='true'}),
   26:v=>({kitchen:sbList(v)}),27:v=>({meals_per_day:v?String(v):null}),28:v=>({snack_style:sbList(v)}),
   29:v=>({mot_style:v||null}),30:v=>({baseline_type:v||null}),
@@ -9525,7 +9671,7 @@ function profileToCU(p,user){
     goal:s(p.goal),experience:s(p.experience),training_days:s(p.training_days),
     equipment:[...(p.equipment||[])],cardio_options:[...(p.cardio_options||[])],dietary_type:s(p.dietary_type),
     allergies:[...(p.allergies||[])],flavour_prefs:[...(p.cuisines||[])],ingredient_region:p.region||'uk',created_at:p.created_at,
-    health_conditions:p.health_conditions||'',injuries:p.injuries||'',avoided_exercises:p.avoided_exercises||'',
+    health_conditions:p.health_conditions||'',medicines:p.medicines||'',injuries:p.injuries||'',avoided_exercises:p.avoided_exercises||'',
     // AI calls are blocked above until Phase 4. This only keeps the old "no key" checks from firing first.
     api_key:'backend-preview',
     plan_length:'3month',plan_type:'progressive',avatar:p.avatar||'💪',water_target_ml:p.water_target_ml||2000,
@@ -10919,7 +11065,9 @@ async function createUser(){
     const values=[uid,username,pin,age,sex,weight,height,goal,exp,days,equipment,cardio,dietary,allergies,flavours,region,new Date().toISOString(),health,injFull,avoid,apiKey,planLen,planType,obAvatar,waterTarget,'',kitchen,mealsPerDay,snackStyle,motStyle,baselineType,knownNums,'true',weighInDay,batchCooking,ingredientDislikes,foodLoves,spiceLevel,batchDays,cookTime,lunchSituation,weeklyBudget,occupation,trainTime,'',preferredDays,preferredAbDays];
     const fields={};values.forEach((v,i)=>{fields[i]=v;});
     const wall_share=wallPick==='share'?WALL_SHARE_WINS:WALL_SHARE_OFF;
-    const {data:p,error}=await sb.from('profiles').update({...sheetPatchToProfile(fields),wall_share}).eq('id',sbUser.id).select().maybeSingle();
+    // The optional medicines answer (supabase/032)
+    const medicines=(document.getElementById('ob-medicines')?.value||'').trim().slice(0,1000);
+    const {data:p,error}=await sb.from('profiles').update({...sheetPatchToProfile(fields),wall_share,medicines}).eq('id',sbUser.id).select().maybeSingle();
     if(error)throw new Error(friendlyDbError(error));
     if(!p)throw new Error('Your profile could not be found. Please log out and back in.');
     clearOnboardingProgress();
