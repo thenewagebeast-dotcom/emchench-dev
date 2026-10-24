@@ -4961,6 +4961,9 @@ Fill every day completely. Evening slot required every day.`;
 // rating and early stops. Read from this plan's logs; '' when there are none.
 function trainingLogSummary(){
   const pid=String(userTrainingPlan?.plan_id||'');
+  // After the test week the first full month is built from the test numbers (known_numbers) instead
+  const sess=userTrainingPlan?.sessions||[];
+  if(sess.length&&sess.every(s=>String(s?.name||'').toLowerCase().includes('assessment')))return'';
   const logs=(activityLogs?.workouts||[]).filter(w=>!w.cardio&&!w.extra&&w.plan===pid&&w.day);
   if(!pid||!logs.length)return'';
   // Weeks from the plan's start to the later of the last log and today, so missed weeks show
@@ -5142,9 +5145,9 @@ For every exercise: sets:5, reps:"12/8/5/3/3RM", reps_per_set:["12","8","5","3",
 Notes field for each assessment exercise: "Record every weight from every set. Your Week 2 programme builds from Set 5. Estimated 1RM = Set 5 weight x 1.0667 (Epley formula)."
 Session names: "Assessment - [focus area]" e.g. "Assessment - Upper Body Push", "Assessment - Lower Body".`:''}
 
-${volumeBlock}
+${useAssessment?`TEST WEEK: every session in this plan is an assessment session using the protocol above - the weekly sets per muscle and effort targets start with the first full month, which is built from these results. Across the week, test every main muscle at least once with exercises the user can safely do (injuries, avoided exercises and equipment first), and give every exercise its "muscle" field.`:`${volumeBlock}
 
-${effortBlock}
+${effortBlock}`}
 
 DOUBLE PROGRESSION MODEL - this is the progression system for all non-assessment weeks:
 Each exercise has a rep range (e.g. 10-12). When the user can complete the TOP of that rep range comfortably across all sets, the weight increases by the smallest sensible increment next session (typically 2.5kg for upper body, 5kg for lower body compounds). They then drop back to the bottom of the rep range with the new weight. If reps are not climbing after 2-3 sessions at the same weight, suggest a similar exercise in that exercise's notes if a plateau is likely.
