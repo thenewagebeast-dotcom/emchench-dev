@@ -1288,7 +1288,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='24 Oct training style';
+const APP_BUILD='24 Oct audit fixes';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -2004,7 +2004,7 @@ PROGRESSION RULE: ${lib.progression}`);
 function getHealthDietLine(){
   const h=(CU?.health_conditions||'').trim();
   // The medicines answer (24 Oct 2026, user decision: the meal and training AI see it too)
-  const m=(CU?.medicines||'').trim();
+  const m=medsText(CU);
   const medLine=m?`\nMEDICINES THE USER TAKES - keep meals consistent with them (for example a steady amount of vitamin K foods with warfarin, no grapefruit with medicines it affects, low-tyramine foods with MAOIs) and never give medical advice: ${m}`:'';
   if(!h)return medLine;
   return `\nDIETARY RESTRICTIONS FROM HEALTH CONDITIONS - leave out foods that conflict with these, and use the user's own stated substitutes where given: ${h}`+medLine;
@@ -2123,11 +2123,11 @@ const msgTemplates={
     'Mix of Everything':'All your baseline lifts are recorded. Your Month 1 programme will be built from these numbers. Generate it when ready.'
   },
   deloadCheck:{
-    'Tough Love':'4 solid weeks in. A lighter week means half the sets and a bit less weight, so your body catches up with the work. Feeling strong? Not yet. Beaten up? Take it. Be honest.',
-    'Gentle Encouragement':'Four weeks of steady training - brilliant consistency! A lighter week (half the sets, a little less weight) lets your body catch up with everything you have built. Feeling great? Keep going. Feeling worn down? Rest is progress too.',
-    'Humour':'4 weeks done. A lighter week halves your sets so your body can quietly repair itself without you getting in the way. Feeling like a superhero? Not yet. Feeling like a crumpled receipt? Take it.',
-    'Science Facts':'Four training weeks completed. A lighter week - half the sets, about 10-15% less load, easy effort - lets fatigue clear so the strength you have built can show. Performance still climbing? Continue. Stalling or feeling flat? Take it.',
-    'Mix of Everything':'Four weeks of training done. A lighter week - half the sets and a little less weight - lets your body catch up so you come back stronger. Sessions still feeling great? Not yet. Feeling beaten up or stalling? Take it. Your call.'
+    'Tough Love':'Several solid weeks in. A lighter week means half the sets and a bit less weight, so your body catches up with the work. Feeling strong? Not yet. Beaten up? Take it. Be honest.',
+    'Gentle Encouragement':'Weeks of steady training - brilliant consistency! A lighter week (half the sets, a little less weight) lets your body catch up with everything you have built. Feeling great? Keep going. Feeling worn down? Rest is progress too.',
+    'Humour':'Several weeks done. A lighter week halves your sets so your body can quietly repair itself without you getting in the way. Feeling like a superhero? Not yet. Feeling like a crumpled receipt? Take it.',
+    'Science Facts':'Several training weeks completed. A lighter week - half the sets, about 10-15% less load, easy effort - lets fatigue clear so the strength you have built can show. Performance still climbing? Continue. Stalling or feeling flat? Take it.',
+    'Mix of Everything':'Several weeks of training done. A lighter week - half the sets and a little less weight - lets your body catch up so you come back stronger. Sessions still feeling great? Not yet. Feeling beaten up or stalling? Take it. Your call.'
   },
   lighterEarly:{
     'Tough Love':'Your last two sessions were rough. Push through a third, or take a lighter week now and come back swinging. Your call.',
@@ -3728,10 +3728,10 @@ async function generatePlan(){
     showLoad('Saving Your Plan','Almost done...');
     setLoadBar(97);
     await dbAppend('meal_plans',writeMealsJson([mpId,CU.user_id,new Date().toISOString(),monthNumber,CU.goal,t.calories||0,t.protein||0,t.carbs||0,t.fats||0,'','',CU.plan_length,CU.plan_type],JSON.stringify(fullRecipes||{})));
-    await dbAppend('training_plans',[tpId,CU.user_id,new Date().toISOString(),monthNumber,CU.goal,CU.experience,CU.equipment?.join(',')||'',CU.training_days,JSON.stringify(trainingPlan?.sessions||[]),JSON.stringify(trainingPlan?.cardio_sessions||[]),trainingPlan?.notes||'',JSON.stringify(trainingPlan?.ab_sessions||[]),CU.plan_length,CU.plan_type,CU.injuries||'',CU.avoided_exercises||'',CU.training_style==='block'?'block':'steady','{}']);
+    await dbAppend('training_plans',[tpId,CU.user_id,new Date().toISOString(),monthNumber,CU.goal,CU.experience,CU.equipment?.join(',')||'',CU.training_days,JSON.stringify(trainingPlan?.sessions||[]),JSON.stringify(trainingPlan?.cardio_sessions||[]),trainingPlan?.notes||'',JSON.stringify(trainingPlan?.ab_sessions||[]),CU.plan_length,CU.plan_type,CU.injuries||'',CU.avoided_exercises||'',CU.training_style==='block'?'block':'steady',JSON.stringify(carryDeloads(userTrainingPlan))]);
 
     userMealPlan={plan_id:mpId,month:monthNumber,created_at:new Date().toISOString(),meals:fullRecipes};
-    userTrainingPlan={plan_id:tpId,month:monthNumber,created:new Date().toISOString(),sessions:trainingPlan?.sessions||[],cardio:trainingPlan?.cardio_sessions||[],notes:trainingPlan?.notes||'',ab_sessions:trainingPlan?.ab_sessions||[],style:CU.training_style==='block'?'block':'steady',deloads:{}};
+    userTrainingPlan={plan_id:tpId,month:monthNumber,created:new Date().toISOString(),sessions:trainingPlan?.sessions||[],cardio:trainingPlan?.cardio_sessions||[],notes:trainingPlan?.notes||'',ab_sessions:trainingPlan?.ab_sessions||[],style:CU.training_style==='block'?'block':'steady',deloads:carryDeloads(userTrainingPlan)};
 
     if(isNewUser){
       try{
@@ -3979,6 +3979,24 @@ const FOOD_GROUPS={
   sesame:{label:'sesame',words:['sesame','tahini','hummus','houmous'],safe:null}
 };
 const DIET_BANS={vegan:['meat','fish','dairy','eggs','honey'],vegetarian:['meat','fish'],pescatarian:['meat'],'meat-eater':[]};
+// The food groups named in one allergy as typed (24 Oct 2026 audit S1): "milk allergy", "cow's milk",
+// "lactose intolerant", "peanut allergy", "coeliac". lactose:true when it is lactose intolerance only.
+function allergyGroupsOf(raw){
+  const a=String(raw||'').trim().toLowerCase();
+  if(!a||a==='none')return{groups:[],lactose:false};
+  if(ALLERGY_GROUP[a])return{groups:[ALLERGY_GROUP[a]],lactose:a==='lactose'};
+  const g=[];
+  const milk=/\b(milk|dairy|whey|casein)\b/.test(a),lact=/\blactose\b/.test(a);
+  if(milk||lact)g.push('dairy');
+  if(/\b(nuts?|peanuts?|tree ?nuts?|almonds?|cashews?|walnuts?|hazelnuts?|pecans?|pistachios?|macadamias?|brazil nuts?)\b/.test(a))g.push('nuts');
+  if(/\b(gluten|wheat|coeliac|celiac|barley|rye)\b/.test(a))g.push('gluten');
+  if(/\beggs?\b/.test(a))g.push('eggs');
+  if(/\bsoya?\b/.test(a))g.push('soy');
+  if(/\b(shellfish|crustaceans?|prawns?|shrimps?|crabs?|lobsters?|molluscs?|mussels?|oysters?|squid|scallops?)\b/.test(a))g.push('shellfish');
+  if(/\b(fish|cod|salmon|tuna|haddock|mackerel)\b/.test(a))g.push('fish');
+  if(/\b(sesame|tahini)\b/.test(a))g.push('sesame');
+  return{groups:g,lactose:lact&&!milk};
+}
 const ALLERGY_GROUP={gluten:'gluten',wheat:'gluten',coeliac:'gluten',celiac:'gluten',dairy:'dairy',lactose:'dairy',milk:'dairy',nuts:'nuts',nut:'nuts','tree nuts':'nuts',peanuts:'nuts',peanut:'nuts',eggs:'eggs',egg:'eggs',soy:'soy',soya:'soy',fish:'fish',shellfish:'shellfish',sesame:'sesame'};
 // The food groups one set of rules rules out, as {key:{label,words,safe}}
 function bannedGroups(rules){
@@ -3987,8 +4005,8 @@ function bannedGroups(rules){
   for(const raw of rules.allergies||[]){
     const a=String(raw).trim().toLowerCase();
     if(!a||a==='none')continue;
-    const k=ALLERGY_GROUP[a];
-    if(k)out[k]=FOOD_GROUPS[k];
+    const found=allergyGroupsOf(a).groups;
+    if(found.length){for(const k of found)out[k]=FOOD_GROUPS[k];}
     // Anything typed that we have no list for: look for the word itself
     else out['x:'+a]={label:String(raw).trim(),words:[a.replace(/s$/,'')],safe:new RegExp(a.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'[- ]free','i')};
   }
@@ -4648,7 +4666,7 @@ function buildMealNamesPrompt(changeLevel='fresh', monthNumber=1, progressionCon
   const mt=getMealTargets();
   const batchPref=u.batch_cooking||'mix';
   const snackStyle=u.snack_style||'both';
-  const monthNote=monthNumber>1?`This is ${monthLabel(monthNumber)} of the programme. The user has real logged data now. Adjust meal variety and calorie targets based on the changeLevel parameter.`:'Month 1 - building from profile data.';
+  const monthNote=monthNumber>1?`This is ${monthLabel(monthNumber)} of the programme. The user has real logged data now. Adjust meal variety and calorie targets based on the changeLevel parameter.`:`${monthLabel(1)} - building from profile data.`;
   // Build prior meal names list so AI knows what to avoid repeating if user wants variety
   const priorMeals=userMealPlan?.meals?.meals
     ?Object.values(userMealPlan.meals.meals).flat().map(m=>m.name).filter(Boolean).join(', ')
@@ -4812,7 +4830,7 @@ function buildRotationPrompt(mealNames, monthNumber=1, progressionContext='', us
   const eveningNames=(mealNames.evening_snacks||[]).concat(mealNames.protein_desserts||[]);
   const monthNote=monthNumber>1
     ?`This is ${monthLabel(monthNumber)} of the programme. ${hadTestWeek()&&monthNumber===2?'The user has just finished their test week.':`The user has been following this plan for ${monthNumber-1} month${monthNumber-1>1?'s':''} already.`} Increase meal variety compared to the last plan - introduce different flavour profiles and cooking methods where possible while still using only the exact meal names listed above. Do not repeat the same weekly pattern as the last plan.`
-    :'Month 1 - build the rotation from the meal names listed above.';
+    :`${monthLabel(1)} - build the rotation from the meal names listed above.`;
   const batchPref=u.batch_cooking||'mix';
   const batchDays=u.batch_days||'All week - cook once eat all week';
   const isBatching=batchPref.toLowerCase().includes('batch');
@@ -4840,7 +4858,7 @@ function buildRotationPrompt(mealNames, monthNumber=1, progressionContext='', us
   for(let w=1;w<=weekCount;w++){
     weekBlocks.push(`  {"week":${w},"days":{"monday":${daySchema},"tuesday":${daySchema},"wednesday":${daySchema},"thursday":${daySchema},"friday":${daySchema},"saturday":${daySchema},"sunday":${daySchema}}}`);
   }
-  const assessmentNote=useAssessment?` This user is doing a 5-week programme - Week 1 is their assessment week, Weeks 2-5 are the main programme. Build all ${weekCount} weeks, including week 1.`:'';
+  const assessmentNote=useAssessment?` This user starts with a training test week; meals carry on as normal through it. Build all ${weekCount} weeks, including week 1.`:'';
   return`Generate a ${weekCount}-week meal rotation using ONLY these exact meal names:
 Breakfasts: ${mealNames.breakfasts.join(', ')}
 ${hasSnack1?`Mid-day Snacks: ${mealNames.snacks.join(', ')}`:''}
@@ -4887,7 +4905,8 @@ function trainingLogSummary(){
   // After the test week the first full month is built from the test numbers (known_numbers) instead
   const sess=userTrainingPlan?.sessions||[];
   if(sess.length&&sess.every(s=>String(s?.name||'').toLowerCase().includes('assessment')))return'';
-  const logs=(activityLogs?.workouts||[]).filter(w=>!w.cardio&&!w.extra&&w.plan===pid&&w.day);
+  const seen=new Set();
+  const logs=(activityLogs?.workouts||[]).filter(w=>!w.cardio&&!w.extra&&w.plan===pid&&w.day&&(w.pct==null||w.pct>=0.5||w.stop)).filter(w=>{const k=w.day+'|'+w.key;if(seen.has(k))return false;seen.add(k);return true;});
   if(!pid||!logs.length)return'';
   // Weeks from the plan's start to the later of the last log and today, so missed weeks show
   const days=logs.map(w=>w.day).sort();
@@ -4909,7 +4928,7 @@ function trainingLogSummary(){
   }
   const fmt=b=>(b.kg?b.kg+'kg x ':'')+b.r;
   const lines=[...per].slice(0,30).map(([n,r])=>'- '+n+': '+fmt(r.first)+' -> '+fmt(r.last)+' ('+(r.firstWk===r.lastWk?'only one week logged':r.last.score>r.first.score*1.01?'progressed':'stalled')+')');
-  const planned=(parseInt(CU?.training_days)||(userTrainingPlan?.sessions||[]).length||0)*weekCount;
+  const planned=((userTrainingPlan?.sessions||[]).length||parseInt(CU?.training_days)||0)*weekCount;
   const rated=logs.filter(w=>w.rating);
   const avg=rated.length?rated.reduce((n,w)=>n+w.rating,0)/rated.length:null;
   const stops=logs.filter(w=>w.stop).map(w=>w.stop);
@@ -4931,9 +4950,15 @@ function buildTrainingPrompt(useAssessment, monthNumber=1, useRealBaseline=false
 
   // Determine which baseline data to use
   let baselineBlock='';
-  const hasRealBaseline=useRealBaseline&&CU.known_numbers&&CU.known_numbers.trim()&&CU.known_numbers!=='{}';
+  // From the second full month the weights come from last month's logged lifts (24 Oct 2026 audit T8);
+  // the test-week numbers are used for the first full month only (the plan before it was the test week)
+  const logSummary=monthNumber>1?trainingLogSummary():'';
+  const fromLogs=!!logSummary&&!isTestWeekPlan();
+  const hasRealBaseline=!fromLogs&&useRealBaseline&&CU.known_numbers&&CU.known_numbers.trim()&&CU.known_numbers!=='{}';
 
-  if(hasRealBaseline){
+  if(fromLogs){
+    baselineBlock=`LOADING - FROM LAST MONTH'S LOGGED LIFTS (below): start week 1 at about the weight of each exercise's best set in the last week it was logged, about 5% lighter for an exercise that stalled. Give the target weight in kg in the exercise notes. A new exercise starts from a similar exercise's numbers, a little lighter.${CU.known_numbers&&CU.known_numbers.trim()?`\nOlder numbers (reference only - last month's logs are newer): ${CU.known_numbers}`:''}`;
+  }else if(hasRealBaseline){
     // Assessment phase 2 stores as pipe-separated string: "Name: Xkg x Nreps (est 1RM: Ykg) | ..."
     // Try JSON parse first (for any future format change), then fall back to pipe-separated parse
     let baselineLines='';
@@ -4947,7 +4972,7 @@ function buildTrainingPrompt(useAssessment, monthNumber=1, useRealBaseline=false
       baselineLines=CU.known_numbers.split(' | ').map(s=>s.trim()).filter(Boolean).join('\n');
     }
     baselineBlock=`BASELINE DATA - REAL MEASURED NUMBERS FROM ASSESSMENT WEEK:
-This is ${monthLabel(monthNumber)} of the programme. The following 1RM estimates were calculated from the user's actual Set 5 weights during assessment week using the Epley formula (weight x 1.0667). These are real numbers, not estimates from profile stats. Build all working weights, progression targets, and set/rep schemes directly from these numbers.
+This is ${monthLabel(monthNumber)} of the programme. The following 1RM estimates were calculated from the user's actual Set 5 weights during the test week using the Epley formula (weight x (1 + reps / 30), so x 1.1 for 3 reps). These are real numbers, not estimates from profile stats. Build all working weights, progression targets, and set/rep schemes directly from these numbers.
 
 ${baselineLines}
 
@@ -4964,7 +4989,7 @@ Build working weights from these numbers at 70-75% for Week 1.`;
   }
 
   const monthContext=monthNumber>1
-    ?`\nPROGRAMME MONTH: This is ${monthLabel(monthNumber)} of a progressive programme. ${hasRealBaseline?'Real assessment data is provided above - use it as the foundation for all loading decisions.':'Build on the previous month.'}`+trainingLogSummary()
+    ?`\nPROGRAMME MONTH: This is ${monthLabel(monthNumber)} of a progressive programme. ${fromLogs?'Last month\'s logged lifts are below - build the loading from them.':hasRealBaseline?'Real test-week data is provided above - use it as the foundation for all loading decisions.':'Build on the previous month.'}`+logSummary
     :'';
 
   // Weekly sets per muscle, effort and lighter weeks (TRAINING-STYLE-SPEC-2026-10-24.md). Targets, not rigid
@@ -5044,7 +5069,7 @@ Each ab session: 3-4 exercises, 3 sets each, 12-20 reps, 30 second rest. progres
   const hasCables=equipText.includes('Full Commercial Gym')||/cable/i.test(equipText);
   const cableLine=hasCables?`\nCABLE PREFERENCE: this user has a cable machine. For isolation work (tricep kickbacks and pushdowns, flys, lateral raises, rear delt work, curls) prefer the cable version over dumbbells - it keeps constant tension and allows finer weight control. Injury and avoided-exercise rules always take priority over this preference.`:'';
   const healthLine=((u.health_conditions||'').trim()?`\nHEALTH CONDITIONS - account for these and keep intensity and exercise selection conservative: ${u.health_conditions.trim()}`:'')
-    +((u.medicines||'').trim()?`\nMEDICINES THE USER TAKES - account for these (for example beta-blockers keep the heart rate low, so judge effort by feel rather than heart rate) and never give medical advice: ${u.medicines.trim()}`:'');
+    +(medsText(u)?`\nMEDICINES THE USER TAKES - account for these (for example beta-blockers keep the heart rate low, so judge effort by feel rather than heart rate) and never give medical advice: ${u.medicines.trim()}`:'');
 
   return`Generate 1-month training plan. JSON only. No meals.
 
@@ -5065,7 +5090,7 @@ Every exercise in assessment week sessions gets exactly 5 sets structured as fol
 - Set 5: Genuine 3-rep max attempt. Full effort. Record this weight.
 
 For every exercise: sets:5, reps:"12/8/5/3/3RM", reps_per_set:["12","8","5","3","3RM"].
-Notes field for each assessment exercise: "Record every weight from every set. Your Week 2 programme builds from Set 5. Estimated 1RM = Set 5 weight x 1.0667 (Epley formula)."
+Notes field for each assessment exercise: "Record every weight from every set. Your Month 1 programme is built from Set 5. Estimated 1RM = Set 5 weight x 1.1 (Epley formula for 3 reps)."
 Session names: "Assessment - [focus area]" e.g. "Assessment - Upper Body Push", "Assessment - Lower Body".`:''}
 
 ${useAssessment?`TEST WEEK: every session in this plan is an assessment session using the protocol above - the weekly sets per muscle and effort targets start with the first full month, which is built from these results. Across the week, test every main muscle at least once with exercises the user can safely do (injuries, avoided exercises and equipment first), and give every exercise its "muscle" field.`:`${volumeBlock}
@@ -6269,7 +6294,9 @@ function isHeavyBarbell(name){
 // Week 1 = the Monday-to-Sunday week the plan started in. Keys are YYYY-MM-DD.
 function planWeekNo(planStartKey,todayKey){
   const monday=k=>{const p=String(k||'').split('-').map(Number);if(p.length!==3||p.some(isNaN))return NaN;const t=Date.UTC(p[0],p[1]-1,p[2]);return t-((new Date(t).getUTCDay()+6)%7)*86400000;};
-  const a=monday(planStartKey),b=monday(todayKey);
+  // A plan made Thursday to Sunday starts its week 1 on the following Monday (24 Oct 2026 audit T6)
+  const late=p=>{const q=String(p||'').split('-').map(Number);return q.length===3&&((new Date(Date.UTC(q[0],q[1]-1,q[2])).getUTCDay()+6)%7)>=3;};
+  const a=monday(planStartKey)+(late(planStartKey)?7*86400000:0),b=monday(todayKey);
   if(isNaN(a)||isNaN(b))return 1;
   return Math.max(1,Math.round((b-a)/(7*86400000))+1);
 }
@@ -6305,6 +6332,11 @@ function setsFor(exs,ei,ctx){
   const add=Math.max(0,Math.min(Math.min(3,blockWeek(ctx.weekNo))-1,MUSCLE_SESSION_CAP-inSession));
   return base+add;
 }
+// The lighter-week choices a new plan starts with: the last plan's, so the 4-week count runs on (last 26 weeks)
+function carryDeloads(plan){
+  const d=plan?.deloads||{};
+  return Object.fromEntries(Object.keys(d).sort().slice(-26).map(k=>[k,d[k]]));
+}
 // Should a lighter week be offered this week? Returns 'due', 'early' or null.
 // ctx = {style, weekNo, weekKey, planStartWeek, deloads, doneWeeks (Map weekKey -> Set of sessions done),
 //        trainingDays, recentRatings (newest first, this plan's main sessions)}
@@ -6314,14 +6346,15 @@ function lighterWeekOffer(ctx){
   if(dec[ctx.weekKey])return null;
   const r=(ctx.recentRatings||[]).slice(0,2);
   const early=r.length===2&&r.every(x=>x!=null&&x<=2);
-  if(ctx.style==='block')return early&&blockWeek(ctx.weekNo)!==4?'early':null;
+  if(ctx.style==='block')return early&&blockWeek(ctx.weekNo)<3?'early':null;
   const decided=Object.keys(dec).filter(k=>k<ctx.weekKey).sort();
   const last=decided[decided.length-1]||null;
+  // Weeks are counted from the last choice (choices carry over to each new plan); with none yet, from the plan's start
   const need=Math.max(1,Math.ceil((parseInt(ctx.trainingDays)||3)/2));
   let weeks=0;
   for(const [wk,keys] of ctx.doneWeeks||new Map()){
-    if(wk>=ctx.weekKey||wk<(ctx.planStartWeek||''))continue;
-    if(last&&wk<=last)continue;
+    if(wk>=ctx.weekKey)continue;
+    if(last?wk<=last:wk<(ctx.planStartWeek||''))continue;
     if((keys?.size||0)>=need)weeks++;
   }
   if(weeks>=(last&&dec[last]==='skipped'?2:4))return'due';
@@ -6331,8 +6364,9 @@ function lighterWeekOffer(ctx){
 function trainingCapProblems(sessions){
   const out=[];
   for(const s of sessions||[]){
+    if(/assessment/i.test(String(s?.name||'')))continue;   // the test week's 5-set protocol is not training volume
     const per={};
-    for(const e of s?.exercises||[]){const m=muscleKey(e?.muscle);if(!m||m==='abs')continue;per[m]=(per[m]||0)+(parseInt(e.sets)||0);}
+    for(const e of s?.exercises||[]){const m=muscleKey(e?.muscle);if(!m||m==='abs')continue;per[m]=(per[m]||0)+(parseInt(e.sets)||3);}
     for(const [m,n] of Object.entries(per))if(n>MUSCLE_SESSION_CAP)out.push(`${s.name||'a session'} has ${n} sets for ${m} (at most ${MUSCLE_SESSION_CAP} in one session)`);
   }
   return out;
@@ -6359,6 +6393,8 @@ function trainCtx(){
   return c;
 }
 function isAssessmentSess(s){return String(s?.name||'').toLowerCase().includes('assessment');}
+// The test-week plan: every session is an assessment session
+function isTestWeekPlan(){const s=userTrainingPlan?.sessions||[];return s.length>0&&s.every(isAssessmentSess);}
 // The sets for one exercise this week (ab sessions are unchanged)
 function exSets(sidx,ei){
   const s=trainSession(sidx);
@@ -6371,8 +6407,10 @@ function exSets(sidx,ei){
 function trainWeekInfo(){
   const c=trainCtx();
   const pid=String(userTrainingPlan?.plan_id||'');
-  const ratings=activityLogs.workouts.filter(w=>!w.cardio&&!w.extra&&w.plan===pid&&w.rating).sort((a,b)=>String(b.at).localeCompare(String(a.at))).map(w=>w.rating);
-  c.offer=c.lighter?null:lighterWeekOffer({...c,planStartWeek:weekStart(dayKey(userTrainingPlan?.created)||dayKey(new Date())),
+  const lastChoice=Object.keys(c.deloads||{}).filter(k=>k<=c.weekKey).sort().pop()||'';
+  const ratings=activityLogs.workouts.filter(w=>!w.cardio&&!w.extra&&w.plan===pid&&w.rating&&w.day&&(!lastChoice||weekStart(w.day)>lastChoice)).sort((a,b)=>String(b.at).localeCompare(String(a.at))).map(w=>w.rating);
+  c.test=isTestWeekPlan();
+  c.offer=c.lighter||c.test?null:lighterWeekOffer({...c,planStartWeek:weekStart(dayKey(userTrainingPlan?.created)||dayKey(new Date())),
     doneWeeks:doneSessionKeysByWeek(activityLogs.workouts),trainingDays:plannedSessionsPerWeek(),recentRatings:ratings});
   return c;
 }
@@ -6400,6 +6438,8 @@ async function setLighterWeek(choice){
 }
 function trainWeekHeadHtml(){
   const w=trainWeekInfo();
+  if(w.test)return`<div style="font-size:12px;color:var(--tx2);margin-bottom:4px">Test week</div>
+  <div style="font-size:13px;color:var(--ac);margin-bottom:12px">🎯 Follow each set's target - Set 5 is your 3-rep max. Record every weight: your Month 1 is built from them.</div>`;
   const label=w.style==='block'?`Week ${blockWeek(w.weekNo)} of 4 - ${TRAIN_STYLES.block}`:`Week ${w.weekNo} - ${TRAIN_STYLES.steady}`;
   const effort=effortFor({},w);
   const style=CU?.mot_style||'Mix of Everything';
@@ -6453,7 +6493,12 @@ function sessionProgress(){
 // The most recent logged sets for an exercise, matched by name
 function lastTimeFor(exName){
   const n=String(exName||'').trim().toLowerCase();
-  const logs=activityLogs.workouts.filter(w=>!w.cardio&&Array.isArray(w.exercises)).sort((a,b)=>String(b.at||b.day).localeCompare(String(a.at||a.day)));
+  // Lighter weeks are skipped (half the sets, lighter weights) - unless that is all there is
+  const base=trainCtx();
+  const lighter=w=>{if(!w.day)return false;const wk=weekStart(w.day);return isLighterWeek({...base,weekKey:wk,weekNo:planWeekNo(dayKey(userTrainingPlan?.created)||w.day,w.day)});};
+  const all=activityLogs.workouts.filter(w=>!w.cardio&&Array.isArray(w.exercises));
+  const normal=all.filter(w=>!lighter(w));
+  const logs=(normal.length?normal:all).sort((a,b)=>String(b.at||b.day).localeCompare(String(a.at||a.day)));
   for(const w of logs){
     const hit=w.exercises.find(e=>String(e.name||'').trim().toLowerCase()===n&&Array.isArray(e.sets)&&e.sets.length);
     if(hit)return hit.sets;
@@ -6675,7 +6720,7 @@ function trainSessionHtml(){
   const targets=repsTargets({...ex,sets:setCount,reps_per_set:Array.isArray(ex.reps_per_set)&&ex.reps_per_set.length===setCount?ex.reps_per_set:null},isAssessment);
   const rows=draftRows(ei);
   const last=lastTimeFor(ex.name);
-  const nudge=weightNudge({...ex,sets:setCount},last,isAssessment||(!isAb&&wctx.lighter));
+  const nudge=weightNudge({...ex,sets:Math.min(setCount,parseInt(ex.sets)||3)},last,isAssessment||(!isAb&&wctx.lighter));
   // A timed hold or carry ("30-45s", "1 min"): the second box is seconds, weight only if one is used
   const timed=/\d\s*(s|secs?|seconds?|mins?|minutes?)\b/i.test(String(ex.reps||''));
   const kgHint=i=>nudge&&nudge.weight?nudge.weight:(last&&last[Math.min(i,last.length-1)]&&parseFloat(last[Math.min(i,last.length-1)].weight_kg))||(timed?'-':'kg');
@@ -6786,7 +6831,7 @@ async function logWorkout(sidx){
   // deload check need several more trips to the sheet, so they finish in the
   // background. stillHere() stops them touching the screen if the user has signed out.
   hideLoad();
-  activityLogs.workouts.push({day:dayKey(new Date()),at:new Date().toISOString(),key:String(sidx),pct,stop:stopReason,cardio:false,extra:isAb,pts:award.total,exercises});
+  activityLogs.workouts.push({day:dayKey(new Date()),at:new Date().toISOString(),key:String(sidx),pct,stop:stopReason,cardio:false,extra:isAb,pts:award.total,exercises,rating:sessRating,plan:String(userTrainingPlan.plan_id||'')});
   // Logged - the draft has done its job. Back to the week, where this session now shows as done.
   dropTrainDraft(sidx);trainDraft=null;stopRestTimer();
   trainView={mode:'week',sidx:null,step:0,touched:true};
@@ -6842,7 +6887,9 @@ async function logWorkout(sidx){
             for(const ex of exData){
               const set5=ex.sets?.[4];
               if(set5?.weight_kg>0){
-                const est1rm=Math.round(set5.weight_kg*1.0667);
+                // Epley: weight x (1 + reps/30) - x 1.1 for the 3-rep test (was x 1.0667, the 2-rep factor)
+                const r5=Math.min(10,Math.max(1,parseInt(set5.reps)||3));
+                const est1rm=Math.round(set5.weight_kg*(1+r5/30));
                 knownNums.push(`${ex.name}: ${set5.weight_kg}kg x ${set5.reps}reps (est 1RM: ${est1rm}kg)`);
               }
             }
@@ -7360,22 +7407,22 @@ function showHowToError(detail){
 const HEALTH_KEYWORDS={
   kidney:/\b(kidney (disease|failure|problems?|function|damage|transplant)|ckd|renal|dialysis|one kidney|nephrectomy|nephrotic)\b/i,
   stones:/\b(kidney stones?|renal stones?)\b/i,
-  bp:/\b(high blood pressure|high bp|hypertensi\w*|(blood pressure|bp) (tablets?|medicines?|meds|medication)|beta[- ]?blockers?|amlodipine|nifedipine|felodipine|ramipril|lisinopril|enalapril|perindopril|losartan|candesartan|valsartan|irbesartan|olmesartan|bisoprolol|atenolol|propranolol|metoprolol|nebivolol|doxazosin|verapamil|diltiazem)\b/i,
-  heart:/\b(heart (condition|disease|problems?|failure|attack|surgery)|cardiac|cardiomyopathy|arrhythmia|atrial fibrillation|af|svt|tachycardia|palpitations|angina|pacemaker|stroke|tia|mini[- ]stroke)\b/i,
+  bp:/\b(high[- ]blood[- ]pressure|high bp|hbp|raised blood[- ]pressure|blood[- ]pressure (is |was |runs )?(high|raised)|hypertensi\w*|(blood[- ]pressure|bp) (tablets?|medicines?|meds|medication)|beta[- ]?blockers?|water tablets?|diuretics?|furosemide|bumetanide|spironolactone|eplerenone|indapamide|bendroflumethiazide|amlodipine|nifedipine|felodipine|ramipril|lisinopril|enalapril|perindopril|losartan|candesartan|valsartan|irbesartan|olmesartan|bisoprolol|atenolol|propranolol|metoprolol|nebivolol|doxazosin|verapamil|diltiazem)\b/i,
+  heart:/\b(heart (condition|disease|problems?|issues?|failure|attack|surgery|murmur|rhythm)|cardiac|cardiomyopathy|arrhythmia|irregular heart ?beat|atrial fibrillation|af|a-?fib|a fib|svt|tachycardia|palpitations|angina|pacemaker|(?<!heat )stroke|tia|mini[- ]stroke)\b/i,
   anxiety:/\b(anxiety|anxious|panic)\b/i,
   insomnia:/\b(insomnia|can'?t sleep|trouble sleeping|sleep problems?|poor sleep)\b/i,
   // Medicines that caffeine adds to (ADHD stimulants) or that raise caffeine levels - the caffeine-free card (24 Oct 2026)
   caffMeds:/\b(adhd|methylphenidate|ritalin|concerta|lisdexamfetamine|elvanse|vyvanse|dexamfetamine|amfetamine|adderall|atomoxetine|theophylline|aminophylline|clozapine|ciprofloxacin)\b/i,
   hyperthyroid:/\b(overactive thyroid|hyperthyroid\w*|graves'?)\b/i,
-  diabetes:/\b(diabet\w*|insulin)\b/i,
-  pregnancy:/\b(pregnan\w*|expecting a baby|trying (for a baby|to conceive)|ivf)\b/i,
-  breastfeeding:/\bbreast[- ]?feeding\b/i,
-  epilepsy:/\b(epilep\w*|seizures?)\b/i,
+  diabetes:/\b(diabet\w*|insulin(?! resistan))\b/i,
+  pregnancy:/(?<!not |never been )\b(pregnan\w*|expecting a baby|trying (for a baby|to conceive)|ivf)\b/i,
+  breastfeeding:/\b(breast[- ]?f(ee|e)d\w*|nursing (my |a )?(baby|newborn|infant))\b/i,
+  epilepsy:/\b(epilep\w*|seizures?|(have|has|had|get|gets|having) fits)\b/i,
   lithium:/\b(lithium|bipolar)\b/i,
   maoi:/\b(maois?|phenelzine|tranylcypromine|isocarboxazid|moclobemide|selegiline|rasagiline|linezolid)\b/i,
   fluvoxamine:/\bfluvoxamine\b/i,
-  warfarin:/\bwarfarin\b/i,
-  anticoag:/\b(apixaban|rivaroxaban|edoxaban|dabigatran|heparin|enoxaparin|clopidogrel|ticagrelor|prasugrel|dipyridamole|aspirin|blood thinners?|anticoagulants?)\b/i,
+  warfarin:/\b(warf\w*in|coumadin)\b/i,
+  anticoag:/\b(apixaban|rivaroxaban|edoxaban|dabigatran|heparin|enoxaparin|clopidogrel|ticagrelor|prasugrel|dipyridamole|aspirin|blood[- ]thinners?|anticoagulants?)\b/i,
   bleeding:/\b(bleeding disorder|haemophilia|hemophilia|von willebrand)\b/i,
   thyroidMeds:/\b(levothyroxine|thyroxine)\b/i,
   ironOverload:/\b(haemochromatosis|hemochromatosis|iron overload)\b/i,
@@ -7387,8 +7434,15 @@ const HEALTH_KEYWORDS={
   lactose:/\blactose\b/i,
   liver:/\b(liver disease|cirrhosis|hepatitis|fatty liver)\b/i,
   eating:/\b(eating disorder|anorexia|bulimia|binge eating|arfid|orthorexia)\b/i,
-  nitrates:/\b(gtn|nitrates?|isosorbide|sildenafil|tadalafil|viagra|cialis)\b/i
+  nitrates:/\b(gtn|nitrate (spray|tablets?|patch)|isosorbide|sildenafil|tadalafil|viagra|cialis)\b/i,
+  // Any medicine named in the health box (S5, 24 Oct 2026 audit): common UK medicine name endings and names
+  anyMed:/\b(\w+(pril|sartan|olol|statin|prazole|dipine|oxetine|floxacin|mycin|cillin|cycline|azepam|triptan|gliptin|gliflozin)|sertraline|citalopram|escitalopram|fluoxetine|paroxetine|venlafaxine|duloxetine|mirtazapine|amitriptyline|metformin|levothyroxine|prednisolone|gabapentin|pregabalin|tramadol|codeine|morphine|methotrexate|omeprazole|lansoprazole|on medication|take medication|tablets? (for|every))\b/i,
 };
+// The medicines answer, with "none", "no", "n/a" and the like treated as blank (S5, 24 Oct 2026 audit)
+function medsText(u){
+  const m=String(u?.medicines||'').trim();
+  return/^(none|no|nope|n\/?a|nothing|nil|not applicable|no medicines?|no medication|-|\.)$/i.test(m)?'':m;
+}
 // Which of the keys above appear in a piece of text (the health box, medicines and allergies together)
 function healthFlags(text){
   const t=String(text||'');
@@ -7398,7 +7452,7 @@ const SUPP_NOT_ADVICE='Not medical advice.';
 // The cards for one person: {cards:[{name,reason,when,notes:[]}], leftOut:[{name,why}], topNote}
 function supplementPlan(u){
   const allergyText=(u.allergies||[]).join(', ');
-  const f=healthFlags([u.health_conditions,u.medicines,allergyText].join(' \n '));
+  const f=healthFlags([u.health_conditions,medsText(u),allergyText].join(' \n '));
   const diet=String(u.dietary_type||'').toLowerCase();
   const vegan=diet==='vegan',veggie=vegan||diet==='vegetarian',pesc=diet==='pescatarian';
   const al=allergyText.toLowerCase();
@@ -7514,6 +7568,7 @@ function supplementPlan(u){
       const c=add({name:'Iron - only if a blood test shows you are low',reason:'Plant iron is absorbed less well, so it is worth a yearly check.',when:'Only as your GP advises.'});
       if(has('bloodCond'))c.when='Speak to your GP first.';
       if(has('thyroidMeds'))c.notes.push('Take it at a different time from levothyroxine - ask your pharmacist how far apart.');
+      c.notes.push('Iron can stop some antibiotics working (and the other way round) - if you are prescribed antibiotics, ask your pharmacist how far apart to take them.');
     }
   }
 
@@ -7601,15 +7656,18 @@ function suppCandidates(card,u){
   if(card.name==='Vitamin D3'&&!/^1,000 IU/.test(card.when))return[];
   const raws=(u.allergies||[]).map(r=>String(r).trim()).filter(r=>r&&r.toLowerCase()!=='none');
   const groups=[],typed=[];
+  let milkAllergy=false;
   for(const raw of raws){
-    const g=ALLERGY_GROUP[raw.toLowerCase()];
-    if(!g)typed.push(raw);
-    else if(!groups.includes(g))groups.push(g);
+    const r=allergyGroupsOf(raw);
+    if(!r.groups.length){typed.push(raw);continue;}
+    if(r.groups.includes('dairy')&&!r.lactose)milkAllergy=true;
+    for(const g of r.groups)if(!groups.includes(g))groups.push(g);
   }
   // Lactose intolerance on its own: only a product that contains milk is out
-  const lactoseOnly=groups.includes('dairy')&&!raws.some(r=>/^(dairy|milk)$/i.test(r));
-  const f=healthFlags([u.health_conditions,u.medicines,raws.join(', ')].join(' \n '));
-  const onMeds=String(u.medicines||'').trim()!=='';
+  const lactoseOnly=groups.includes('dairy')&&!milkAllergy;
+  const f=healthFlags([u.health_conditions,medsText(u),raws.join(', ')].join(' \n '));
+  // On medicines: the medicines answer, or a medicine named in the health box
+  const onMeds=medsText(u)!==''||f.has('anyMed');
   const diet=String(u.dietary_type||'').toLowerCase();
   const okDiet={vegan:['vegan'],vegetarian:['vegan','vegetarian'],pescatarian:['vegan','vegetarian','pescatarian']}[diet]||null;
   const w=parseFloat(u.weight_kg)||0;
