@@ -1,6 +1,6 @@
 // E=MC-HENCH Service Worker
 // Cache version - increment this when you deploy a new version of index.html
-const CACHE_VERSION = 'hench-v2';
+const CACHE_VERSION = 'hench-v3';   // v3: the switch to the new backend (Supabase), 24 Oct 2026
 
 // Files to cache for offline use
 const APP_SHELL = [
@@ -10,8 +10,10 @@ const APP_SHELL = [
 ];
 
 // These domains should NEVER be cached - always go to network
-// Google Sheets API and Anthropic API must always use live data
+// The database (Supabase), the AI and the old Google Sheets API must always use live data
 const NEVER_CACHE = [
+  'supabase.co',
+  'cdn.jsdelivr.net',
   'script.google.com',
   'api.anthropic.com',
   'fonts.googleapis.com',
