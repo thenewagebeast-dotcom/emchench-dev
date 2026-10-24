@@ -3450,7 +3450,8 @@ function getPickTargets(){
   const snacksBatch=isBatch('batch snacks','Snacks');
   return{
     breakfasts:4,
-    snacks:snacksBatch?4:(getMidSnackCount()>=3?6:5),
+    // No mid-day snack slots (3 meals a day) = no snack recipes: they would never appear in the schedule
+    snacks:getMidSnackCount()===0?0:snacksBatch?4:(getMidSnackCount()>=3?6:5),
     lunches:isBatch('batch lunches','Lunch')?4:5,
     dinners:isBatch('batch dinners','Dinner')?4:7,
     evening_snacks:snacksBatch?4:5,
@@ -3504,6 +3505,8 @@ function showMealPicker(meals){
     for(const cat of cats){
       const items=pickerOptions(cat.k);
       if(!items.length)continue;
+      // No mid-day snack slots: nothing to choose there
+      if(cat.k==='snacks'&&getMidSnackCount()===0)continue;
       const willInclude=Math.min(targets[cat.k]||0,items.length);
       html+=`<div style="margin-bottom:16px">
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;color:var(--ac)">${cat.icon} ${cat.l}</div>
@@ -5096,6 +5099,39 @@ RULES: ${days} sessions, ${exerciseCount} exercises each, reps_per_set entries m
 {"notes":"","sessions":[{"name":"Session 1","day_of_week":1,"type":"strength","warm_up_cardio":"5 min light cardio","exercises":[{"name":"","sets":3,"reps":"10-12","reps_per_set":["10-12","10-12","10-12"],"rest_seconds":90,"tempo":"2-1-2","notes":"","how_to":"Setup: X. Do: X. Avoid: X."}]}],"ab_sessions":[{"name":"Ab Session A - Upper and Obliques","day_of_week":3,"day_type":"rest_day","duration_mins":12,"exercises":[{"name":"","sets":3,"reps":"15-20","reps_per_set":["15-20","15-20","15-20"],"rest_seconds":30,"how_to":"","progression_note":""}]},{"name":"Ab Session B - Lower and Anti-Rotation","day_of_week":6,"day_type":"rest_day","duration_mins":12,"exercises":[{"name":"","sets":3,"reps":"12-15","reps_per_set":["12-15","12-15","12-15"],"rest_seconds":30,"how_to":"","progression_note":""}]}],"cardio_sessions":[{"day_of_week":0,"type":"","duration_mins":0,"intensity":"","notes":""}],"weekly_progression":[{"week":1,"note":""},{"week":2,"note":""},{"week":3,"note":""},{"week":4,"note":""}]}
 \`\`\`
 All ${days} sessions listed. Injuries enforced. JSON only.`;
+}
+
+// The training plan in two halves, for the server: each half must finish inside the server's time
+// limit (a 6-day plan with several injuries took up to 140 s in one go - COST-TESTS-2026-10-24.md).
+// Part 1 plans the whole week and writes the first sessions; part 2 writes the rest from that plan,
+// plus the ab and cardio sessions. Both start from buildTrainingPrompt's full instruction, unchanged.
+function trainingSplitSizes(){
+  const n=parseInt(CU.training_days)||4;   // the same number buildTrainingPrompt uses
+  return{n,k:Math.ceil(n/2)};
+}
+function trainingPart1Prompt(base){
+  const {n,k}=trainingSplitSizes();
+  return base+`
+
+THIS ANSWER IS PART 1 OF 2 - the plan is written in two parts. In this part:
+1. Plan the WHOLE week first. "week_outline" lists all ${n} sessions in order - name, day_of_week, main focus and main exercises - so part 2 can write the rest to match it.
+2. Write sessions 1 to ${k} in full in "sessions", exactly in the format above, following every rule above.
+3. Write "notes".
+Do NOT write ab_sessions, cardio_sessions or weekly_progression in this part.
+Return JSON only: {"notes":"","week_outline":[{"name":"","day_of_week":1,"focus":"","main_exercises":[""]}],"sessions":[sessions 1 to ${k}]}`;
+}
+function trainingPart2Prompt(base,part1){
+  const {n,k}=trainingSplitSizes();
+  const written=(part1?.sessions||[]).map(s=>({name:s.name,day_of_week:s.day_of_week,exercises:(s.exercises||[]).map(e=>e.name)}));
+  return base+`
+
+THIS ANSWER IS PART 2 OF 2. Part 1 has already planned the week and written sessions 1 to ${k}.
+The week as planned: ${JSON.stringify(part1?.week_outline||[])}
+Already written - do not repeat them: ${JSON.stringify(written)}
+In this part:
+1. Write sessions ${k+1} to ${n} in full in "sessions", following the week as planned (the same names and days), the format above and every rule above.
+2. Write "ab_sessions" and "cardio_sessions" exactly as described above.
+Return JSON only: {"sessions":[sessions ${k+1} to ${n}],"ab_sessions":[],"cardio_sessions":[],"weekly_progression":[]}`;
 }
 
 // ============================================================
