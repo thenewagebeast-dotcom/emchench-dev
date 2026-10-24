@@ -1288,7 +1288,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='24 Oct supplements v4';
+const APP_BUILD='24 Oct training style';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -2123,11 +2123,18 @@ const msgTemplates={
     'Mix of Everything':'All your baseline lifts are recorded. Your Month 2 programme will be built from these numbers. Generate your next plan when ready.'
   },
   deloadCheck:{
-    'Tough Love':'3 weeks done. Deload cuts volume 40% so you actually absorb the work. Feeling strong? Skip it. Beaten up? Take it. Your call, be honest.',
-    'Gentle Encouragement':'You have completed 3 training weeks - amazing consistency! A deload week reduces your volume by 40% so your body can consolidate everything you have built. Feeling strong? Keep going. Feeling beaten up? Rest is productive too - take it.',
-    'Humour':'3 weeks done. A deload week cuts your volume by 40% so your body can quietly repair itself without you interfering. Feeling like a superhero? Skip it. Feeling like a crumpled receipt? Take it. Your call.',
-    'Science Facts':'3 training weeks completed. A deload reduces volume by 40%, allowing supercompensation and reducing accumulated fatigue. High readiness markers - continue. Declining performance or elevated fatigue - deload is indicated.',
-    'Mix of Everything':'You have completed 3 training weeks. A deload week reduces your volume by 40% so your body consolidates everything you have built. Energy high and sessions feeling strong? Skip it and keep going. Feeling beaten up or performance dropping? Take it. Listen to your body - this is your call.'
+    'Tough Love':'4 solid weeks in. A lighter week means half the sets and a bit less weight, so your body catches up with the work. Feeling strong? Not yet. Beaten up? Take it. Be honest.',
+    'Gentle Encouragement':'Four weeks of steady training - brilliant consistency! A lighter week (half the sets, a little less weight) lets your body catch up with everything you have built. Feeling great? Keep going. Feeling worn down? Rest is progress too.',
+    'Humour':'4 weeks done. A lighter week halves your sets so your body can quietly repair itself without you getting in the way. Feeling like a superhero? Not yet. Feeling like a crumpled receipt? Take it.',
+    'Science Facts':'Four training weeks completed. A lighter week - half the sets, about 10-15% less load, easy effort - lets fatigue clear so the strength you have built can show. Performance still climbing? Continue. Stalling or feeling flat? Take it.',
+    'Mix of Everything':'Four weeks of training done. A lighter week - half the sets and a little less weight - lets your body catch up so you come back stronger. Sessions still feeling great? Not yet. Feeling beaten up or stalling? Take it. Your call.'
+  },
+  lighterEarly:{
+    'Tough Love':'Your last two sessions were rough. Push through a third, or take a lighter week now and come back swinging. Your call.',
+    'Gentle Encouragement':'Your last two sessions felt hard - that happens to everyone. A lighter week now could help you bounce back feeling fresh.',
+    'Humour':'Two rough sessions in a row. Your body may be sending a polite memo. A lighter week now could be the reply.',
+    'Science Facts':'Two consecutive low session ratings can mean fatigue is building faster than you recover. A lighter week now usually restores performance.',
+    'Mix of Everything':'Your last two sessions felt rough. A lighter week now - half the sets, a bit less weight - can help you bounce back.'
   },
   firstSession:{
     'Tough Love':'First session logged. This is the only one that matters right now - you started.',
@@ -2677,7 +2684,7 @@ async function loadUserData(){
     userTrainingPlan=null;
     if(tp.values){
       const mine=tp.values.filter(r=>r[1]===CU.user_id&&r[0]!=='plan_id');
-      if(mine.length>0){const l=mine[mine.length-1];try{userTrainingPlan={plan_id:l[0],month:l[3],sessions:JSON.parse(l[8]||'[]'),cardio:JSON.parse(l[9]||'[]'),notes:l[10]||'',ab_sessions:JSON.parse(l[11]||'[]')};}catch(e){}}
+      if(mine.length>0){const l=mine[mine.length-1];try{userTrainingPlan={plan_id:l[0],month:l[3],created:String(l[2]||''),sessions:JSON.parse(l[8]||'[]'),cardio:JSON.parse(l[9]||'[]'),notes:l[10]||'',ab_sessions:JSON.parse(l[11]||'[]'),style:l[16]==='block'?'block':'steady',deloads:(()=>{try{return JSON.parse(l[17]||'{}')||{};}catch(e){return{};}})()};}catch(e){}}
     }
   }catch(e){console.error('Load data - training plan:',e);}
 
@@ -3721,10 +3728,10 @@ async function generatePlan(){
     showLoad('Saving Your Plan','Almost done...');
     setLoadBar(97);
     await dbAppend('meal_plans',writeMealsJson([mpId,CU.user_id,new Date().toISOString(),monthNumber,CU.goal,t.calories||0,t.protein||0,t.carbs||0,t.fats||0,'','',CU.plan_length,CU.plan_type],JSON.stringify(fullRecipes||{})));
-    await dbAppend('training_plans',[tpId,CU.user_id,new Date().toISOString(),monthNumber,CU.goal,CU.experience,CU.equipment?.join(',')||'',CU.training_days,JSON.stringify(trainingPlan?.sessions||[]),JSON.stringify(trainingPlan?.cardio_sessions||[]),trainingPlan?.notes||'',JSON.stringify(trainingPlan?.ab_sessions||[]),CU.plan_length,CU.plan_type,CU.injuries||'',CU.avoided_exercises||'']);
+    await dbAppend('training_plans',[tpId,CU.user_id,new Date().toISOString(),monthNumber,CU.goal,CU.experience,CU.equipment?.join(',')||'',CU.training_days,JSON.stringify(trainingPlan?.sessions||[]),JSON.stringify(trainingPlan?.cardio_sessions||[]),trainingPlan?.notes||'',JSON.stringify(trainingPlan?.ab_sessions||[]),CU.plan_length,CU.plan_type,CU.injuries||'',CU.avoided_exercises||'',CU.training_style==='block'?'block':'steady','{}']);
 
     userMealPlan={plan_id:mpId,month:monthNumber,created_at:new Date().toISOString(),meals:fullRecipes};
-    userTrainingPlan={plan_id:tpId,month:monthNumber,sessions:trainingPlan?.sessions||[],cardio:trainingPlan?.cardio_sessions||[],notes:trainingPlan?.notes||'',ab_sessions:trainingPlan?.ab_sessions||[]};
+    userTrainingPlan={plan_id:tpId,month:monthNumber,created:new Date().toISOString(),sessions:trainingPlan?.sessions||[],cardio:trainingPlan?.cardio_sessions||[],notes:trainingPlan?.notes||'',ab_sessions:trainingPlan?.ab_sessions||[],style:CU.training_style==='block'?'block':'steady',deloads:{}};
 
     if(isNewUser){
       try{
@@ -4864,11 +4871,50 @@ ${weekBlocks.join(',\n')}
 Fill every day completely. Evening slot required every day.`;
 }
 
+// Last plan's training, for the next month's plan (TRAINING-STYLE-SPEC-2026-10-24.md section 6): per
+// exercise the best set in the first and last week it was logged, sessions logged, the average session
+// rating and early stops. Read from this plan's logs; '' when there are none.
+function trainingLogSummary(){
+  const pid=String(userTrainingPlan?.plan_id||'');
+  const logs=(activityLogs?.workouts||[]).filter(w=>!w.cardio&&!w.extra&&w.plan===pid&&w.day);
+  if(!pid||!logs.length)return'';
+  // Weeks from the plan's start to the later of the last log and today, so missed weeks show
+  const days=logs.map(w=>w.day).sort();
+  const start=dayKey(userTrainingPlan?.created)||days[0];
+  const weekCount=Math.max(planWeekNo(start,days[days.length-1]),planWeekNo(start,dayKey(new Date())));
+  // The best set: the most weight for the reps (a rough strength score), or the most reps without weight
+  const best=sets=>{let b=null;for(const s of sets||[]){const kg=parseFloat(s.weight_kg)||0,r=parseInt(s.reps)||0;if(!r)continue;const score=kg?kg*(1+r/30):r;if(!b||score>b.score)b={kg,r,score};}return b;};
+  const per=new Map();
+  for(const w of [...logs].sort((a,b)=>String(a.at).localeCompare(String(b.at)))){
+    const wk=weekStart(w.day);
+    for(const e of w.exercises||[]){
+      const b=best(e.sets),k=String(e.name||'').trim();
+      if(!b||!k)continue;
+      const rec=per.get(k)||{first:null,firstWk:null,last:null,lastWk:null};
+      if(!rec.first){rec.first=b;rec.firstWk=wk;}
+      rec.last=b;rec.lastWk=wk;
+      per.set(k,rec);
+    }
+  }
+  const fmt=b=>(b.kg?b.kg+'kg x ':'')+b.r;
+  const lines=[...per].slice(0,30).map(([n,r])=>'- '+n+': '+fmt(r.first)+' -> '+fmt(r.last)+' ('+(r.firstWk===r.lastWk?'only one week logged':r.last.score>r.first.score*1.01?'progressed':'stalled')+')');
+  const planned=(parseInt(CU?.training_days)||(userTrainingPlan?.sessions||[]).length||0)*weekCount;
+  const rated=logs.filter(w=>w.rating);
+  const avg=rated.length?rated.reduce((n,w)=>n+w.rating,0)/rated.length:null;
+  const stops=logs.filter(w=>w.stop).map(w=>w.stop);
+  return`\nLAST MONTH'S TRAINING (from the user's own logs):
+Sessions logged: ${logs.length}${planned?' of about '+planned+' planned':''} over ${weekCount} week${weekCount===1?'':'s'}.${avg!=null?' Average session rating '+avg.toFixed(1)+' out of 5.':''}${stops.length?' Stopped early: '+stops.join(', ')+'.':''}
+Best set per exercise, first week -> last week:
+${lines.join('\n')}
+USE IT: keep the exercises that progressed (same names, so the user's history carries on) and swap the ones that stalled for a similar exercise for the same muscle. ${avg!=null&&avg<=2.5?'Sessions felt hard - start week 1 slightly lower on sets than last month.':'If sessions felt good, week 1 can start slightly higher on sets than last month.'} Never bring back anything the injury rules rule out.`;
+}
 function buildTrainingPrompt(useAssessment, monthNumber=1, useRealBaseline=false, rapportContext=''){
   const u=CU;
   const days=parseInt(u.training_days)||4;
   const exp=u.experience||'intermediate';
-  const isAdvanced=exp==='advanced'||exp==='intermediate';
+  const style=u.training_style==='block'?'block':'steady';
+  const beginner=exp==='beginner';
+  const cutting=/cut|lose|fat|lean|shred/i.test(String(u.goal||''));
   const trainTime=u.train_time||'Morning';
   const occupation=u.occupation||'Light activity - some walking';
 
@@ -4895,10 +4941,7 @@ This is Month ${monthNumber} of the programme. The following 1RM estimates were 
 ${baselineLines}
 
 PROGRAMMING RULES FOR THIS DATA:
-- Week 1 working sets should be at 70-75% of the listed estimated 1RM
-- Week 2 at 75-80%
-- Week 3 at 80-85%
-- Week 4 follows the deload logic for this user's experience level
+- Week 1 working sets at about 70-75% of the listed estimated 1RM. After week 1 the app moves the weights on itself (double progression and the weekly effort target) - do not write week-by-week percentages
 - State the actual target weight in kg in the exercise notes for Week 1 sets so the user knows exactly what to load
 - Do not use vague instructions like "moderate weight" - use the percentages of the listed 1RM to give specific kg targets`;
   }else if(CU.known_numbers&&CU.known_numbers.trim()){
@@ -4910,13 +4953,24 @@ Build working weights from these numbers at 70-75% for Week 1.`;
   }
 
   const monthContext=monthNumber>1
-    ?`\nPROGRAMME MONTH: This is Month ${monthNumber} of a progressive programme. ${hasRealBaseline?'Real assessment data is provided above - use it as the foundation for all loading decisions.':'Build on the previous month with increased intensity and volume where appropriate.'}`
+    ?`\nPROGRAMME MONTH: This is Month ${monthNumber} of a progressive programme. ${hasRealBaseline?'Real assessment data is provided above - use it as the foundation for all loading decisions.':'Build on the previous month.'}`+trainingLogSummary()
     :'';
 
-  // Fix 1 - Deload logic: beginners run straight through, intermediate/advanced get deload every 3 weeks
-  const deloadRule=isAdvanced
-    ?`DELOAD STRUCTURE: After every 3 training weeks, a deload week is offered. Do NOT auto-include it in the 4-week schema - the app will ask the user after Week 3 whether they want it. In week 4 note field, write: "DELOAD_ELIGIBLE: After 3 hard weeks, you can choose a deload this week. This reduces volume 40% to let your body consolidate. If sessions felt easy and energy is high, skip it and keep pushing." Include "Deload 40%" in week 4 note only as optional.`
-    :`DELOAD STRUCTURE: ${u.username} is a beginner. No deload week needed - the volume is not yet high enough to require one. Week 4 continues as normal training.`;
+  // Weekly sets per muscle, effort and lighter weeks (TRAINING-STYLE-SPEC-2026-10-24.md). Targets, not rigid
+  // rules: injuries, avoided exercises and equipment always come first.
+  const setRanges=beginner?{big:'6-10',small:'4-8'}:exp==='advanced'?{big:'12-20',small:'8-16'}:{big:'10-16',small:'6-12'};
+  const volumeBlock=`WEEKLY SETS PER MUSCLE - targets, not rigid rules:
+- A hard set is a working set taken close to the effort target below (warm-up sets do not count).
+- Big muscles (chest, back, quads, glutes, hamstrings): ${setRanges.big} hard sets a week each. Smaller muscles (side and rear delts, biceps, triceps, calves): ${setRanges.small}. Front delts, triceps and traps get a lot from pressing and rowing - count that work and add little or no direct work for them.
+- ${style==='block'?'This is week 1 of a 4-week progressive block: write week 1 sets at the LOW end of these ranges. The app adds sets in weeks 2 and 3 itself.':'The same sessions repeat every week: aim for the middle of these ranges.'}${cutting?'\n- This user is cutting: keep training frequency and effort, put sets at the low end of the ranges, and aim to hold strength rather than chase records.':''}
+- Train each muscle at least twice a week where the user\'s days allow, spread across their own training days - no fixed split.
+- At most ${MUSCLE_SESSION_CAP} hard sets for one muscle in one session, and 1-3 exercises for one muscle in one session.
+- Order: the hardest exercise the user CAN safely do for a muscle goes first - a big compound lift if their injuries, avoided exercises and equipment allow it, otherwise the best alternative (a machine, a supported or single-arm version). Never force a compound they cannot do.
+- If injuries or avoided exercises rule a muscle out, train it only as far as is safe, or not at all - the injury rules always win over these targets.
+- Every exercise has a "muscle" field naming its ONE main muscle: chest, back, quads, glutes, hamstrings, side delts, rear delts, front delts, biceps, triceps, calves, traps, abs or forearms.
+REP RANGES: heavy compounds 6-10, other presses and rows 8-12, isolation work 10-20, some machine or cable isolation 15-30 - about half of each muscle\'s weekly sets in the 10-20 range.
+REST: rest_seconds as a guide - 120-180 for heavy compounds, 60-90 for isolation work.`;
+  const effortBlock=`EFFORT: the app shows the user an effort target each week - how many reps to leave in the tank - and works out lighter weeks itself. ${style==='block'?'This user follows a progressive block: effort rises from 3 reps left in the tank in week 1 to 1 in week 3, then a lighter week.':'This user repeats the same sessions every week, leaving '+(beginner?'2-3':'1-2')+' reps in the tank on working sets.'} Never programme sets to failure on heavy barbell squats, bench presses or deadlifts. Do NOT write deload or lighter weeks into the plan.`;
 
   // Fix 6 - Cardio scheduling with timing rules
   const cardioTiming=trainTime==='Morning'
@@ -4949,7 +5003,7 @@ Build working weights from these numbers at 70-75% for Week 1.`;
 
   // Exercise count scales with training frequency - fewer days need denser sessions
   // to maintain adequate weekly volume per muscle group, more days can be lighter.
-  const exerciseCount=days<=3?'6-7':days===4?'5-6':days===5?'4-5':'3-4';
+  // (Exercises per session now follow from the weekly sets per muscle - volumeBlock)
 
   // User-chosen ab-session days take priority over auto-derivation from rest days,
   // which itself takes priority over the original generic guidance - three tiers,
@@ -5003,8 +5057,12 @@ For every exercise: sets:5, reps:"12/8/5/3/3RM", reps_per_set:["12","8","5","3",
 Notes field for each assessment exercise: "Record every weight from every set. Your Week 2 programme builds from Set 5. Estimated 1RM = Set 5 weight x 1.0667 (Epley formula)."
 Session names: "Assessment - [focus area]" e.g. "Assessment - Upper Body Push", "Assessment - Lower Body".`:''}
 
+${volumeBlock}
+
+${effortBlock}
+
 DOUBLE PROGRESSION MODEL - this is the progression system for all non-assessment weeks:
-Each exercise has a rep range (e.g. 10-12). When the user can complete the TOP of that rep range comfortably across all sets, the weight increases by the smallest sensible increment next session (typically 2.5kg for upper body, 5kg for lower body compounds). They then drop back to the bottom of the rep range with the new weight. If reps are not climbing after 2-3 sessions at the same weight, flag a plateau in the weekly_progression notes.
+Each exercise has a rep range (e.g. 10-12). When the user can complete the TOP of that rep range comfortably across all sets, the weight increases by the smallest sensible increment next session (typically 2.5kg for upper body, 5kg for lower body compounds). They then drop back to the bottom of the rep range with the new weight. If reps are not climbing after 2-3 sessions at the same weight, suggest a similar exercise in that exercise's notes if a plateau is likely.
 
 ${abSessionsBlock}
 
@@ -5013,16 +5071,14 @@ ${cardioTiming}
 ${occupationCardio}
 Cardio sessions must appear as full entries in the cardio_sessions array with specific day_of_week, type, duration and intensity. They are part of the weekly plan, not an afterthought.
 
-${deloadRule}
-
 EXERCISE TECHNIQUE DETAIL - critical, not optional: each how_to field (Setup/Do/Avoid) has up to 40 words - a ceiling to stop rambling, not a target to hit. Within that budget, each of the three sections must include at least one genuinely specific technical cue - a grip width, a stance width, a joint angle, or a range of motion cue. Never pad to fill space, and never cut a genuine technical cue just to stay under the ceiling. Generic filler wastes the word budget and is not acceptable.
 NOT acceptable: "Setup: Stand with feet apart. Do: Lower the weight. Avoid: Bad form."
 The standard required: "Setup: Feet hip-width, grip just outside shoulders. Do: Lower until upper arms are parallel to floor. Avoid: Flaring elbows past 45 degrees."
 
-RULES: ${days} sessions, ${exerciseCount} exercises each, reps_per_set entries must equal sets count. List sessions ONCE only.${hasValidPreferredDays?` Sessions must be on day_of_week ${preferredDaysList.join(', ')} only.`:''}
+RULES: ${days} sessions, as many exercises in each as the weekly sets above need (usually 4-7), reps_per_set entries must equal sets count. List sessions ONCE only.${hasValidPreferredDays?` Sessions must be on day_of_week ${preferredDaysList.join(', ')} only.`:''}
 
 \`\`\`json
-{"notes":"","sessions":[{"name":"Session 1","day_of_week":1,"type":"strength","warm_up_cardio":"5 min light cardio","exercises":[{"name":"","sets":3,"reps":"10-12","reps_per_set":["10-12","10-12","10-12"],"rest_seconds":90,"tempo":"2-1-2","notes":"","how_to":"Setup: X. Do: X. Avoid: X."}]}],"ab_sessions":[{"name":"Ab Session A - Upper and Obliques","day_of_week":3,"day_type":"rest_day","duration_mins":12,"exercises":[{"name":"","sets":3,"reps":"15-20","reps_per_set":["15-20","15-20","15-20"],"rest_seconds":30,"how_to":"","progression_note":""}]},{"name":"Ab Session B - Lower and Anti-Rotation","day_of_week":6,"day_type":"rest_day","duration_mins":12,"exercises":[{"name":"","sets":3,"reps":"12-15","reps_per_set":["12-15","12-15","12-15"],"rest_seconds":30,"how_to":"","progression_note":""}]}],"cardio_sessions":[{"day_of_week":0,"type":"","duration_mins":0,"intensity":"","notes":""}],"weekly_progression":[{"week":1,"note":""},{"week":2,"note":""},{"week":3,"note":""},{"week":4,"note":""}]}
+{"notes":"","sessions":[{"name":"Session 1","day_of_week":1,"type":"strength","warm_up_cardio":"5 min light cardio","exercises":[{"name":"","muscle":"","sets":3,"reps":"10-12","reps_per_set":["10-12","10-12","10-12"],"rest_seconds":90,"tempo":"2-1-2","notes":"","how_to":"Setup: X. Do: X. Avoid: X."}]}],"ab_sessions":[{"name":"Ab Session A - Upper and Obliques","day_of_week":3,"day_type":"rest_day","duration_mins":12,"exercises":[{"name":"","sets":3,"reps":"15-20","reps_per_set":["15-20","15-20","15-20"],"rest_seconds":30,"how_to":"","progression_note":""}]},{"name":"Ab Session B - Lower and Anti-Rotation","day_of_week":6,"day_type":"rest_day","duration_mins":12,"exercises":[{"name":"","sets":3,"reps":"12-15","reps_per_set":["12-15","12-15","12-15"],"rest_seconds":30,"how_to":"","progression_note":""}]}],"cardio_sessions":[{"day_of_week":0,"type":"","duration_mins":0,"intensity":"","notes":""}]}
 \`\`\`
 All ${days} sessions listed. Injuries enforced. JSON only.`;
 }
@@ -5043,7 +5099,7 @@ THIS ANSWER IS PART 1 OF 2 - the plan is written in two parts. In this part:
 1. Plan the WHOLE week first. "week_outline" lists all ${n} sessions in order - name, day_of_week, main focus and main exercises - so part 2 can write the rest to match it.
 2. Write sessions 1 to ${k} in full in "sessions", exactly in the format above, following every rule above.
 3. Write "notes".
-Do NOT write ab_sessions, cardio_sessions or weekly_progression in this part.
+Do NOT write ab_sessions or cardio_sessions in this part.
 Return JSON only: {"notes":"","week_outline":[{"name":"","day_of_week":1,"focus":"","main_exercises":[""]}],"sessions":[sessions 1 to ${k}]}`;
 }
 function trainingPart2Prompt(base,part1){
@@ -5057,7 +5113,7 @@ Already written - do not repeat them: ${JSON.stringify(written)}
 In this part:
 1. Write sessions ${k+1} to ${n} in full in "sessions", following the week as planned (the same names and days), the format above and every rule above.
 2. Write "ab_sessions" and "cardio_sessions" exactly as described above.
-Return JSON only: {"sessions":[sessions ${k+1} to ${n}],"ab_sessions":[],"cardio_sessions":[],"weekly_progression":[]}`;
+Return JSON only: {"sessions":[sessions ${k+1} to ${n}],"ab_sessions":[],"cardio_sessions":[]}`;
 }
 
 // ============================================================
@@ -6168,6 +6224,108 @@ function weightNudge(ex,lastSets,isAssessment){
   const next=Math.round((heaviest+step)*2)/2;
   return{weight:next,text:`You hit the top of the range on every set last time. Try ${next}kg today.`};
 }
+// ---- training style (24 Oct 2026, TRAINING-STYLE-SPEC-2026-10-24.md) ----
+// 'steady' = the same sessions each week (the default); 'block' = a progressive block: sets build for
+// 3 weeks, then a lighter week. Worked out here from the week number - never written by the AI.
+const TRAIN_STYLES={steady:'Same sessions each week',block:'Progressive block'};
+const BIG_MUSCLES=['chest','back','quads','glutes','hamstrings'];
+const MUSCLE_SESSION_CAP=10;   // hard sets for one muscle in one session
+// The muscle an exercise names, in one spelling
+function muscleKey(m){
+  const t=String(m||'').toLowerCase();
+  if(/rear del/.test(t))return'rear delts';
+  if(/side del|lateral del|middle del/.test(t))return'side delts';
+  if(/front del/.test(t))return'front delts';
+  if(/chest|pec/.test(t))return'chest';
+  if(/\blats?\b|back|rhomboid/.test(t))return'back';
+  if(/quad/.test(t))return'quads';
+  if(/glute/.test(t))return'glutes';
+  if(/hamstring/.test(t))return'hamstrings';
+  if(/del|shoulder/.test(t))return'shoulders';
+  if(/bicep/.test(t))return'biceps';
+  if(/tricep/.test(t))return'triceps';
+  if(/calf|calve/.test(t))return'calves';
+  if(/trap/.test(t))return'traps';
+  if(/\babs?\b|abdominal|core|oblique/.test(t))return'abs';
+  if(/forearm|grip/.test(t))return'forearms';
+  return t.trim();
+}
+// A heavy barbell lift, where failing a rep is unsafe without a spotter - never fewer than 1 rep left
+function isHeavyBarbell(name){
+  const n=String(name||'');
+  return/barbell|\b(back|front) squat\b|\bbench press\b|\bdeadlift\b/i.test(n)&&!/dumbbell|\bdb\b|machine|smith|goblet|cable|kettlebell|leg press/i.test(n);
+}
+// Week 1 = the Monday-to-Sunday week the plan started in. Keys are YYYY-MM-DD.
+function planWeekNo(planStartKey,todayKey){
+  const monday=k=>{const p=String(k||'').split('-').map(Number);if(p.length!==3||p.some(isNaN))return NaN;const t=Date.UTC(p[0],p[1]-1,p[2]);return t-((new Date(t).getUTCDay()+6)%7)*86400000;};
+  const a=monday(planStartKey),b=monday(todayKey);
+  if(isNaN(a)||isNaN(b))return 1;
+  return Math.max(1,Math.round((b-a)/(7*86400000))+1);
+}
+// Where a week sits in a 4-week block: 1-3 building, 4 the lighter week (a plan used for longer repeats)
+function blockWeek(n){return((Math.max(1,parseInt(n)||1)-1)%4)+1;}
+// ctx = {style, weekNo, weekKey, deloads:{weekKey:'taken'|'skipped'}, experience}
+function isLighterWeek(ctx){
+  const choice=(ctx.deloads||{})[ctx.weekKey];
+  if(ctx.style==='block')return blockWeek(ctx.weekNo)===4?choice!=='skipped':choice==='taken';
+  return choice==='taken';
+}
+// How many reps to leave in the tank this week. ctx also carries lighter and assessment.
+function effortFor(ex,ctx){
+  if(ctx.assessment)return null;
+  if(ctx.lighter)return{reps:'4-5',text:'Lighter week - leave 4-5 reps in the tank. Smooth, easy reps.'};
+  const beginner=ctx.experience==='beginner';
+  let r=ctx.style==='block'?String((beginner?[3,3,2]:[3,2,1])[Math.min(3,blockWeek(ctx.weekNo))-1]):(beginner?'2-3':'1-2');
+  if(isHeavyBarbell(ex?.name)&&/^0/.test(r))r='1';
+  return{reps:r,text:`Leave ${r} rep${r==='1'?'':'s'} in the tank on every working set.`};
+}
+// The sets for exercise ei this week. Lighter week: half (rounded up). Block style: the first exercise
+// for each big muscle in a session gets 1 more set in week 2 and 2 more in week 3, never past the cap.
+function setsFor(exs,ei,ctx){
+  const ex=(exs||[])[ei];
+  const base=parseInt(ex?.sets)||3;
+  if(!ex||ctx.assessment)return base;
+  if(ctx.lighter)return Math.ceil(base/2);
+  if(ctx.style!=='block')return base;
+  const m=muscleKey(ex.muscle);
+  if(!BIG_MUSCLES.includes(m))return base;
+  if(exs.findIndex(e=>muscleKey(e?.muscle)===m)!==ei)return base;
+  const inSession=exs.reduce((n,e)=>n+(muscleKey(e?.muscle)===m?(parseInt(e.sets)||3):0),0);
+  const add=Math.max(0,Math.min(Math.min(3,blockWeek(ctx.weekNo))-1,MUSCLE_SESSION_CAP-inSession));
+  return base+add;
+}
+// Should a lighter week be offered this week? Returns 'due', 'early' or null.
+// ctx = {style, weekNo, weekKey, planStartWeek, deloads, doneWeeks (Map weekKey -> Set of sessions done),
+//        trainingDays, recentRatings (newest first, this plan's main sessions)}
+// Steady: after 4 training weeks (2 after a "not yet"); either style: early after two sessions in a row rated 2 or less.
+function lighterWeekOffer(ctx){
+  const dec=ctx.deloads||{};
+  if(dec[ctx.weekKey])return null;
+  const r=(ctx.recentRatings||[]).slice(0,2);
+  const early=r.length===2&&r.every(x=>x!=null&&x<=2);
+  if(ctx.style==='block')return early&&blockWeek(ctx.weekNo)!==4?'early':null;
+  const decided=Object.keys(dec).filter(k=>k<ctx.weekKey).sort();
+  const last=decided[decided.length-1]||null;
+  const need=Math.max(1,Math.ceil((parseInt(ctx.trainingDays)||3)/2));
+  let weeks=0;
+  for(const [wk,keys] of ctx.doneWeeks||new Map()){
+    if(wk>=ctx.weekKey||wk<(ctx.planStartWeek||''))continue;
+    if(last&&wk<=last)continue;
+    if((keys?.size||0)>=need)weeks++;
+  }
+  if(weeks>=(last&&dec[last]==='skipped'?2:4))return'due';
+  return early?'early':null;
+}
+// The safety net's check on a written plan: no muscle over the cap in one session. Returns problems.
+function trainingCapProblems(sessions){
+  const out=[];
+  for(const s of sessions||[]){
+    const per={};
+    for(const e of s?.exercises||[]){const m=muscleKey(e?.muscle);if(!m||m==='abs')continue;per[m]=(per[m]||0)+(parseInt(e.sets)||0);}
+    for(const [m,n] of Object.entries(per))if(n>MUSCLE_SESSION_CAP)out.push(`${s.name||'a session'} has ${n} sets for ${m} (at most ${MUSCLE_SESSION_CAP} in one session)`);
+  }
+  return out;
+}
 // ---- train rules end ----
 
 let trainView={mode:'week',sidx:null,step:0,touched:false};
@@ -6180,6 +6338,73 @@ function trainSession(sidx){
   const k=String(sidx==null?'':sidx);
   if(k==='')return null;
   return k.startsWith('ab')?(userTrainingPlan?.ab_sessions?.[parseInt(k.replace('ab',''))||0]||null):(userTrainingPlan?.sessions?.[parseInt(k)]||null);
+}
+// This week of the plan: its number, the style, and whether it is a lighter week (train rules above)
+function trainCtx(){
+  const today=dayKey(new Date());
+  const c={style:userTrainingPlan?.style==='block'?'block':'steady',weekNo:planWeekNo(dayKey(userTrainingPlan?.created)||today,today),
+    weekKey:weekStart(today),deloads:userTrainingPlan?.deloads||{},experience:CU?.experience||'intermediate'};
+  c.lighter=isLighterWeek(c);
+  return c;
+}
+function isAssessmentSess(s){return String(s?.name||'').toLowerCase().includes('assessment');}
+// The sets for one exercise this week (ab sessions are unchanged)
+function exSets(sidx,ei){
+  const s=trainSession(sidx);
+  const ex=s?.exercises?.[ei];
+  if(!ex)return 3;
+  if(String(sidx).startsWith('ab'))return parseInt(ex.sets)||3;
+  return setsFor(s.exercises,ei,{...trainCtx(),assessment:isAssessmentSess(s)});
+}
+// This week plus any lighter-week offer, worked out from the logs
+function trainWeekInfo(){
+  const c=trainCtx();
+  const pid=String(userTrainingPlan?.plan_id||'');
+  const ratings=activityLogs.workouts.filter(w=>!w.cardio&&!w.extra&&w.plan===pid&&w.rating).sort((a,b)=>String(b.at).localeCompare(String(a.at))).map(w=>w.rating);
+  c.offer=c.lighter?null:lighterWeekOffer({...c,planStartWeek:weekStart(dayKey(userTrainingPlan?.created)||dayKey(new Date())),
+    doneWeeks:doneSessionKeysByWeek(activityLogs.workouts),trainingDays:plannedSessionsPerWeek(),recentRatings:ratings});
+  return c;
+}
+// "Take a lighter week" / "Not yet" - saved on the plan (training_plans column 17), so every phone sees it
+async function setLighterWeek(choice){
+  if(!userTrainingPlan)return;
+  const wk=weekStart(dayKey(new Date()));
+  const before={...(userTrainingPlan.deloads||{})};
+  userTrainingPlan.deloads={...before,[wk]:choice};
+  renderTrainingPlan();
+  try{
+    const td=await dbGet('training_plans');
+    const ri=(td.values||[]).findIndex(r=>String(r[0])===String(userTrainingPlan.plan_id));
+    if(ri<0)throw new Error('Your plan could not be found.');
+    const row=[...td.values[ri]];
+    while(row.length<18)row.push('');
+    row[16]=userTrainingPlan.style||'steady';
+    row[17]=JSON.stringify(userTrainingPlan.deloads);
+    await dbUpdate('training_plans',ri+1,row);
+  }catch(e){
+    userTrainingPlan.deloads=before;
+    renderTrainingPlan();
+    alert('That could not be saved. Please try again: '+e.message);
+  }
+}
+function trainWeekHeadHtml(){
+  const w=trainWeekInfo();
+  const label=w.style==='block'?`Week ${blockWeek(w.weekNo)} of 4 - ${TRAIN_STYLES.block}`:`Week ${w.weekNo} - ${TRAIN_STYLES.steady}`;
+  const effort=effortFor({},w);
+  const style=CU?.mot_style||'Mix of Everything';
+  let box='';
+  if(w.lighter){
+    const canSkip=w.style==='block'&&!(w.deloads||{})[w.weekKey]&&CU?.experience==='beginner';
+    box=`<div class="alert alert-info" style="font-size:13px"><strong>Lighter week.</strong> Half the sets, about 10-15% less weight, and leave 4-5 reps in the tank. Your body catches up with the work so you come back stronger.
+      ${w.style==='steady'||canSkip?`<div style="margin-top:8px"><button class="btn btn-ghost btn-xs" onclick="setLighterWeek('skipped')">${w.style==='steady'?'Train as normal instead':'Skip the lighter week'}</button></div>`:''}</div>`;
+  }else if(w.offer){
+    const msg=(w.offer==='early'?msgTemplates.lighterEarly:msgTemplates.deloadCheck)||{};
+    box=`<div class="card" style="border-color:var(--ac2)"><div class="card-lbl">Time for a lighter week?</div>
+      <div style="font-size:13px;color:var(--tx2);line-height:1.5;margin-bottom:10px">${escapeHtml(msg[style]||msg['Mix of Everything']||'')}</div>
+      <div style="display:flex;gap:8px"><button class="btn btn-sm" onclick="setLighterWeek('taken')">Take a lighter week</button><button class="btn btn-ghost btn-sm" onclick="setLighterWeek('skipped')">Not yet</button></div></div>`;
+  }
+  return`<div style="font-size:12px;color:var(--tx2);margin-bottom:4px">${escapeHtml(label)}</div>
+  ${effort?`<div style="font-size:13px;color:var(--ac);margin-bottom:12px">🎯 ${escapeHtml(effort.text)}</div>`:''}${box}`;
 }
 function trainDraftKey(sidx){return'train_draft_'+CU.user_id+'_'+(userTrainingPlan?.plan_id||'')+'_'+sidx;}
 function readTrainDraft(sidx){
@@ -6197,8 +6422,7 @@ function dropTrainDraft(sidx){try{localStorage.removeItem(trainDraftKey(sidx));}
 function draftHasEntries(d){return!!d&&Object.values(d.sets||{}).some(rows=>(rows||[]).some(r=>r&&(r.w||r.r||r.done)));}
 // The set rows for one exercise in the open session, at least as many as planned
 function draftRows(ei){
-  const ex=trainSession(trainDraft.sidx)?.exercises?.[ei];
-  const planned=parseInt(ex?.sets)||3;
+  const planned=exSets(trainDraft.sidx,ei);
   if(!trainDraft.sets[ei])trainDraft.sets[ei]=[];
   while(trainDraft.sets[ei].length<planned)trainDraft.sets[ei].push({w:'',r:'',done:false});
   return trainDraft.sets[ei];
@@ -6206,8 +6430,7 @@ function draftRows(ei){
 function rowLogged(r){return!!r&&((parseFloat(r.w)||0)>0||(parseInt(r.r)||0)>0);}
 // Logged sets for one exercise, counted up to the planned number
 function exerciseProgress(ei){
-  const ex=trainSession(trainDraft.sidx)?.exercises?.[ei];
-  const planned=parseInt(ex?.sets)||3;
+  const planned=exSets(trainDraft.sidx,ei);
   return{logged:Math.min(planned,(trainDraft.sets[ei]||[]).filter(rowLogged).length),planned};
 }
 function sessionProgress(){
@@ -6362,7 +6585,7 @@ function trainWeekCard(s,sidx,isAb){
     <button class="expand-btn" style="margin-top:10px" onclick="const d=document.getElementById('${id}');d.style.display=d.style.display==='none'?'block':'none'">▼ See exercises</button>
     <div id="${id}" style="display:none;margin-top:8px">
       ${s.warm_up_cardio?`<div style="font-size:12px;color:var(--tx2);margin-bottom:6px">🔥 Warm up: ${s.warm_up_cardio}</div>`:''}
-      ${exs.map(ex=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:6px 0;border-bottom:1px solid var(--b1)"><span>${escapeHtml(ex.name)}</span><span style="color:var(--tx2);white-space:nowrap">${escapeHtml(ex.sets||3)} x ${escapeHtml(ex.reps||'8-12')}</span></div>`).join('')}
+      ${exs.map((ex,ei)=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:6px 0;border-bottom:1px solid var(--b1)"><span>${escapeHtml(ex.name)}</span><span style="color:var(--tx2);white-space:nowrap">${exSets(sidx,ei)} x ${escapeHtml(ex.reps||'8-12')}</span></div>`).join('')}
     </div>
   </div>`;
 }
@@ -6371,6 +6594,7 @@ function trainWeekHtml(){
   let html='';
   if(userTrainingPlan.notes)html+=`<div class="alert alert-info">${escapeHtml(userTrainingPlan.notes)}</div>`;
   html+=`<div style="font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;margin-bottom:4px">Your Week</div>
+  ${trainWeekHeadHtml()}
   <div style="font-size:12px;color:var(--tx2);margin-bottom:12px">Tap Start to train and log a session in one place. What you enter is saved on this phone as you go.</div>`;
   html+=userTrainingPlan.sessions.map((s,i)=>trainWeekCard(s,String(i),false)).join('');
 
@@ -6433,11 +6657,14 @@ function trainSessionHtml(){
   if(!ex){
     return head+`<div class="alert alert-warn">This session has no exercises listed.</div>`;
   }
-  const isAssessment=String(s.name||'').toLowerCase().includes('assessment');
-  const targets=repsTargets(ex,isAssessment);
+  const isAssessment=isAssessmentSess(s);
+  const wctx=trainCtx();
+  const setCount=exSets(sidx,ei);
+  const effort=isAb?null:effortFor(ex,{...wctx,assessment:isAssessment});
+  const targets=repsTargets({...ex,sets:setCount,reps_per_set:Array.isArray(ex.reps_per_set)&&ex.reps_per_set.length===setCount?ex.reps_per_set:null},isAssessment);
   const rows=draftRows(ei);
   const last=lastTimeFor(ex.name);
-  const nudge=weightNudge(ex,last,isAssessment);
+  const nudge=weightNudge({...ex,sets:setCount},last,isAssessment||(!isAb&&wctx.lighter));
   // A timed hold or carry ("30-45s", "1 min"): the second box is seconds, weight only if one is used
   const timed=/\d\s*(s|secs?|seconds?|mins?|minutes?)\b/i.test(String(ex.reps||''));
   const kgHint=i=>nudge&&nudge.weight?nudge.weight:(last&&last[Math.min(i,last.length-1)]&&parseFloat(last[Math.min(i,last.length-1)].weight_kg))||(timed?'-':'kg');
@@ -6449,7 +6676,8 @@ function trainSessionHtml(){
   ${ei===0&&s.warm_up_cardio?`<div class="alert alert-warn" style="font-size:13px">🔥 Warm up first: ${escapeHtml(s.warm_up_cardio)}</div>`:''}
   <div class="card">
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:900;line-height:1.1">${escapeHtml(ex.name)}</div>
-    <div style="font-size:13px;color:var(--tx2);margin-top:4px">${escapeHtml(ex.sets||3)} sets x ${escapeHtml(ex.reps||'8-12')}${ex.rest_seconds?' - rest '+escapeHtml(ex.rest_seconds)+'s':''}${ex.tempo?` - tempo ${escapeHtml(ex.tempo)} <span style="cursor:pointer;color:var(--tx3)" onclick="${tempoHelp}">(?)</span>`:''}</div>
+    <div style="font-size:13px;color:var(--tx2);margin-top:4px">${setCount} sets x ${escapeHtml(ex.reps||'8-12')}${ex.rest_seconds?' - rest '+escapeHtml(ex.rest_seconds)+'s':''}${ex.tempo?` - tempo ${escapeHtml(ex.tempo)} <span style="cursor:pointer;color:var(--tx3)" onclick="${tempoHelp}">(?)</span>`:''}</div>
+    ${effort?`<div style="font-size:13px;color:var(--ac);margin-top:6px">🎯 ${escapeHtml(effort.text)}</div>`:''}
     ${ex.notes?`<div class="ex-note" style="margin-top:6px">${escapeHtml(ex.notes)}</div>`:''}
     ${ex.progression_note?`<div class="ex-note" style="margin-top:6px">${escapeHtml(ex.progression_note)}</div>`:''}
     <div style="display:flex;gap:8px;margin:12px 0;flex-wrap:wrap">
@@ -6533,8 +6761,8 @@ async function logWorkout(sidx){
   const notes=trainDraft.notes||'';
   sessRating=trainDraft.rating||3;
   // How much of the session was logged decides the points and whether it counts toward the week
-  const plannedSets=(s.exercises||[]).reduce((n,ex)=>n+(parseInt(ex.sets)||3),0);
-  const loggedSets=exercises.reduce((n,ex,i)=>n+Math.min(ex.sets.length,parseInt(s.exercises[i].sets)||3),0);
+  const plannedSets=(s.exercises||[]).reduce((n,ex,i)=>n+exSets(sidx,i),0);
+  const loggedSets=exercises.reduce((n,ex,i)=>n+Math.min(ex.sets.length,exSets(sidx,i)),0);
   const pct=plannedSets?Math.min(1,loggedSets/plannedSets):0;
   const stopReason=trainDraft.stop||'';
   const award=workoutAward({key:String(sidx),isAb,pct,pb});
@@ -6615,28 +6843,6 @@ async function logWorkout(sidx){
             celebrateMsg('assessmentComplete','📊','Assessment Complete!');
           }
         }
-      }
-    }
-
-    // Fix 1 - Deload check: after 3 completed non-assessment weeks for intermediate/advanced
-    const exp=CU.experience||'intermediate';
-    const isAdvanced=exp==='intermediate'||exp==='advanced';
-    if(isAdvanced&&!isAssessmentSession){
-      const myNonAssessmentLogs=(await dbGet('workout_logs')).values?.filter(r=>{
-        if(r[1]!==CU.user_id)return false;
-        const idx=parseInt(r[5]);
-        const name=isNaN(idx)?'':userTrainingPlan.sessions[idx]?.name||'';
-        return !name.toLowerCase().includes('assessment')&&!String(r[5]).startsWith('ab')&&String(r[5])!=='cardio';
-      })||[];
-      const sessionsCompleted=myNonAssessmentLogs.length;
-      const deloadKey='deload_offered_'+CU.user_id+'_'+Math.floor(sessionsCompleted/((parseInt(CU.training_days)||4)*3));
-      const alreadyOffered=sessionStorage.getItem(deloadKey);
-      const threeCycles=(parseInt(CU.training_days)||4)*3;
-      if(sessionsCompleted>0&&sessionsCompleted%threeCycles===0&&!alreadyOffered){
-        sessionStorage.setItem(deloadKey,'1');
-        setTimeout(()=>{
-          celebrateMsg('deloadCheck','🔄','3 Weeks Done - Deload Check');
-        },2000);
       }
     }
 
@@ -8349,7 +8555,7 @@ function parseWorkoutLogRow(r){
   const key=String(r[5]);
   let exercises=[];
   try{const e=JSON.parse(String(r[6]||'[]'));if(Array.isArray(e))exercises=e;}catch(e){}
-  return{day:dayKey(r[2])||dayKey(r[3]),at:String(r[2]||''),key,pct:typeof x.pct==='number'?x.pct:null,stop:x.stop||'',cardio:key==='cardio',extra:key.startsWith('ab'),pts:parseInt(r[8])||0,exercises};
+  return{day:dayKey(r[2])||dayKey(r[3]),at:String(r[2]||''),key,pct:typeof x.pct==='number'?x.pct:null,stop:x.stop||'',cardio:key==='cardio',extra:key.startsWith('ab'),pts:parseInt(r[8])||0,exercises,rating:parseInt(r[10])||null,plan:String(r[4]||'')};
 }
 function parsePauseRow(r){return{id:String(r[0]),start:dayKey(r[2]),end:dayKey(r[3]),status:String(r[4]||'active'),reason:String(r[5]||'Holiday')};}
 // ---- streak engine end ----
