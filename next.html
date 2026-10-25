@@ -1386,7 +1386,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='24 Oct exercise guides';
+const APP_BUILD='25 Oct shoulder rule';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -2062,12 +2062,18 @@ function matchInjuryKeys(text){
 // Upper-body pressing movements. A shoulder injury means zero pressing, so when
 // one is present these are stripped out of every other protocol's safe and
 // modify lists too. Does not match leg press or Pallof press.
-const UPPER_PRESS_RE=/bench press|overhead press|landmine press|arnold press|push-up|\bdips?\b|pressing/i;
+// Upper-body pressing (25 Oct 2026 - the old list missed "Dumbbell Shoulder Press", "Machine Chest Press", "Push Ups"...):
+// ANY exercise with "press" in its name, except the lower-body and core ones (leg, calf, hip / glute press,
+// belt squat press, Pallof press - user decision: Pallof stays, with a start-light note) and triceps press-downs;
+// push-ups and press-ups however they are written, dips and handstand work
+const UPPER_PRESS_RE=/^(?!.*\b(?:leg|calf|hip|glute|belt|pallof)[\s-]*press)[\s\S]*\bpress(?:es|ing)?\b(?![\s-]?downs?\b)|\b(?:push|press)[\s-]?ups?\b|\bpushups?\b|\bdips?\b|handstand/i;
 // Chest flies are out with a shoulder injury too (user decision 23 Oct 2026, after a
 // floor fly appeared in a real plan): dumbbell, floor, incline, cable, machine, pec deck.
 // Rear delt and reverse flies stay - they are the shoulder-friendly ones.
 const CHEST_FLY_RE=/pec deck|crossover|\bfl(?:y|ye|ies|yes)\b/i;
 // One test for "not allowed with a shoulder injury": pressing or a chest fly
+// Shown on a Pallof press for anyone with a shoulder injury (user decision 25 Oct 2026)
+const PALLOF_SHOULDER_NOTE='Your shoulder: start very light and make sure there is no shoulder pain. If there is, swap this exercise.';
 function shoulderUnsafe(name){const s=String(name||'');return UPPER_PRESS_RE.test(s)||(CHEST_FLY_RE.test(s)&&!/\b(rear|reverse)\b/i.test(s));}
 
 function getInjuryPromptBlock(){
@@ -7073,6 +7079,7 @@ function trainSessionHtml(){
     <div style="font-size:13px;color:var(--tx2);margin-top:4px">${setCount} sets x ${escapeHtml(ex.reps||'8-12')}${ex.rest_seconds?' - rest '+escapeHtml(ex.rest_seconds)+'s':''}${ex.tempo?` - tempo ${escapeHtml(ex.tempo)} <span style="cursor:pointer;color:var(--tx3)" onclick="${tempoHelp}">(?)</span>`:''}</div>
     ${effort?`<div style="font-size:13px;color:var(--ac);margin-top:6px">🎯 ${escapeHtml(effort.text)}</div>`:''}
     ${ex.notes?`<div class="ex-note" style="margin-top:6px">${escapeHtml(ex.notes)}</div>`:''}
+    ${/pallof/i.test(ex.name||'')&&matchInjuryKeys(CU?.injuries||'').includes('Bad shoulder')?`<div class="ex-note" style="margin-top:6px;color:var(--warn)">⚠️ ${escapeHtml(PALLOF_SHOULDER_NOTE)}</div>`:''}
     ${ex.progression_note?`<div class="ex-note" style="margin-top:6px">${escapeHtml(ex.progression_note)}</div>`:''}
     <div style="display:flex;gap:8px;margin:12px 0;flex-wrap:wrap">
       <button class="btn btn-ghost btn-sm" data-exname="${escapeHtml(ex.name)}" data-howto="${escapeHtml(ex.how_to||ex.notes||'')}" onclick="openExerciseGuide(this.dataset.exname,this.dataset.howto)">? How to</button>
