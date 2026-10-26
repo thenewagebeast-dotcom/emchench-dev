@@ -824,7 +824,8 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
         <div class="frow"><label class="flbl">Sex</label><select class="fsel" id="ob-sex"><option value="">Select</option><option value="male">Male</option><option value="female">Female</option></select></div>
       </div>
       <div class="two-col">
-        <div class="frow"><label class="flbl">Weight (kg)</label><input class="finput" id="ob-weight" type="number" placeholder="75"></div>
+        <div class="frow"><label class="flbl">Weight (kg)</label><input class="finput" id="ob-weight" type="number" placeholder="75" oninput="goalWeightFormNote('ob')"></div>
+        <div class="frow"><label class="flbl">Goal weight (optional, kg)</label><input class="finput" id="ob-goal-weight" type="number" step=".1" placeholder="Leave blank to skip" oninput="goalWeightFormNote('ob')"><div id="ob-goal-weight-note" style="font-size:12px;color:var(--tx2);margin-top:6px;line-height:1.5"></div></div>
         <div class="frow"><label class="flbl">Height (cm)</label><input class="finput" id="ob-height" type="number" placeholder="175"></div>
       </div>
       <div class="frow">
@@ -837,7 +838,14 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
     </div>
 
     <div class="ob-step" id="ob2">
-      <div class="frow"><label class="flbl">Primary Goal</label><select class="fsel" id="ob-goal"><option value="">Select goal</option><option value="cut">Cut - Lose fat, keep muscle</option><option value="bulk">Bulk - Build muscle and size</option><option value="maintain">Maintain - Stay lean and strong</option><option value="strength">Strength - Maximise raw strength</option><option value="endurance">Endurance - Cardio performance</option></select></div>
+      <div class="frow"><label class="flbl">Primary Goal</label><select class="fsel" id="ob-goal" onchange="goalNoteSync('ob')"><option value="">Select goal</option><option value="cut">Cut - Lose fat, keep muscle</option><option value="bulk">Bulk - Build muscle and size</option><option value="maintain">Maintain - Stay lean and strong</option><option value="recomp">Recomp - Keep your weight, build muscle</option><option value="strength">Strength - Maximise raw strength</option><option value="endurance">Endurance - Cardio performance</option></select><div id="ob-goal-note" style="display:none;font-size:12px;color:var(--tx2);margin-top:6px;line-height:1.5"></div></div>
+      <div class="frow"><label class="flbl">Want to earn a monthly cheat day?</label>
+        <div class="pills" id="ob-cheat-pick">
+          <div class="pill" data-cheat="yes" onclick="selSingle(this,'ob-cheat-pick')">Yes please</div>
+          <div class="pill on" data-cheat="no" onclick="selSingle(this,'ob-cheat-pick')">No thanks</div>
+        </div>
+        <div style="font-size:12px;color:var(--tx2);margin-top:6px;line-height:1.5">Follow the plan properly - 95% of your sessions done and your meals logged on 95% of days - and the last weekend of each plan month you pick a Saturday or Sunday to eat what you like. Your allergies still apply. If you are on a serious cut you may prefer to leave it off.</div>
+      </div>
       <input type="hidden" id="ob-plan-len" value="3month">
       <input type="hidden" id="ob-plan-type" value="progressive">
       <div class="alert alert-info" style="margin:4px 0 12px;font-size:12px;line-height:1.6">
@@ -1175,6 +1183,11 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
   </div>
 </div>
 
+<!-- GOAL WEIGHT REACHED (Group 4) -->
+<div class="modal-bg" id="goal-reached-modal">
+  <div class="modal" id="goal-reached-body"></div>
+</div>
+
 <!-- COMP MODAL -->
 <div class="modal-bg" id="comp-modal">
   <div class="modal">
@@ -1331,7 +1344,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='26 Oct make-ahead + progress';
+const APP_BUILD='26 Oct group 4 goals';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -2684,7 +2697,7 @@ function sheetsSignOut(){
   pendingCalAdj=null;dislikedMeals=[];measurements=[];
   pendingPatternAdj=null;
   shopBuy=null;shopTicked=new Set();shopTickWeek='';
-  socialEvents=[];
+  socialEvents=[];cheatDays=[];
   activeEvent=null;
   wallPosts=[];competitions=[];allPoints=[];userPoints={};
   _lbSortMode='season_points';
@@ -2962,6 +2975,9 @@ function renderDashboard(){
   aEl.innerHTML='';
   if(!userMealPlan&&!userTrainingPlan)aEl.innerHTML+=`<div class="alert alert-info">👋 Welcome! Hit "Generate Plan" to get your personalised programme.</div>`;
   aEl.innerHTML+=genAlertHtml();
+  aEl.innerHTML+=recompNudgeHtml();
+  aEl.innerHTML+=goalWeightHtml(CU);
+  aEl.innerHTML+=cheatDayHtml();
   aEl.innerHTML+=seasonAlertHtml();
   if(userMealPlan)aEl.innerHTML+=planRuleWarningHtml()+mealSwapNoteHtml();
   if(CU.goal_updated==='true')aEl.innerHTML+=`<div class="alert alert-warn">⚡ Goal updated. Generate a new plan to reflect your changes.</div>`;
@@ -3337,7 +3353,9 @@ async function saveWeighIn(){
       if(mine.length){prevWeight=parseFloat(mine[mine.length-1][3])||0;prevDate=mine[mine.length-1][2];}
       else{prevWeight=parseFloat(CU.weight_kg)||0;prevDate=CU.created_at;}
     }catch(e){console.error('Weigh-in history:',e);}
-    const {adjAmount,adjMsg}=weighInAdjustment(prevWeight,prevDate,currentWeight,CU.goal);
+    let {adjAmount,adjMsg}=weighInAdjustment(prevWeight,prevDate,currentWeight,CU.goal);
+    const goalHeld=goalsOn()&&goalWeightHold(CU,currentWeight);
+    if(goalHeld&&goalHoldAdj(CU,adjAmount,currentWeight)!==adjAmount){adjAmount=0;adjMsg='';}
     const rid='wi_'+Date.now();
     await dbAppend('weigh_in_log',[rid,CU.user_id,new Date().toISOString(),weight,weighInRatings.energy,weighInRatings.hunger,weighInRatings.training,notes,adjAmount,'pending']);
     measurements.push({weighIn:true,logged_at:new Date().toISOString(),weight,waist:'',chest:'',biceps:'',shoulders:'',quads:'',calves:'',forearms:''});
@@ -3355,7 +3373,8 @@ async function saveWeighIn(){
     // If yes, pattern analysis fires instead of the simple weekly modal
     const patternFired=await checkPatternAnalysis();
 
-    if(!patternFired){
+    if(!patternFired&&goalHeld){hideLoad();openGoalReached();}
+    else if(!patternFired){
       // Not a pattern week - use the simple weekly adjustment as normal
       hideLoad();
       const cur=parseInt(userMealPlan?.meals?.daily_targets?.calories)||0;
@@ -4188,10 +4207,57 @@ function regionFieldLimit(){
 // shown as the main list when the plan was written for a US user - older plans
 // hold "differences only" there, which would be an incomplete recipe.
 // A make-your-own blend (26 Oct 2026), shown under the ingredients in both recipe views (the swaps show in recipeAfterHtml)
+// ---- Buy Whole Foods Online (Group 4 item 17, 26 Oct 2026). Their terms allow plain links but not copying their prices
+// or stock, so the app only ever links (never fetches); search links checked 26 Oct 2026. UK only. No link with E=MC-HENCH. ----
+const BWFO_HOME='https://www.buywholefoodsonline.co.uk';
+const BWFO_SPICES=BWFO_HOME+'/herbs-spices-3';
+const BWFO_NOTE='Big bags from Buy Whole Foods Online - no link with E=MC-HENCH. Free UK mainland delivery over £20.';
+function bwfoOn(){return userRegion()!=='us';}
+function bwfoSearchUrl(name){return BWFO_HOME+'/search?search='+encodeURIComponent(String(name||'').trim().toLowerCase()).replace(/%20/g,'+');}
+// "2 tbsp ground allspice (pimento)" -> "ground allspice"
+function spiceNameOf(text){
+  return String(text||'').replace(/\(.*?\)/g,' ').replace(/^[\s\d\/.½¼¾⅓⅔-]+/,'').replace(/^(heaped |level |rounded )?(tsp|tbsp|teaspoons?|tablespoons?|g|grams?|pinch(es)?|of|x)\b\s*/i,'').replace(/^of\s+/i,'').replace(/,.*$/,'').replace(/\s+/g,' ').trim();
+}
+function myoBuyHtml(myo){
+  if(!bwfoOn())return'';
+  const names=[...new Set((myo.items||[]).map(spiceNameOf).filter(n=>n&&n.length<=40))];
+  if(!names.length)return'';
+  const a=(n,t)=>`<a href="${bwfoSearchUrl(n)}" target="_blank" rel="noopener" style="color:var(--ac)">${escapeHtml(t||n)} ↗</a>`;
+  return`<div style="font-size:12px;color:var(--tx2);margin-top:8px;line-height:1.7">Buy the spices: ${names.map(n=>a(n)).join(' · ')}${myo.name?` - or ready-made ${a(myo.name)}`:''}<div style="font-size:11px;color:var(--tx3)">${BWFO_NOTE}</div></div>`;
+}
+// The dried herbs and spices a plan uses, most used first: [{name, recipes}] (fresh herbs, salt, pepper and oils left out)
+function planSpices(recipes){
+  const found=new Map();
+  for(const r of recipes||[]){
+    const seen=new Set();
+    for(const line of recipeShopLines(r)){
+      const raw=String(line.item||'').trim();
+      if(!raw||/\bfresh\b/i.test(raw)||SHOP_CUPBOARD_RE.test(raw))continue;
+      const m=raw.match(SHOP_SPICE_RE);
+      if(!m&&String(line.aisle||'')!=='Herbs and spices')continue;
+      const name=(raw.split(/\s+/).length>4&&m?m[0]:raw).toLowerCase();
+      const key=shopKey(name);
+      if(!key||seen.has(key))continue;
+      seen.add(key);
+      const f=found.get(key)||{name:name.charAt(0).toUpperCase()+name.slice(1),recipes:0};
+      f.recipes++;found.set(key,f);
+    }
+  }
+  return[...found.values()].sort((a,b)=>b.recipes-a.recipes||a.name.localeCompare(b.name));
+}
+// "Stock your spice cupboard" on the Meal Plan tab (Dom: both the card and the links)
+function spiceCupboardHtml(){
+  if(!bwfoOn())return'';
+  const list=planSpices(PLAN_CATS.flatMap(c=>userMealPlan?.meals?.meals?.[c]||[]).filter(m=>m&&m.name)).slice(0,15);
+  if(list.length<3)return'';
+  return`<details class="card" style="margin-bottom:16px"><summary style="cursor:pointer;font-weight:700">🧂 Stock your spice cupboard <span style="font-weight:400;font-size:12px;color:var(--tx3)">- ${list.length} herbs and spices this plan uses</span></summary>
+    <div style="margin-top:10px">${list.map(x=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--b1);font-size:13px"><span>${escapeHtml(x.name)} <span style="color:var(--tx3);font-size:11px">· ${x.recipes} recipe${x.recipes===1?'':'s'}</span></span><a href="${bwfoSearchUrl(x.name)}" target="_blank" rel="noopener" style="color:var(--ac);white-space:nowrap">Find it ↗</a></div>`).join('')}</div>
+    <div style="font-size:11px;color:var(--tx3);margin-top:8px">${BWFO_NOTE}</div></details>`;
+}
 function recipeExtrasHtml(recipe){
   const m=recipe.make_your_own;
   const myo=m&&Array.isArray(m.items)&&m.items.length?m:null;
-  return(myo?`<div class="myo"><div class="ingr-sec">Make your own ${escapeHtml(myo.name||'blend')}</div><ul class="ingr-list">${myo.items.map(x=>`<li>${escapeHtml(String(x))}</li>`).join('')}</ul>${myo.how?`<div style="font-size:13px;color:var(--tx2);line-height:1.5">${escapeHtml(myo.how)}</div>`:''}</div>`:'');
+  return(myo?`<div class="myo"><div class="ingr-sec">Make your own ${escapeHtml(myo.name||'blend')}</div><ul class="ingr-list">${myo.items.map(x=>`<li>${escapeHtml(String(x))}</li>`).join('')}</ul>${myo.how?`<div style="font-size:13px;color:var(--tx2);line-height:1.5">${escapeHtml(myo.how)}</div>`:''}${myoBuyHtml(myo)}</div>`:'');
 }
 function ingredientsHtml(recipe){
   const r=userRegion();
@@ -4797,8 +4863,34 @@ function weighInAdjustment(prevWeight,prevDate,currentWeight,goal){
     if(rate<0.2){adjMsg=`${diff>0?'Only '+moved+'kg gained':'No weight gained'} ${since}. Add 100 calories to drive better muscle growth.`;adjAmount=100;}
     else if(rate>0.8){adjMsg=`Up ${moved}kg ${since} - gaining a little fast. Reduce by 50 calories to keep it clean.`;adjAmount=-50;}
     else{adjMsg='Perfect rate of gain. Calories stay the same.';}
+  }else if(goal==='recomp'){
+    // A recomp holds the weight steady: the progress is in the waist, the measurements and the lifts
+    if(rate<-0.5){adjMsg=`You are down ${moved}kg ${since} - faster than a recomp should go. Add 100 calories to keep building muscle.`;adjAmount=100;}
+    else if(rate>0.4){adjMsg=`You are up ${moved}kg ${since} - a little fast for a recomp. Reduce by 100 calories.`;adjAmount=-100;}
+    else{adjMsg='Your weight is steady - that is what a recomp should do. Your progress shows in your waist, your measurements and your lifts, not the scale.';}
   }else{adjMsg='Weight is stable. Calories stay the same this week.';}
   return{adjAmount,adjMsg,rate};
+}
+// Recomp (Group 4, 26 Oct 2026): the line each AI instruction gets, and the honest note under the choice
+const RECOMP_NOTE='Works best if you are new to training, coming back after a break, or carrying some extra fat. If you are already lean and well trained it is slow - Bulk or Cut will get you there faster.';
+function goalPromptLine(u,kind){
+  // the goal weight (new backend only - Sheets profiles have no such field, so it is empty there)
+  const gw=goalWeightPromptLine(u);
+  if(u?.goal!=='recomp')return gw;
+  return gw+(kind==='meals'?'\nGOAL - RECOMP: keep body weight about the same while building muscle - high protein at about maintenance, steady portions, no bulking or low-calorie meals.'
+    :kind==='training'?'\nGOAL - RECOMP: keep body weight about the same while building muscle - train it like a build goal: steadily add weight or reps, no extra cardio beyond what is planned.'
+    :'\nGOAL - RECOMP: a steady bodyweight is success - judge progress by waist, measurements and strength, never by the scale alone.');
+}
+function goalNoteSync(prefix){
+  const el=document.getElementById(prefix+'-goal-note'),v=document.getElementById(prefix+'-goal')?.value;
+  if(el){el.textContent=v==='recomp'?RECOMP_NOTE:'';el.style.display=v==='recomp'?'':'none';}
+}
+// A recomp shows in the tape measure: a nudge when no measurements were logged in 14 days
+function recompNudgeHtml(){
+  if(CU?.goal!=='recomp')return'';
+  const last=(measurements||[]).filter(m=>parseFloat(m.waist)>0).map(m=>new Date(m.logged_at).getTime()).filter(t=>!isNaN(t)).sort((a,b)=>b-a)[0];
+  if(last&&Date.now()-last<14*86400000)return'';
+  return`<div class="alert alert-info">📏 Recomp tip: log your measurements every 2 weeks - your waist and arms show your progress better than the scale. <a href="#" onclick="goTab('body');return false">Log them</a></div>`;
 }
 function getUserMacros(){
   const u=CU;
@@ -4808,12 +4900,13 @@ function getUserMacros(){
   let bmr=u.sex==='male'?10*w+6.25*h-5*a+5:10*w+6.25*h-5*a-161;
   const mult={'3':1.375,'4':1.55,'5':1.55,'6':1.725}[u.training_days]||1.375;
   const tdee=Math.round(bmr*mult);
-  const formula=u.goal==='cut'?tdee-400:u.goal==='bulk'?tdee+300:tdee;
+  // Recomp (26 Oct 2026, Dom): only about 50 under maintenance - 200 under is basically a cut - with a bit more protein
+  const formula=u.goal==='cut'?tdee-400:u.goal==='bulk'?tdee+300:u.goal==='recomp'?tdee-50:tdee;
   // While generating: last month's final target, if one is being carried over.
   // Any other time (a meal swap): the size the current plan's recipes were written for.
   const planned=isGenerating?carriedCalorieTarget:(planBaseCalories()||null);
   const tc=applyCalorieFloor(planned||formula);
-  const protein=Math.round(w*2.2);
+  const protein=Math.round(w*(u.goal==='recomp'?2.4:2.2));
   const fats=Math.round(tc*0.25/9);
   const carbs=Math.round((tc-(protein*4)-(fats*9))/4);
   return{tdee,tc,protein,fats,carbs,waterTarget:Math.min(Math.max(Math.round(w*30),1500),2500)};
@@ -4966,6 +5059,7 @@ function patternAnalysisPrompt(weighIns,recentLogs){
     cut:{ideal:'0.3 to 0.5kg per week',tooFast:0.7,tooSlow:0.2,direction:'down'},
     bulk:{ideal:'0.2 to 0.4kg per week',tooFast:0.6,tooSlow:0.1,direction:'up'},
     maintain:{ideal:'within plus or minus 1kg total',tooFast:0.4,tooSlow:0,direction:'stable'},
+    recomp:{ideal:'within plus or minus 1kg total - a steady weight is success, progress shows in measurements and strength',tooFast:0.4,tooSlow:0,direction:'stable'},
     strength:{ideal:'within plus or minus 1kg total',tooFast:0.4,tooSlow:0,direction:'stable'},
     endurance:{ideal:'within plus or minus 1kg total',tooFast:0.4,tooSlow:0,direction:'stable'}
   };
@@ -4979,7 +5073,7 @@ MOTIVATIONAL STYLE - ${patternStyle}: ${patternStyleVoice}
 Write the explanation in this voice throughout, not just a closing line.
 
 USER DATA - LAST 3 WEEKS:
-Goal: ${CU.goal}
+Goal: ${CU.goal}${goalPromptLine(CU,'progress')}
 Current daily calorie target: ${currentCals} kcal
 Weight trend: ${weightTrend}
 Weekly changes: ${weeklyChanges.join(', ')}
@@ -5128,6 +5222,10 @@ async function checkPatternAnalysis(){
 
 async function confirmPatternAdj(){
   if(!pendingPatternAdj||!userMealPlan?.meals?.daily_targets)return;
+  if(goalsOn()){
+    const cur=parseInt(userMealPlan.meals.daily_targets.calories)||0,adj=(parseInt(pendingPatternAdj.new_target)||cur)-cur;
+    if(goalHoldAdj(CU,adj)!==adj){closeModal('pattern-modal');pendingPatternAdj=null;openGoalReached();return;}
+  }
   showLoad('Saving','Updating your nutrition target...');
   setCalorieTarget(pendingPatternAdj.new_target);
   closeModal('pattern-modal');
@@ -5209,7 +5307,7 @@ function buildMealNamesPrompt(changeLevel='fresh', monthNumber=1, progressionCon
     :`Completely fresh plan. Do NOT repeat any of these prior meal names: ${priorMeals}.`;
   return`Generate 10 meal name options per core category. Names, macros, difficulty and prep time ONLY - no recipes.
 
-USER: ${u.username}, ${u.age}yrs, ${u.sex}, ${u.weight_kg}kg, goal:${u.goal}
+USER: ${u.username}, ${u.age}yrs, ${u.sex}, ${u.weight_kg}kg, goal:${u.goal}${goalPromptLine(u,'meals')}
 ${monthNote}
 ${progressionContext?'\n'+progressionContext:''}${rapportContext}
 Dietary:${u.dietary_type}, Allergies:${u.allergies?.join(',')||'none'}
@@ -5600,7 +5698,7 @@ Each ab session: 3-4 exercises, 3 sets each, 12-20 reps, 30 second rest. progres
 
   return`Generate 1-month training plan. JSON only. No meals.
 
-USER: ${u.username}, ${u.age}yrs, ${u.sex}, ${u.weight_kg}kg, goal:${u.goal}, experience:${exp}, ${days} days/week${dayConstraint}
+USER: ${u.username}, ${u.age}yrs, ${u.sex}, ${u.weight_kg}kg, goal:${u.goal}, experience:${exp}, ${days} days/week${dayConstraint}${goalPromptLine(u,'training')}
 Equipment:${u.equipment?.join(',')||'gym'}, Cardio:${u.cardio_options?.join(',')||'running'}${cableLine}
 INJURIES STRICT:${u.injuries||'none'}, AVOID STRICT:${u.avoided_exercises||'none'}${injuryBlock}${healthLine}
 Training time: ${trainTime}. Occupation: ${occupation}.${monthContext}${rapportContext}
@@ -5727,6 +5825,7 @@ function renderMealPlan(){
   // Shopping list button
   html+=`<button class="btn btn-ghost" style="width:100%;margin-bottom:16px" onclick="genShoppingList()">🛒 Generate Shopping List</button>`;
   html+=`<div id="shopping-list-out" style="margin-bottom:16px"></div>`;
+  html+=spiceCupboardHtml();
 
   if(m.weekly_rotation&&m.weekly_rotation.length){
     // ROTATION IS THE MAIN VIEW - each meal name is tappable to show recipe inline
@@ -6526,7 +6625,7 @@ function shopListBodyHtml(){
   }
   if(shopBuy.cupboard.length){
     html+=`<details style="margin-bottom:12px"><summary style="cursor:pointer;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--tx2)">🗄️ Probably in your cupboard (${shopBuy.cupboard.length})</summary>
-      <div style="font-size:11px;color:var(--tx3);margin:6px 0 8px">Oils, spices and seasonings in small amounts - just check you have them.</div>
+      <div style="font-size:11px;color:var(--tx3);margin:6px 0 8px">Oils, spices and seasonings in small amounts - just check you have them.${bwfoOn()?` Running low? <a href="${BWFO_SPICES}" target="_blank" rel="noopener" style="color:var(--ac)">Buy herbs and spices in bulk ↗</a>`:''}</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px">${shopBuy.cupboard.map(i=>`<span style="background:var(--s2);border:1px solid var(--b1);border-radius:6px;padding:4px 8px;font-size:11px;color:var(--tx2)">${escapeHtml(i.name)}</span>`).join('')}</div>
     </details>`;
   }
@@ -7729,7 +7828,7 @@ function renderMealLog(){
   </div>
   <button class="btn" onclick="saveMealLog()">Save Today's Log (+10 pts)</button>`;
 
-  el.innerHTML=html;
+  el.innerHTML=(isCheatDayToday()?`<div class="alert alert-ok" style="margin-bottom:14px">🍕 Cheat day - eat what you like today, no target. ${CHEAT_DAY_CARE} Logging is up to you.</div>`:'')+html;
   // Anything added but not yet saved survives a redraw of this tab
   renderExtraFoods();
 }
@@ -7937,7 +8036,7 @@ async function saveMeasurements(){
 // PROGRESS
 // ============================================================
 function renderProgressContent(){
-  document.getElementById('progress-content').innerHTML=`
+  document.getElementById('progress-content').innerHTML=goalWeightHtml(CU)+`
     <div class="stats-grid">
       <div class="stat"><div class="stat-v">${userPoints.sessions_logged||0}</div><div class="stat-l">Sessions</div></div>
       <div class="stat"><div class="stat-v">${userPoints.current_streak||0}</div><div class="stat-l">Week Streak</div></div>
@@ -7985,7 +8084,7 @@ function progressReportPrompt(){
   const recompSummary=buildRecompSummary();
   return`You are E=MC-HENCH. Write a progress report for ${CU.username} in ${style} motivational style.
 Stats: ${userPoints.sessions_logged} sessions, ${userPoints.current_streak||0} week workout streak, ${userPoints.pbs_logged} PBs, ${userPoints.season_points} season pts.
-Goal: ${CU.goal}, Experience: ${CU.experience}, Weight: ${CU.weight_kg}kg.
+Goal: ${CU.goal}, Experience: ${CU.experience}, Weight: ${CU.weight_kg}kg.${goalPromptLine(CU,'progress')}
 ${progressPlanLine()}
 ${recompSummary?recompSummary+' If this shows body recomposition (e.g. waist down while other measurements hold or rise) even though bodyweight has barely moved, explicitly call this out as real progress the scale alone would not show.':''}
 Under 180 words. Direct. Give 3 specific action points for next 2 weeks.
@@ -8593,7 +8692,8 @@ const defaultShops=[
   {shop_id:'s4',shop_name:'Tesco',best_for:'Everyday food, meal prep basics',url:'https://www.tesco.com',description:'Best for bulk buying rice, oats, chicken, eggs and everyday meal prep ingredients.',avg_rating:4,total_ratings:1},
   {shop_id:'s5',shop_name:"Sainsbury's",best_for:'Quality ingredients, fresh produce',url:'https://www.sainsburys.co.uk',description:'Good quality fresh produce and lean meats. Good range of protein-focused products.',avg_rating:4,total_ratings:1},
   {shop_id:'s6',shop_name:'Lidl',best_for:'Budget meal prep, protein basics',url:'https://www.lidl.co.uk',description:'Incredible value on chicken, eggs, Greek yoghurt and fresh veg. Surprising sports nutrition section.',avg_rating:5,total_ratings:1},
-  {shop_id:'s7',shop_name:'Iceland',best_for:'Frozen bulk protein, meal prep',url:'https://www.iceland.co.uk',description:'Best for frozen chicken breasts, fish and bulk frozen veg. Great for batch cooking on a budget.',avg_rating:4,total_ratings:1}
+  {shop_id:'s7',shop_name:'Iceland',best_for:'Frozen bulk protein, meal prep',url:'',description:'Best for frozen chicken breasts, fish and bulk frozen veg. Great for batch cooking on a budget.',avg_rating:4,total_ratings:1},
+  {shop_id:'s8',shop_name:'Buy Whole Foods Online',best_for:'Herbs, spices and wholefoods in bulk',url:BWFO_HOME,description:'Big bags of herbs and spices for much less per 100 g than supermarket jars, plus nuts, seeds and flours. Free UK mainland delivery over £20.',avg_rating:0,total_ratings:0}
 ];
 
 async function loadShopList(){
@@ -8609,7 +8709,7 @@ function renderShop(){
   const el=document.getElementById('shop-list');
   el.innerHTML=shopList.map(s=>`<div class="shop-card">
     <div class="shop-hd">
-      <div><div class="shop-name">${escapeHtml(s.shop_name)}</div><a class="shop-link" href="${escapeUrl(s.url)}" target="_blank">Visit Store →</a></div>
+      <div><div class="shop-name">${escapeHtml(s.shop_name)}</div>${s.url?`<a class="shop-link" href="${escapeUrl(s.url)}" target="_blank" rel="noopener">Visit Store →</a>`:'<span style="font-size:12px;color:var(--tx3)">Search for them online</span>'}</div>
       <div class="stars">${[1,2,3,4,5].map(n=>`<span class="star ${n<=(s.avg_rating||0)?'on':''}" onclick="rateShop('${s.shop_id}',${n})">★</span>`).join('')}<span class="star-cnt">(${s.total_ratings||0})</span></div>
     </div>
     <div class="shop-for">Best for: ${escapeHtml(s.best_for)}</div>
@@ -8678,14 +8778,16 @@ function renderProfile(){
     <div class="card">
       <div class="card-lbl">Update Goal</div>
       <div class="frow"><label class="flbl">Current Goal</label>
-        <select class="fsel" id="prof-goal">
+        <select class="fsel" id="prof-goal" onchange="goalNoteSync('prof')">
           <option value="cut" ${CU.goal==='cut'?'selected':''}>Cut</option>
           <option value="bulk" ${CU.goal==='bulk'?'selected':''}>Bulk</option>
           <option value="maintain" ${CU.goal==='maintain'?'selected':''}>Maintain</option>
+          <option value="recomp" ${CU.goal==='recomp'?'selected':''}>Recomp - keep your weight, build muscle</option>
           <option value="strength" ${CU.goal==='strength'?'selected':''}>Strength</option>
           <option value="endurance" ${CU.goal==='endurance'?'selected':''}>Endurance</option>
         </select>
       </div>
+      <div id="prof-goal-note" style="${CU.goal==='recomp'?'':'display:none;'}font-size:12px;color:var(--tx2);margin:-4px 0 10px;line-height:1.5">${CU.goal==='recomp'?RECOMP_NOTE:''}</div>
       <button class="btn btn-ghost btn-sm" onclick="updateGoal()">Update Goal</button>
     </div>
 
@@ -8706,6 +8808,7 @@ function renderProfile(){
     ${accountCardHtml()}
     ${wallCardHtml()}
     ${trainingStyleCardHtml()}
+    ${cheatDayCardHtml()}
     ${aiAdminCardHtml()}
     <div class="card" style="display:none">
       <div class="card-lbl">Change PIN</div>
@@ -8718,6 +8821,7 @@ function renderProfile(){
       <div class="card-lbl">Edit Stats</div>
       <div class="two-col">
         <div class="frow"><label class="flbl">Weight (kg)</label><input class="finput" id="prof-weight" type="number" value="${CU.weight_kg||''}"></div>
+        <div class="frow"><label class="flbl">Goal weight (optional, kg)</label><input class="finput" id="prof-goal-weight" type="number" step=".1" value="${escapeHtml(CU.goal_weight_kg||'')}" placeholder="Leave blank for none" oninput="goalWeightFormNote('prof')"><div id="prof-goal-weight-note" style="font-size:12px;color:var(--tx2);margin-top:6px;line-height:1.5"></div></div>
         <div class="frow"><label class="flbl">Height (cm)</label><input class="finput" id="prof-height" type="number" value="${CU.height_cm||''}"></div>
         <div class="frow"><label class="flbl">Age</label><input class="finput" id="prof-age" type="number" value="${CU.age||''}"></div>
         <div class="frow"><label class="flbl">Training Days</label><select class="fsel" id="prof-days"><option value="3" ${CU.training_days==='3'?'selected':''}>3</option><option value="4" ${CU.training_days==='4'?'selected':''}>4</option><option value="5" ${CU.training_days==='5'?'selected':''}>5</option><option value="6" ${CU.training_days==='6'?'selected':''}>6</option></select></div>
@@ -9095,6 +9199,10 @@ async function saveStats(){
   const health=document.getElementById('prof-health')?.value;
   // The medicines answer (24 Oct 2026) - only the new backend's builds have this box
   const medicines=document.getElementById('prof-medicines')?.value;
+  // The goal weight (Group 4) - also only in the new backend's builds. Blank clears it.
+  const gwBox=document.getElementById('prof-goal-weight');
+  const goalW=gwBox?(parseFloat(gwBox.value)||null):undefined;
+  if(goalW!==undefined&&goalW!==null&&!(goalW>=30&&goalW<=300)){alert('Please enter a goal weight between 30 and 300 kg, or leave it blank.');return;}
   showLoad('Saving','Updating your stats...');
   const waterTarget=waterTargetFor(weight||CU.weight_kg);
   const patch={24:waterTarget};
@@ -9102,6 +9210,9 @@ async function saveStats(){
   if(days)patch[9]=days;if(injuries!==undefined)patch[18]=injuries;if(avoid!==undefined)patch[19]=avoid;
   if(health!==undefined)patch[17]=health.trim();
   if(medicines!==undefined)patch.medicines=medicines.trim().slice(0,1000);
+  // A new goal weight starts its progress bar from today's weight, and "keep going" is asked again
+  const goalWChanged=goalW!==undefined&&String(goalW??'')!==String(parseFloat(CU.goal_weight_kg)||'');
+  if(goalWChanged)Object.assign(patch,{goal_weight_kg:goalW,goal_weight_from:goalW?(parseFloat(weight||CU.weight_kg)||null):null,goal_weight_keep:false});
   try{
     const patched=await patchUserRow(CU.user_id,patch,CU);
     if(patched){
@@ -9110,6 +9221,7 @@ async function saveStats(){
       CU.injuries=injuries;CU.avoided_exercises=avoid;CU.water_target_ml=waterTarget;
       if(health!==undefined)CU.health_conditions=health.trim();
       if(medicines!==undefined)CU.medicines=medicines.trim().slice(0,1000);
+      if(goalWChanged){CU.goal_weight_kg=goalW??'';CU.goal_weight_from=goalW?(parseFloat(weight||CU.weight_kg)||''):'';CU.goal_weight_keep=false;}
     }
     hideLoad();celebrateMsg('statsUpdated','✅','Stats Updated!');
   }catch(e){hideLoad();alert('Error: '+e.message);}
@@ -9335,6 +9447,189 @@ function parseWorkoutLogRow(r){
 function parsePauseRow(r){return{id:String(r[0]),start:dayKey(r[2]),end:dayKey(r[3]),status:String(r[4]||'active'),reason:String(r[5]||'Holiday')};}
 // ---- streak engine end ----
 
+// ---- goals start ----
+// Goal weight and the monthly cheat day (Group 4, GROUP4-PROPOSAL-2026-10-26.md). New backend only: the profile
+// fields (supabase/043) and the cheat_days table exist there; goalsOn() is false in index.html (Sheets has no
+// columns for them) and the layer switches it on. The rules below are plain functions, checked by check-goal-rules.js.
+function goalsOn(){return false;}
+// The weight at the bottom of the healthy range for a height (BMI 18.5)
+function healthyMinKg(heightCm){const h=(parseFloat(heightCm)||0)/100;return h>0?Math.round(18.5*h*h*10)/10:0;}
+// Where someone is against their goal weight. null when there is no goal weight.
+// Never used for calories (Dom, 26 Oct 2026): progress, a timeline, the AI's context and the "reached it" choice only.
+function goalWeightInfo(u,weightNow){
+  const target=parseFloat(u?.goal_weight_kg)||0,cur=parseFloat(weightNow??u?.weight_kg)||0;
+  if(!target||!cur)return null;
+  const from=parseFloat(u.goal_weight_from)||cur;
+  const toGo=Math.round((target-cur)*10)/10;
+  const minKg=healthyMinKg(u.height_cm),belowHealthy=minKg>0&&target<minKg;
+  const losing=target<from,gaining=target>from;
+  const reached=Math.abs(toGo)<=0.5||(losing&&cur<=target)||(gaining&&cur>=target);
+  const span=Math.abs(target-from),done=span?Math.min(1,Math.max(0,(losing?from-cur:cur-from)/span)):(reached?1:0);
+  let mismatch='';
+  if(u.goal==='cut'&&toGo>0.5)mismatch='Your goal weight is above your current weight - did you mean Bulk or Recomp?';
+  else if(u.goal==='bulk'&&toGo<-0.5)mismatch='Your goal weight is below your current weight - did you mean Cut?';
+  else if(u.goal==='recomp'&&Math.abs(toGo)>3)mismatch='Recomp keeps your weight about the same - Cut or Bulk may suit this goal better.';
+  return{target,cur,from,toGo,reached,done,belowHealthy,healthyMin:minKg,mismatch};
+}
+// An honest range at a safe pace: cut 0.5-1% of body weight a week, bulk 0.25-0.5%. '' when it does not apply.
+function goalWeightTimeline(info,goal,now=Date.now()){
+  if(!info||info.belowHealthy||info.reached)return'';
+  const pace=goal==='cut'&&info.toGo<0?[0.005,0.01]:goal==='bulk'&&info.toGo>0?[0.0025,0.005]:null;
+  if(!pace)return'';
+  const kg=Math.abs(info.toGo),lo=Math.max(1,Math.ceil(kg/(info.cur*pace[1]))),hi=Math.max(lo,Math.ceil(kg/(info.cur*pace[0])));
+  const mid=new Date(now+(lo+hi)/2*7*86400000).toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  return`At a steady, safe pace that's about ${lo===hi?lo:lo+'-'+hi} weeks (around ${mid}).`;
+}
+const GOAL_WEIGHT_GP_NOTE='This is below the healthy weight range for your height. Please speak to your GP before aiming for it.';
+// The line the AI instructions get (nothing for a goal weight under the healthy range - G1)
+function goalWeightPromptLine(u){
+  const i=goalWeightInfo(u);
+  return i&&!i.belowHealthy?`\nGoal weight: ${i.target} kg (currently ${i.cur} kg).`:'';
+}
+// Reached on Cut or Bulk and not yet answered: calories are not pushed any further (G2)
+function goalWeightHold(u,weightNow){
+  if(!['cut','bulk'].includes(u?.goal)||u?.goal_weight_keep===true||u?.goal_weight_keep==='true')return false;
+  return!!goalWeightInfo(u,weightNow)?.reached;
+}
+// An adjustment that would push past the goal weight while it is held becomes 0
+function goalHoldAdj(u,adj,weightNow){
+  if(!goalWeightHold(u,weightNow))return adj;
+  return(u.goal==='cut'&&adj<0)||(u.goal==='bulk'&&adj>0)?0:adj;
+}
+// The progress card (dashboard and Progress): only the person sees it, never the Wall or the leaderboard
+function goalWeightHtml(u){
+  if(!goalsOn())return'';
+  const i=goalWeightInfo(u);
+  if(!i)return'';
+  if(i.belowHealthy)return`<div class="alert alert-info">🎯 Goal weight ${i.target} kg. ${GOAL_WEIGHT_GP_NOTE}</div>`;
+  const pct=Math.round(i.done*100);
+  const line=i.reached?`You're at your goal weight ✓${goalWeightHold(u)?' <button class="btn btn-sm" style="margin-left:8px" onclick="openGoalReached()">Choose what\'s next</button>':''}`:`${i.cur} kg now - goal ${i.target} kg - ${Math.abs(i.toGo)} kg to go`;
+  return`<div class="card" style="margin-bottom:12px"><div class="card-lbl">🎯 Goal Weight</div>
+    <div style="font-size:14px;margin-bottom:8px">${line}</div>
+    <div style="height:8px;background:var(--s3);border-radius:4px;overflow:hidden"><div style="width:${pct}%;height:100%;background:var(--ac)"></div></div>
+    ${goalWeightTimeline(i,u.goal)?`<div style="font-size:12px;color:var(--tx2);margin-top:8px">${goalWeightTimeline(i,u.goal)}</div>`:''}
+    ${i.mismatch?`<div style="font-size:12px;color:var(--tx2);margin-top:6px">${i.mismatch}</div>`:''}</div>`;
+}
+// The note under the goal weight box while it is typed (sign-up 'ob', Profile 'prof')
+function goalWeightFormNote(prefix){
+  const el=document.getElementById(prefix+'-goal-weight-note');if(!el)return;
+  const g=parseFloat(document.getElementById(prefix+'-goal-weight')?.value)||0;
+  const u={goal:document.getElementById(prefix+'-goal')?.value||CU?.goal,goal_weight_kg:g,
+    weight_kg:document.getElementById(prefix==='ob'?'ob-weight':'prof-weight')?.value||CU?.weight_kg,
+    height_cm:document.getElementById(prefix==='ob'?'ob-height':'prof-height')?.value||CU?.height_cm};
+  const i=g?goalWeightInfo(u):null;
+  el.textContent=!i?'':i.belowHealthy?GOAL_WEIGHT_GP_NOTE:[goalWeightTimeline(i,u.goal),i.mismatch].filter(Boolean).join(' ');
+}
+// Reached it on Cut or Bulk: the choice (G2) - Maintain, Recomp, a new goal weight, or keep going (checked twice)
+function goalReachedModalHtml(){
+  return`<div class="modal-title">You've reached your goal weight! 🎉</div>
+    <div style="font-size:14px;color:var(--tx2);line-height:1.6;margin-bottom:14px">Brilliant work. What would you like to do now? Until you choose, your calories won't be pushed any further.</div>
+    <button class="btn" style="width:100%;margin-bottom:8px" onclick="goalReachedChoice('maintain')">Switch to Maintain - stay here</button>
+    <button class="btn btn-ghost" style="width:100%;margin-bottom:8px" onclick="goalReachedChoice('recomp')">Switch to Recomp - keep this weight, build muscle</button>
+    <div class="frow" style="display:flex;gap:8px;margin-bottom:8px"><input class="finput" id="gr-new-weight" type="number" step=".1" placeholder="New goal weight (kg)"><button class="btn btn-ghost" onclick="goalReachedChoice('new')">Set</button></div>
+    <button class="btn btn-ghost" style="width:100%" onclick="goalReachedChoice('keep')">Keep going with my current goal</button>`;
+}
+function openGoalReached(){const b=document.getElementById('goal-reached-body');if(!b)return;b.innerHTML=goalReachedModalHtml();openModal('goal-reached-modal');}
+async function goalReachedChoice(choice){
+  if(choice==='keep'&&!confirm('Are you sure you want to keep going? You are already at your goal weight. Your plan will carry on as it is.'))return;
+  const newW=parseFloat(document.getElementById('gr-new-weight')?.value)||0;
+  if(choice==='new'&&!(newW>=30&&newW<=300)){alert('Please enter your new goal weight in kg.');return;}
+  const patch=choice==='keep'?{goal_weight_keep:true}:choice==='new'?{goal_weight_kg:newW,goal_weight_from:parseFloat(CU.weight_kg)||null,goal_weight_keep:false}:{7:choice,25:'true'};
+  showLoad('Saving','Updating your goal...');
+  try{
+    const ok=await patchUserRow(CU.user_id,patch,CU);
+    hideLoad();
+    if(!ok){alert('Could not save - please try again.');return;}
+  }catch(e){hideLoad();alert('Could not save: '+e.message);return;}
+  if(choice==='keep')CU.goal_weight_keep=true;
+  else if(choice==='new'){CU.goal_weight_kg=newW;CU.goal_weight_from=parseFloat(CU.weight_kg)||'';CU.goal_weight_keep=false;}
+  else{CU.goal=choice;CU.goal_updated='true';}
+  postAutoWall(`🎯 ${CU.username} reached their goal weight!`,'body');
+  closeModal('goal-reached-modal');
+  renderDashboard();
+  celebrateMsg('goalUpdated','🎯','Goal Updated!');
+}
+
+// The monthly cheat day (Dom, 26 Oct 2026): earned by following the plan - 95% of planned sessions done and meals
+// logged on 95% of days (paused and social event days not counted) - then taken on the plan month's last weekend
+// (plan days 22-28), Saturday or Sunday, their choice. Opt-in; no cheat day in a week with a social event.
+const CHEAT_SHARE=0.95;
+const CHEAT_DAY_ABOUT='Follow the plan properly - 95% of your sessions done and your meals logged on 95% of days - and the last weekend of each plan month you pick a Saturday or Sunday to eat what you like. Your allergies still apply. If you are on a serious cut you may prefer to leave it off.';
+function cheatWeekend(planStartKey){
+  const out=[];
+  for(let i=21;i<28;i++){const k=addDays(planStartKey,i),dow=dayFromKey(k).getDay();if(dow===6||dow===0)out.push(k);}
+  return out.sort();
+}
+// ctx: {opt, planStart (day key), today (day key), logs (activityLogs), plannedPerWeek, eventDays:Set, choice (undefined = not
+// chosen, {day:null} = not this month, {day:'YYYY-MM-DD'})}. Returns {state, ...}: off, event, tracking, earned, missed,
+// chosen, today, skipped, over
+function cheatDayState(ctx){
+  if(!ctx.opt||!ctx.planStart)return{state:'off'};
+  const wk=cheatWeekend(ctx.planStart),first=wk[0],last=wk[wk.length-1];
+  if(ctx.today>last&&!(ctx.choice&&ctx.choice.day===ctx.today))return{state:'over'};
+  for(let i=21;i<28;i++)if(ctx.eventDays?.has(addDays(ctx.planStart,i)))return{state:'event'};
+  // The month so far (up to yesterday), or the whole earning window once the weekend has come
+  const windowEnd=addDays(first,-1),upTo=ctx.today<=windowEnd?addDays(ctx.today,-1):windowEnd;
+  const paused=new Set();
+  for(const p of ctx.logs?.pauses||[]){if(!p.start||!p.end||p.status==='cancelled')continue;for(let d=p.start,n=0;d<=p.end&&n<=31;d=addDays(d,1),n++)paused.add(d);}
+  const byDay=new Map();
+  for(const m of ctx.logs?.meals||[]){if(m.day){if(!byDay.has(m.day))byDay.set(m.day,[]);byDay.get(m.day).push(m);}}
+  let mealDays=0,mealHit=0,trainDays=0;
+  for(let d=ctx.planStart;d<=upTo;d=addDays(d,1)){
+    if(paused.has(d))continue;
+    trainDays++;
+    if(ctx.eventDays?.has(d))continue;
+    mealDays++;
+    if(byDay.has(d)&&mealDayHit(byDay.get(d)))mealHit++;
+  }
+  const inWindow=(ctx.logs?.workouts||[]).filter(w=>w.day&&w.day>=ctx.planStart&&w.day<=upTo&&!paused.has(w.day));
+  let sessDone=0;for(const keys of doneSessionKeysByWeek(inWindow).values())sessDone+=Math.min(keys.size,ctx.plannedPerWeek||keys.size);
+  const sessPlanned=Math.round((ctx.plannedPerWeek||0)*trainDays/7);
+  const mealNeed=Math.ceil(mealDays*CHEAT_SHARE),sessNeed=Math.ceil(sessPlanned*CHEAT_SHARE);
+  const p={mealHit,mealDays,mealNeed,sessDone:Math.min(sessDone,sessPlanned),sessPlanned,sessNeed,days:wk};
+  const onTrack=mealHit>=mealNeed&&sessDone>=sessNeed;
+  if(ctx.today<first)return{state:'tracking',onTrack,...p};
+  if(ctx.choice){
+    const day=ctx.choice.day;
+    if(!day)return{state:'skipped',...p};
+    return{state:day===ctx.today?'today':day>ctx.today?'chosen':'over',day,...p};
+  }
+  return{state:onTrack?'earned':'missed',...p,days:wk.filter(d=>d>=ctx.today)};
+}
+// The cheat days kept for this person (the layer loads them): [{plan_id, day}]
+let cheatDays=[];
+function cheatDayContext(){
+  const planId=userMealPlan?.plan_id,c=cheatDays.find(x=>String(x.plan_id)===String(planId));
+  return{opt:goalsOn()&&(CU?.cheat_day_opt===true||CU?.cheat_day_opt==='true'),planStart:dayKey(userMealPlan?.created_at||''),today:dayKey(new Date()),
+    logs:activityLogs,plannedPerWeek:plannedSessionsPerWeek(),choice:c?{day:c.day?dayKey(c.day):null}:undefined,
+    eventDays:new Set(socialEvents.filter(e=>e.status!=='cancelled').map(e=>dayKey(e.event_date)).filter(Boolean))};
+}
+function cheatDayLabel(k){return dayFromKey(k).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short'});}
+// A cheat day the day before weigh-in can add some water weight (a tip, not a block)
+function cheatWeighInTip(k){
+  const next=dayFromKey(addDays(k,1)).toLocaleDateString('en-GB',{weekday:'long'});
+  return String(CU?.weigh_in_day||'Sunday')===next?`Tip: your weigh-in is the next day (${next}) - a cheat day just before can add some water weight, so the scale may jump. It goes back down.`:'';
+}
+const CHEAT_DAY_CARE='Your allergies and food rules still apply. Keep drinking water and get some protein in.';
+function cheatDayHtml(){
+  if(!goalsOn()||!CU?.cheat_day_opt||!userMealPlan)return'';
+  const s=cheatDayState(cheatDayContext());
+  const prog=`meals logged ${s.mealHit} of ${s.mealDays} days, sessions ${s.sessDone} of ${s.sessPlanned}`;
+  if(s.state==='tracking')return`<div class="alert alert-info">🍕 Cheat day at the end of this plan month: ${prog} - ${s.onTrack?'on track ✓':'you need 95% of both to earn it'}.</div>`;
+  if(s.state==='event')return`<div class="alert alert-info">🍕 No cheat day this month - you have a social event that week, which already gives you room.</div>`;
+  if(s.state==='earned')return`<div class="alert alert-ok">🍕 You've earned your cheat day! Pick your day:
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${s.days.map(d=>`<button class="btn btn-sm" data-day="${d}" onclick="saveCheatDay(this.dataset.day)">${cheatDayLabel(d)}</button>`).join('')}<button class="btn btn-ghost btn-sm" onclick="saveCheatDay('')">Not this month</button></div>
+    ${s.days.map(cheatWeighInTip).filter(Boolean).map(t=>`<div style="font-size:12px;color:var(--tx2);margin-top:6px">${t}</div>`).join('')}</div>`;
+  if(s.state==='missed')return`<div class="alert alert-info">🍕 No cheat day this month (${prog}). Keep at it - next month's is yours to earn.</div>`;
+  if(s.state==='chosen')return`<div class="alert alert-info">🍕 Your cheat day is ${cheatDayLabel(s.day)}. ${cheatWeighInTip(s.day)}</div>`;
+  if(s.state==='today')return`<div class="alert alert-ok">🍕 It's your cheat day! Eat what you like today - no target, and no need to log. ${CHEAT_DAY_CARE} Back to the plan tomorrow.</div>`;
+  return'';
+}
+function isCheatDayToday(){return goalsOn()&&!!CU?.cheat_day_opt&&!!userMealPlan&&cheatDayState(cheatDayContext()).state==='today';}
+// Saved by the layer (cheat_days); index.html has no table for it
+async function saveCheatDay(day){}
+// ---- goals end ----
+
 // This user's logs, loaded at login and added to as they log. loaded is false
 // if any of them could not be read - in that case streaks are left exactly as
 // stored, never recalculated from partial data.
@@ -9350,7 +9645,7 @@ function currentStreakContext(){
     today:dayKey(new Date()),
     plannedPerWeek:plannedSessionsPerWeek(),
     waterTarget:day=>base+(trainDows.has(dayFromKey(day).getDay())?500:0),
-    eventDays:new Set(socialEvents.filter(e=>e.status!=='cancelled').map(e=>dayKey(e.event_date)).filter(Boolean))
+    eventDays:new Set([...socialEvents.filter(e=>e.status!=='cancelled').map(e=>dayKey(e.event_date)),...cheatDays.filter(c=>c.day).map(c=>dayKey(c.day))].filter(Boolean))
   };
 }
 function showStreakHeader(){
@@ -10638,6 +10933,9 @@ const PROFILE_COLS={
   17:v=>({health_conditions:String(v||'')}),18:v=>({injuries:String(v||'')}),19:v=>({avoided_exercises:String(v||'')}),
   // Not a sheet column: the medicines answer (24 Oct 2026, supabase/032), saved by Edit Stats
   medicines:v=>({medicines:String(v||'').slice(0,1000)}),
+  // Not sheet columns: the goal weight and the monthly cheat day (Group 4, supabase/043)
+  goal_weight_kg:v=>({goal_weight_kg:v===''||v==null?null:sbNum(v)}),goal_weight_from:v=>({goal_weight_from:v===''||v==null?null:sbNum(v)}),
+  goal_weight_keep:v=>({goal_weight_keep:v===true||v==='true'}),cheat_day_opt:v=>({cheat_day_opt:v===true||v==='true'}),
   // Not a sheet column: the aged hard cheeses that are fine for someone lactose intolerant (036)
   hard_cheeses:v=>({hard_cheeses:(Array.isArray(v)?v:String(v||'').split(',')).map(x=>String(x).trim()).filter(Boolean).slice(0,12)}),
   23:v=>({avatar:v||'💪'}),24:v=>({water_target_ml:parseInt(v)||2000}),25:v=>({goal_updated:String(v).toLowerCase()==='true'}),
@@ -10685,7 +10983,10 @@ function profileToCU(p,user){
     // Same sessions each week (the default) or a progressive block (034)
     training_style:p.training_style==='block'?'block':'steady',
     // Aged hard cheeses that are fine for them if lactose intolerant (036)
-    hard_cheeses:[...(p.hard_cheeses||[])]
+    hard_cheeses:[...(p.hard_cheeses||[])],
+    // The goal weight and the monthly cheat day (043)
+    goal_weight_kg:p.goal_weight_kg==null?'':String(p.goal_weight_kg),goal_weight_from:p.goal_weight_from==null?'':String(p.goal_weight_from),
+    goal_weight_keep:!!p.goal_weight_keep,cheat_day_opt:!!p.cheat_day_opt
   };
 }
 function friendlyDbError(error){
@@ -11166,6 +11467,36 @@ function hardCheeseProfHtml(){
 const TRAINING_STYLE_TEXT={
   steady:['Same sessions each week','The same exercises every week - push the weight or reps up as you get stronger. A lighter week is offered every 4-6 weeks.'],
   block:['Progressive block (more advanced)','The same exercises, but the sets and effort build over 3 weeks, then a lighter week. Suits people who have trained for a while.']};
+// ---- Goal weight and the monthly cheat day (Group 4, supabase/043): on in the new backend ----
+function goalsOn(){return true;}
+async function saveCheatDay(day){
+  const planId=userMealPlan?.plan_id;if(!planId)return;
+  try{
+    const {error}=await sb.from('cheat_days').upsert({user_id:CU.user_id,plan_id:planId,day:day||null},{onConflict:'user_id,plan_id'});
+    if(error)throw new Error(friendlyDbError(error));
+  }catch(e){alert('Could not save that: '+e.message);return;}
+  cheatDays=cheatDays.filter(c=>String(c.plan_id)!==String(planId)).concat([{plan_id:planId,day:day||null}]);
+  if(refreshStreaks())addPoints({pts:0}).catch(e=>console.error('Streak save:',e));
+  renderDashboard();
+  if(day)celebrateMsg('cheatDayPicked','🍕','Cheat Day Booked!');
+}
+function cheatDayCardHtml(){
+  const on=!!CU?.cheat_day_opt;
+  return`<div class="card" id="cheat-day-card"><div class="card-lbl">Monthly Cheat Day</div>
+    <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" ${on?'checked':''} onchange="saveCheatOpt(this.checked)" style="margin-top:3px;accent-color:var(--ac)">
+    <div><div style="font-size:14px;font-weight:500">Earn a cheat day each month</div><div style="font-size:12px;color:var(--tx2);line-height:1.5">${CHEAT_DAY_ABOUT}</div></div></label></div>`;
+}
+async function saveCheatOpt(on){
+  try{
+    const {data,error}=await sb.from('profiles').update({cheat_day_opt:!!on}).eq('id',CU.user_id).select('cheat_day_opt').maybeSingle();
+    if(error)throw new Error(friendlyDbError(error));
+    if(!data)throw new Error('Your profile could not be found.');
+    CU.cheat_day_opt=!!data.cheat_day_opt;
+  }catch(e){alert('Could not save that: '+e.message);}
+  const card=document.getElementById('cheat-day-card');if(card)card.outerHTML=cheatDayCardHtml();
+  renderDashboard();
+}
+
 function trainingStyleCardHtml(){
   const cur=CU?.training_style==='block'?'block':'steady';
   const planStyle=userTrainingPlan?.style==='block'?'block':'steady';
@@ -11697,7 +12028,7 @@ async function cleanOldVideos(){
 
 // Profile, plans, logs and the social side have all moved.
 async function loadUserData(){
-  allPoints=[];userPoints={};userMealPlan=null;userTrainingPlan=null;
+  allPoints=[];userPoints={};userMealPlan=null;userTrainingPlan=null;cheatDays=[];
   wallPosts=[];competitions=[];measurements=[];dislikedMeals=[];socialEvents=[];activeEvent=null;waterMl=0;
   activityLogs={meals:[],workouts:[],water:[],pauses:[],loaded:false};
   lastSeasonWinners=[];wallReportCounts={};myShopRatings={};compMembers=[];compResults=[];
@@ -11726,6 +12057,8 @@ async function loadUserData(){
     // Streaks are never worked out from part of the picture (Part 4 rule)
     activityLogs.loaded=false;console.error('Load logs:',e);
   }
+  // The cheat days they chose (043)
+  try{const {data,error}=await sb.from('cheat_days').select('plan_id,day');if(error)throw error;cheatDays=data||[];}catch(e){cheatDays=[];console.error('Cheat days:',e);}
   // Names on the wall come from the leaderboard, so this goes last
   await loadWall().catch(e=>console.error('Wall:',e));
   await loadCompetitions().catch(e=>console.error('Challenges:',e));
@@ -12181,7 +12514,11 @@ async function createUser(){
     const training_style=document.querySelector('#ob-style-pick .pill.on')?.dataset.style==='block'?'block':'steady';
     // The aged hard cheeses they ticked as fine (036)
     const hard_cheeses=hardCheesesFromForm('ob');
-    const {data:p,error}=await sb.from('profiles').update({...sheetPatchToProfile(fields),wall_share,medicines,training_style,hard_cheeses}).eq('id',sbUser.id).select().maybeSingle();
+    // The optional goal weight (starting from the weight they gave) and whether they want to earn a cheat day (043)
+    const gw=parseFloat(document.getElementById('ob-goal-weight')?.value)||null;
+    const goal_weight_kg=gw&&gw>=30&&gw<=300?gw:null,goal_weight_from=goal_weight_kg?(parseFloat(document.getElementById('ob-weight')?.value)||null):null;
+    const cheat_day_opt=document.querySelector('#ob-cheat-pick .pill.on')?.dataset.cheat==='yes';
+    const {data:p,error}=await sb.from('profiles').update({...sheetPatchToProfile(fields),wall_share,medicines,training_style,hard_cheeses,goal_weight_kg,goal_weight_from,cheat_day_opt}).eq('id',sbUser.id).select().maybeSingle();
     if(error)throw new Error(friendlyDbError(error));
     if(!p)throw new Error('Your profile could not be found. Please log out and back in.');
     clearOnboardingProgress();
