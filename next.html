@@ -541,7 +541,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
       <div id="user-sel" style="display:none">
         <div class="sec-lbl">Select Profile</div>
         <div class="user-grid" id="user-grid"></div>
-        <button class="btn btn-ghost" onclick="openNewUser()">+ Create New Profile</button>
+        
       </div>
 
       <div class="pin-wrap" id="pin-wrap">
@@ -902,14 +902,14 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
         <div style="margin-top:10px">
           <div style="font-size:11px;color:var(--tx2);margin-bottom:5px">Which days?</div>
           <div class="pills" id="ob-batch-days">
-            <div class="pill on" onclick="selSingle(this,'ob-batch-days')">All week - cook once eat all week</div>
-            <div class="pill" onclick="selSingle(this,'ob-batch-days')">Weekdays only</div>
-            <div class="pill" onclick="selSingle(this,'ob-batch-days')">Weekend batch, fresh weekdays</div>
+            <div class="pill on" onclick="selSingle(this,'ob-batch-days')">All week - cook once, eat every day</div>
+            <div class="pill" onclick="selSingle(this,'ob-batch-days')">Weekdays - cook once for Monday to Friday</div>
+            <div class="pill" onclick="selSingle(this,'ob-batch-days')">Weekend - cook once for Saturday and Sunday</div>
           </div>
         </div>
       </div>
       <div class="frow"><label class="flbl">Dietary Type</label><select class="fsel" id="ob-dietary"><option value="meat-eater">Meat Eater</option><option value="pescatarian">Pescatarian</option><option value="vegetarian">Vegetarian</option><option value="vegan">Vegan</option></select></div>
-      <div class="frow"><label class="flbl">Allergies / Intolerances</label><div class="pills" id="ob-allergies"><div class="pill" onclick="tpill(this)">Gluten</div><div class="pill" onclick="tpill(this)">Dairy</div><div class="pill" onclick="tpill(this)">Nuts</div><div class="pill" onclick="tpill(this)">Eggs</div><div class="pill" onclick="tpill(this)">Soy</div><div class="pill" onclick="tpill(this)">None</div></div><input class="finput" id="ob-allergies-other" style="margin-top:8px" placeholder="Anything else? e.g. shellfish, sesame, lactose intolerant"><div style="margin-top:10px"><div style="font-size:12px;color:var(--tx2);line-height:1.5;margin-bottom:6px">Lactose intolerant? These aged hard cheeses have almost no lactose and many people eat them fine. Tick only the ones that agree with you (or none).</div><div class="pills" id="ob-hardcheese"><div class="pill" data-cheese="Parmesan" onclick="tpill(this)">Parmesan</div><div class="pill" data-cheese="Grana Padano" onclick="tpill(this)">Grana Padano</div><div class="pill" data-cheese="Pecorino" onclick="tpill(this)">Pecorino</div><div class="pill" data-cheese="Mature Cheddar" onclick="tpill(this)">Mature Cheddar</div><div class="pill" data-cheese="Gruyère" onclick="tpill(this)">Gruyère</div><div class="pill" data-cheese="Comté" onclick="tpill(this)">Comté</div><div class="pill" data-cheese="Manchego" onclick="tpill(this)">Manchego</div><div class="pill" data-cheese="Emmental" onclick="tpill(this)">Emmental</div></div></div></div>
+      <div class="frow"><label class="flbl">Allergies / Intolerances</label><div class="pills" id="ob-allergies"><div class="pill" onclick="tpill(this)">Gluten</div><div class="pill" onclick="tpill(this)">Dairy</div><div class="pill" onclick="tpill(this)">Lactose intolerant</div><div class="pill" onclick="tpill(this)">Nuts</div><div class="pill" onclick="tpill(this)">Eggs</div><div class="pill" onclick="tpill(this)">Soy</div><div class="pill" onclick="tpill(this)">None</div></div><input class="finput" id="ob-allergies-other" style="margin-top:8px" placeholder="Anything else? e.g. shellfish, sesame, lactose intolerant"><div id="ob-hardcheese-wrap" style="margin-top:10px;display:none"><div style="font-size:12px;color:var(--tx2);line-height:1.5;margin-bottom:6px">Lactose intolerant? These aged hard cheeses have almost no lactose and many people eat them fine. Tick only the ones that agree with you (or none).</div><div class="pills" id="ob-hardcheese"><div class="pill" data-cheese="Parmesan" onclick="tpill(this)">Parmesan</div><div class="pill" data-cheese="Grana Padano" onclick="tpill(this)">Grana Padano</div><div class="pill" data-cheese="Pecorino" onclick="tpill(this)">Pecorino</div><div class="pill" data-cheese="Mature Cheddar" onclick="tpill(this)">Mature Cheddar</div><div class="pill" data-cheese="Gruyère" onclick="tpill(this)">Gruyère</div><div class="pill" data-cheese="Comté" onclick="tpill(this)">Comté</div><div class="pill" data-cheese="Manchego" onclick="tpill(this)">Manchego</div><div class="pill" data-cheese="Emmental" onclick="tpill(this)">Emmental</div></div></div></div>
       <div class="frow">
         <label class="flbl">Ingredients You Dislike or Want to Avoid</label>
         <div class="pills" id="ob-dislikes" style="gap:6px">
@@ -1386,7 +1386,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='25 Oct shoulder rule';
+const APP_BUILD='26 Oct group 1 fixes';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -2065,8 +2065,9 @@ function matchInjuryKeys(text){
 // Upper-body pressing (25 Oct 2026 - the old list missed "Dumbbell Shoulder Press", "Machine Chest Press", "Push Ups"...):
 // ANY exercise with "press" in its name, except the lower-body and core ones (leg, calf, hip / glute press,
 // belt squat press, Pallof press - user decision: Pallof stays, with a start-light note) and triceps press-downs;
-// push-ups and press-ups however they are written, dips and handstand work
-const UPPER_PRESS_RE=/^(?!.*\b(?:leg|calf|hip|glute|belt|pallof)[\s-]*press)[\s\S]*\bpress(?:es|ing)?\b(?![\s-]?downs?\b)|\b(?:push|press)[\s-]?ups?\b|\bpushups?\b|\bdips?\b|handstand/i;
+// push-ups and press-ups however they are written, dips and handstand work. "Hip dips" (a core move) are not dips (26 Oct 2026 -
+// a side plank hip dip cost a training retry in the rehearsal)
+const UPPER_PRESS_RE=/^(?!.*\b(?:leg|calf|hip|glute|belt|pallof)[\s-]*press)[\s\S]*\bpress(?:es|ing)?\b(?![\s-]?downs?\b)|\b(?:push|press)[\s-]?ups?\b|\bpushups?\b|(?<!\bhip[\s-]?)\bdips?\b|handstand/i;
 // Chest flies are out with a shoulder injury too (user decision 23 Oct 2026, after a
 // floor fly appeared in a real plan): dumbbell, floor, incline, cable, machine, pec deck.
 // Rear delt and reverse flies stay - they are the shoulder-friendly ones.
@@ -2494,7 +2495,7 @@ function userFromRow(r){
     known_numbers:r[31]||'',is_new_user:(r[32]===''||r[32]==null)?'true':(String(r[32]).toLowerCase()==='true'?'true':'false'),
     weigh_in_day:r[33]||'Sunday',batch_cooking:r[34]||'Mix - I decide per meal',
     ingredient_dislikes:r[35]||'',food_loves:r[36]||'',
-    spice_level:r[37]||'Medium',batch_days:r[38]||'All week - cook once eat all week',
+    spice_level:r[37]||'Medium',batch_days:r[38]||BATCH_DAY_LABELS.all,
     cook_time:r[39]||'Breakfast:Under 5 mins, Lunch:5 to 15 mins, Dinner:15 to 30 mins, Snacks:Grab and go - no prep',
     lunch_situation:r[40]||'I have a fridge and microwave at work',
     weekly_budget:r[41]||'Mid-range - good ingredients, sensible spend',
@@ -3503,18 +3504,15 @@ function clearSwapPhoto(){
 // How many meals each section of a plan should contain. A batch-cooked slot only
 // needs one option per week, so it gets 4; a slot cooked fresh gets more variety.
 function getPickTargets(){
-  const bc=(CU.batch_cooking||'').toLowerCase();
-  const ct=CU.cook_time||'';
-  const everything=bc.includes('batch cook everything');
-  const isBatch=(detail,slot)=>everything||bc.includes(detail)||new RegExp(slot+':\\s*Batch','i').test(ct);
-  const snacksBatch=isBatch('batch snacks','Snacks');
+  const bp=batchPlan(CU),extra=bp.freshDays.length?2:0,mid=getMidSnackCount();
   return{
-    breakfasts:4,
+    breakfasts:bp.slots.breakfast?4+extra:4,
     // No mid-day snack slots (3 meals a day) = no snack recipes: they would never appear in the schedule
-    snacks:getMidSnackCount()===0?0:snacksBatch?4:(getMidSnackCount()>=3?6:5),
-    lunches:isBatch('batch lunches','Lunch')?4:5,
-    dinners:isBatch('batch dinners','Dinner')?4:7,
-    evening_snacks:snacksBatch?4:5,
+    snacks:mid===0?0:bp.slots.snack?4+extra:(mid>=3?6:5),
+    lunches:bp.slots.lunch?4+extra:5,
+    dinners:bp.slots.dinner?4+extra:7,
+    // The evening slot is never batch cooked (rehearsal item 18)
+    evening_snacks:5,
     protein_desserts:2,
     // Goal-specific extras are not used in the weekly rotation, so only what the user ticks is included
     low_calorie_meals:0,bulking_meals:0
@@ -3598,6 +3596,12 @@ function pickMeals(optionsByCat,tickedByCat){
     const ticked=tickedByCat?.[cat]||[];
     picked[cat]=options.length?topUpWithVariety(options,ticked,targets[cat]):[];
   }
+  // A batched slot that is not batched every day: its last 2 picks are cooked fresh on the other days (D1)
+  const bp=batchPlan(CU);
+  if(bp.freshDays.length)for(const [slot,cat] of Object.entries(BATCH_SLOT_CATS)){
+    const list=picked[cat]||[];
+    if(bp.slots[slot]&&list.length>2)picked[cat]=list.map((m,i)=>i>=list.length-2?{...m,fresh:true}:m);
+  }
   return picked;
 }
 function confirmMealPicks(chooseForMe=false){
@@ -3655,6 +3659,90 @@ function recipeBatches(chosenMeals){
     {dinners:chosenMeals.dinners||[],evening_snacks:chosenMeals.evening_snacks||[],protein_desserts:chosenMeals.protein_desserts||[],low_calorie_meals:chosenMeals.low_calorie_meals||[],bulking_meals:chosenMeals.bulking_meals||[]}
   ];
 }
+// ---- Batch cooking (rehearsal item 18, 26 Oct 2026): ONE rule for the picker, the recipes, the rotation and the shopping
+// list. Only the ticked slots are batched; a batch makes one portion for each of its days; the days of a batched slot that
+// are not batch days get single-serving meals cooked fresh (user decision D1). ----
+const ROT_DAYS=['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+const BATCH_DAY_SETS={all:ROT_DAYS,weekdays:ROT_DAYS.slice(0,5),weekend:ROT_DAYS.slice(5)};
+const BATCH_DAY_LABELS={all:'All week - cook once, eat every day',weekdays:'Weekdays - cook once for Monday to Friday',weekend:'Weekend - cook once for Saturday and Sunday'};
+// Old answers ("Weekdays only", "Weekend batch, fresh weekdays", "All week - cook once eat all week") carry over
+function batchDaysKey(v){const t=String(v||'').toLowerCase();return/weekend/.test(t)?'weekend':/weekday/.test(t)?'weekdays':'all';}
+const BATCH_SLOT_CATS={breakfast:'breakfasts',lunch:'lunches',dinner:'dinners',snack:'snacks'};
+function batchPlan(u){
+  const bc=String(u?.batch_cooking||'').toLowerCase(),ct=String(u?.cook_time||'');
+  const everything=bc.includes('batch cook everything');
+  const on=(detail,slot,inEverything)=>(everything&&inEverything)||bc.includes(detail)||new RegExp(slot+':\\s*Batch','i').test(ct);
+  const slots={breakfast:on('batch breakfast','Breakfast',true),lunch:on('batch lunch','Lunch',true),dinner:on('batch dinner','Dinner',true),snack:on('batch snack','Snacks',false)};
+  const daysKey=batchDaysKey(u?.batch_days),days=BATCH_DAY_SETS[daysKey];
+  return{slots,daysKey,days,portions:days.length,freshDays:ROT_DAYS.filter(d=>!days.includes(d)),any:Object.values(slots).some(Boolean)};
+}
+// What a picked meal must be: 'batch' (one portion per batch day), 'single' (one serving) or 'free' (extras - as written)
+function mealBatchRole(cat,meal,bp){
+  const slot=Object.keys(BATCH_SLOT_CATS).find(k=>BATCH_SLOT_CATS[k]===cat);
+  if(!slot)return cat==='evening_snacks'?'single':'free';
+  return bp.slots[slot]&&!meal?.fresh?'batch':'single';
+}
+// The line a recipe instruction gets for one role
+function batchRoleLine(role,bp){
+  return role==='batch'?'It must be a batch-cook recipe: bulk_cook true, batch_portions '+bp.portions+' and servings '+bp.portions+', with every ingredient quantity for the full batch of '+bp.portions+' portions.'
+    :role==='single'?'It must be a single serving: bulk_cook false, batch_portions 1, servings 1.':'';
+}
+// What is wrong with a written recipe for its role (empty = right). A single-recipe answer has no bulk_cook field,
+// so servings equal to the batch size counts as a batch.
+function batchRoleProblem(recipe,role,bp){
+  const sv=parseInt(recipe?.servings)||1,bpn=parseInt(recipe?.batch_portions)||0;
+  if(role==='batch'){const n=recipe?.bulk_cook?(bpn||sv):sv;return n===bp.portions?'':'"'+recipe?.name+'" must make '+bp.portions+' portions (bulk_cook true, batch_portions '+bp.portions+', servings '+bp.portions+') - it makes '+n;}
+  if(role==='single')return recipe?.bulk_cook||sv!==1?'"'+recipe?.name+'" must be a single serving (bulk_cook false, servings 1)':'';
+  return'';
+}
+// The recipe set to its role's flags once it passes
+function setBatchFlags(recipe,role,bp){
+  if(role==='batch'){recipe.bulk_cook=true;recipe.batch_portions=bp.portions;recipe.servings=bp.portions;}
+  else if(role==='single'){recipe.bulk_cook=false;recipe.batch_portions=1;recipe.servings=1;}
+  return recipe;
+}
+// The app sets the batched days of the rotation itself (the AI fills the rest): each week a batched slot uses ONE batch
+// recipe on all its batch days (a different one each week where there are enough); its other days rotate the
+// single-serving meals of that section
+function applyBatchRotation(plan,u){
+  const bp=batchPlan(u),rot=plan?.weekly_rotation;
+  if(!Array.isArray(rot)||!bp.any)return plan;
+  const meals=plan.meals||{};
+  rot.forEach((wk,w)=>{
+    const days=wk?.days;if(!days)return;
+    for(const [slot,cat] of Object.entries(BATCH_SLOT_CATS)){
+      if(!bp.slots[slot])continue;
+      const list=(meals[cat]||[]).filter(m=>m&&m.name);
+      const batch=list.filter(m=>m.bulk_cook).map(m=>m.name),fresh=list.filter(m=>!m.bulk_cook).map(m=>m.name);
+      if(!batch.length)continue;
+      const keys=slot==='snack'?['snack1','snack2','snack3'].filter(k=>ROT_DAYS.some(d=>days[d]&&days[d][k])):[slot];
+      keys.forEach((k,ki)=>{
+        // a different batch recipe for each snack slot; a slot without one gets the fresh meals
+        const b=ki<batch.length?batch[(w*keys.length+ki)%batch.length]:null;
+        ROT_DAYS.forEach((d,di)=>{
+          if(!days[d])return;
+          if(b&&bp.days.includes(d))days[d][k]=b;
+          else if(fresh.length)days[d][k]=fresh[(di+w+ki)%fresh.length];
+        });
+      });
+    }
+  });
+  return plan;
+}
+// Checks a rotation against the rule: every batch recipe eaten exactly batch_portions times in each week it is used,
+// and never on a day outside its batch days
+function batchRotationProblems(plan,u){
+  const bp=batchPlan(u),p=[];
+  const bulk=new Map(Object.values(plan?.meals||{}).filter(Array.isArray).flat().filter(m=>m&&m.bulk_cook).map(m=>[m.name,parseInt(m.batch_portions)||1]));
+  (plan?.weekly_rotation||[]).forEach((wk,w)=>{
+    const count={};
+    for(const d of ROT_DAYS){const day=wk?.days?.[d];if(!day)continue;
+      for(const v of Object.values(day))if(bulk.has(v)){count[v]=(count[v]||0)+1;if(!bp.days.includes(d))p.push('week '+(w+1)+': "'+v+'" is a batch recipe on '+d+' (not a batch day)');}}
+    for(const [n,c] of Object.entries(count))if(c!==bulk.get(n))p.push('week '+(w+1)+': "'+n+'" is eaten '+c+' times but makes '+bulk.get(n)+' portions');
+  });
+  return p;
+}
+// ---- batch cooking end ----
 // The chosen meals in groups of a few recipes each (the server writes each group in its own
 // call, inside its time limit), keeping the usual order of the sections
 function recipeGroups(chosenMeals,size){
@@ -3843,6 +3931,7 @@ async function generatePlan(){
     const rotationRaw=await callAI(apiKey, buildRotationPrompt(rotationMealNames(fullRecipes), monthNumber, progressionContext, useAssessment), sys);
     rotation=normaliseRotation(rotationRaw);
     fullRecipes.weekly_rotation=rotation;
+    applyBatchRotation(fullRecipes,CU);
 
     // CALL 6 - TRAINING PLAN
     showLoad('Building Training Plan (6 of 6)','Designing your sessions...');
@@ -4132,6 +4221,23 @@ function lactoseOnlyOf(rules){
   let lac=false,milk=false;
   for(const raw of rules?.allergies||[]){const r=allergyGroupsOf(raw);if(r.lactose)lac=true;else if(r.groups.includes('dairy'))milk=true;}
   return lac&&!milk&&!(DIET_BANS[String(rules?.dietary_type||'').toLowerCase()]||[]).includes('dairy');
+}
+// The hard-cheese question shows only when the form's answers add up to lactose intolerance alone (rehearsal item 6,
+// 26 Oct 2026): prefix 'ob' = sign-up, 'prof' = Profile > Food and Kit. A hidden question saves no cheeses.
+function hardCheeseFormRules(prefix){
+  const allergies=[...document.querySelectorAll('#'+prefix+'-allergies .pill.on')].map(p=>p.textContent.trim())
+    .concat((document.getElementById(prefix+'-allergies-other')?.value||'').split(',')).map(x=>x.trim()).filter(Boolean);
+  return{dietary_type:document.getElementById(prefix+'-dietary')?.value||'',allergies};
+}
+function syncHardCheese(prefix){
+  const wrap=document.getElementById(prefix+'-hardcheese-wrap');if(!wrap)return false;
+  const show=lactoseOnlyOf(hardCheeseFormRules(prefix));
+  wrap.style.display=show?'':'none';
+  return show;
+}
+function hardCheesesFromForm(prefix){
+  if(!syncHardCheese(prefix))return[];
+  return[...document.querySelectorAll('#'+prefix+'-hardcheese .pill.on')].map(p=>p.dataset.cheese).filter(Boolean);
 }
 // The ticked cheeses that are on the list
 function okHardCheeses(rules){const t=(rules?.hard_cheeses||[]).map(x=>String(x).toLowerCase());return HARD_CHEESES.filter(([n])=>t.includes(n.toLowerCase()));}
@@ -4949,8 +5055,10 @@ function buildChosenRecipesPrompt(chosenMeals, batch){
   const mt=getMealTargets();
   const hasAirFryer=(u.kitchen||'').includes('Air Fryer');
   const batchPref=u.batch_cooking||'mix';
-  const batchDaysPattern=u.batch_days||'All week - cook once eat all week';
-  const batchDayCount=batchDaysPattern==='All week - cook once eat all week'?7:batchDaysPattern==='Weekdays only'?5:2;
+  // Batch or single serving for every meal (rehearsal item 18): from the one rule, never left to the AI
+  const bp=batchPlan(u);
+  const roleNames={batch:[],single:[]};
+  for(const [cat,list] of Object.entries(chosenMeals||{}))for(const m of list||[]){if(!m?.name)continue;const r=mealBatchRole(cat,m,bp);if(roleNames[r])roleNames[r].push(m.name);}
   const cats={breakfasts:[],snacks:[],lunches:[],dinners:[],evening_snacks:[],protein_desserts:[],low_calorie_meals:[],bulking_meals:[]};
   for(const [cat,meals] of Object.entries(chosenMeals)){if(cats[cat]!==undefined)cats[cat]=meals.map(m=>m.name).filter(Boolean);}
   const allMeals=Object.entries(cats).filter(([,names])=>names.length).map(([cat,names])=>`${cat}: ${names.join(', ')}`).join('\n');
@@ -4979,7 +5087,7 @@ Kitchen:${u.kitchen||'standard'}, Air fryer:${hasAirFryer}, Batch pref:${batchPr
 Spice level: ${u.spice_level||'Medium'} - calibrate all heat/spice to this level
 INGREDIENT DISLIKES - NEVER use these ingredients: ${u.ingredient_dislikes||'none'}
 FOOD LOVES - include these where it makes sense: ${u.food_loves||''}${getHealthDietLine()}${foodRuleWordsText(currentFoodRules())}
-COOKING TIME PER SLOT - hard limits per slot: ${u.cook_time||'Breakfast:Under 5 mins, Lunch:5 to 15 mins, Dinner:15 to 30 mins, Snacks:Grab and go - no prep'}. Match each recipe to its slot's limit. 'Batch cook it' means write a bulk recipe - see BATCH PORTION SIZING below for how many portions.
+COOKING TIME PER SLOT - hard limits per slot: ${u.cook_time||'Breakfast:Under 5 mins, Lunch:5 to 15 mins, Dinner:15 to 30 mins, Snacks:Grab and go - no prep'}. Match each recipe to its slot's limit. Which meals are batch cooked, and for how many portions, is set in BATCH OR SINGLE SERVING below.
 LUNCH SITUATION: ${u.lunch_situation||'fridge and microwave at work'}. Lunches must work for this - if no fridge, all lunch recipes must be safe unrefrigerated for 4+ hours and clearly portable.
 BUDGET: ${u.weekly_budget||'Mid-range'}. Match ingredient quality and variety to this - budget means cheap staples, no limit means premium ingredients are fine.
 ${catTargets}
@@ -4995,7 +5103,7 @@ INGREDIENT QUANTITY RULE - required, not optional: every single ingredient, incl
 INGREDIENT STATE RULE - required: list every ingredient in its raw, as-purchased state (e.g. "raw chicken breast, diced" not "cooked chicken breast"), unless it is genuinely used without further cooking. The method must then actually cook or prepare every one of those ingredients - if rice or any other component appears in the ingredients list, the method must include the step that cooks it, not just "serve with rice" as an afterthought with no cooking step of its own.
 DISH NAME CONSISTENCY - required: if the dish name specifies a particular type or style of an ingredient (e.g. a dish called "... with Sticky Rice" or "... with Basmati"), the ingredients list must use that exact type, not a different or more generic one. Never name a dish after one specific ingredient and then list something else in the ingredients. When any ingredient genuinely has meaningfully different common varieties (rice, pasta, onion, chilli, etc.), name the specific variety being used rather than defaulting to the generic term.
 SERVINGS CONSISTENCY - required: the "servings" field and the ingredient quantities given must match each other exactly. If this is a batch-cook recipe, "servings" must equal "batch_portions", and every ingredient quantity must be the amount for the FULL BATCH - never write batch-sized quantities under a "servings":1 label.
-BATCH PORTION SIZING - required, not optional: if you set bulk_cook:true for a meal, batch_portions must be enough to cover every time this user will eat it before cooking it again. This user's batch cooking pattern is "${batchPref}" on "${batchDaysPattern}". If a meal repeats across their batch days, batch_portions must be at least ${batchDayCount} - never default to a small generic number like 2-4 when their actual pattern needs more. Undersized batches leave them without food partway through the week, which defeats the entire point of batch cooking.
+BATCH OR SINGLE SERVING - required for every meal below, exactly as listed (this user batch cooks on: ${BATCH_DAY_LABELS[bp.daysKey]}):${roleNames.batch.length?`\n- Batch cook - bulk_cook true, batch_portions ${bp.portions}, servings ${bp.portions}, every quantity for the full batch of ${bp.portions} portions: ${roleNames.batch.join(', ')}`:''}${roleNames.single.length?`\n- Single serving - bulk_cook false, batch_portions 1, servings 1: ${roleNames.single.join(', ')}`:''}\n- Any other meal: a single serving unless it is naturally a tray bake or batch (then servings = the number of portions it makes).
 METHOD SPECIFICITY - required, not optional: every cooking step involving heat must state an actual temperature and time (e.g. "200°C for 20 minutes", "medium heat for 6-8 minutes"), never vague terms like "cook until done" or "bake until golden" on their own - pair any visual/textural cue with a concrete time or temperature.
 ${recipeQualityRules()}
 
@@ -5015,24 +5123,11 @@ function buildRotationPrompt(mealNames, monthNumber=1, progressionContext='', us
   const monthNote=monthNumber>1
     ?`This is ${monthLabel(monthNumber)} of the programme. ${hadTestWeek()&&monthNumber===2?'The user has just finished their test week.':`The user has been following this plan for ${monthNumber-1} month${monthNumber-1>1?'s':''} already.`} Increase meal variety compared to the last plan - introduce different flavour profiles and cooking methods where possible while still using only the exact meal names listed above. Do not repeat the same weekly pattern as the last plan.`
     :`${monthLabel(1)} - build the rotation from the meal names listed above.`;
-  const batchPref=u.batch_cooking||'mix';
-  const batchDays=u.batch_days||'All week - cook once eat all week';
-  const isBatching=batchPref.toLowerCase().includes('batch');
-
-  // Batch cooking day rules
-  let batchRule='';
-  if(isBatching){
-    const dayRule=batchDays==='Weekdays only'
-      ?'For LUNCHES: Monday to Friday must use the SAME lunch meal each week (batch cook once, eat 5 times). Saturday and Sunday can have different lunches.'
-      :batchDays==='Weekend batch, fresh weekdays'
-      ?'For LUNCHES: Monday to Friday must use the SAME lunch meal each week. Saturday and Sunday use fresh different meals.'
-      :'For LUNCHES: All 7 days of the week must use the SAME lunch meal (batch cook Sunday, eat all week). Change lunch meal each new week.';
-    if(batchPref.includes('everything')){
-      batchRule=`BATCH COOKING RULES - CRITICAL, NON-NEGOTIABLE: This user batch cooks everything. Every single day of the week - Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday - MUST use the EXACT SAME breakfast name, the EXACT SAME lunch name, and the EXACT SAME dinner name. Do not vary breakfast, lunch, or dinner across ANY day this week. This is not a suggestion - a rotation where breakfast/lunch/dinner differ between days is WRONG for this user. Only the evening/dessert slot and any mid-day snack slots may vary day to day. Pick ONE breakfast, ONE lunch, and ONE dinner for the entire week and repeat them on all 7 days. Rotate to different meals only in the following week.`;
-    } else {
-      batchRule=`BATCH COOKING RULES: ${dayRule} Dinners and breakfasts can vary each day.`;
-    }
-  }
+  // Batch cooking (rehearsal item 18): the app puts each batch recipe on its batch days itself after this answer
+  // (applyBatchRotation), so the AI only has to spread everything else well
+  const bp=batchPlan(u);
+  const batchedSlots=Object.keys(BATCH_SLOT_CATS).filter(k=>bp.slots[k]);
+  const batchRule=batchedSlots.length?`BATCH COOKING: this user batch cooks ${batchedSlots.join(', ')} (${BATCH_DAY_LABELS[bp.daysKey]}). The app places the batch-cooked meals on those days itself - just fill every slot with listed names and give the other slots good variety.`:'';
 
   const daySchema=`{"breakfast":"","snack1":${hasSnack1?'""':'null'},"lunch":"","snack2":${hasSnack2?'""':'null'},"snack3":${hasSnack3?'""':'null'},"dinner":"","evening":""}`;
   // Assessment week users get 5 weeks total (1 assessment + 4 programme), matching
@@ -5162,6 +5257,7 @@ ${baselineLines}
 
 PROGRAMMING RULES FOR THIS DATA:
 - Week 1 working sets at about 70-75% of the listed estimated 1RM. After week 1 the app moves the weights on itself (double progression and the weekly effort target) - do not write week-by-week percentages
+- Lines marked "starting weight, not a max" are light, comfortable weights from the test week - use them as the Week 1 weight for that exercise (or one like it), never as a percentage of a max
 - State the actual target weight in kg in the exercise notes for Week 1 sets so the user knows exactly what to load
 - Do not use vague instructions like "moderate weight" - use the percentages of the listed 1RM to give specific kg targets`;
   }else if(CU.known_numbers&&CU.known_numbers.trim()){
@@ -5264,24 +5360,30 @@ Training time: ${trainTime}. Occupation: ${occupation}.${monthContext}${rapportC
 
 ${baselineBlock}
 
-${useAssessment?`ASSESSMENT WEEK PROTOCOL - two kinds of exercise:
+${useAssessment?`ASSESSMENT WEEK PROTOCOL - three kinds of exercise:
 
-COMPOUND LIFTS (squats, deadlifts and other hinges, bench and other presses, rows, pull-downs and pull-ups, lunges and split squats, hip thrusts) get exactly 5 sets structured as follows:
+Every exercise in the test week has a "test" field: "main", "working" or "start" (rehearsal 26 Oct 2026 - test what is safe to test, still record a weight for every lift).
+
+MAIN LIFTS ("test":"main") - AT MOST ONE per session. Only a stable two-footed compound lift the user can do safely with their injuries: a squat or its safe substitute (e.g. leg press, goblet squat), a hinge (deadlift, Romanian deadlift, hip thrust), a row or pull-down, or a press only when the user has no shoulder injury. Never a single-leg or balance lift, and never one that loads an injured joint. Exactly 5 sets:
 - Set 1: 30% of perceived max, 12 reps. Movement pattern only. No grinding.
 - Set 2: 50% of perceived max, 8 reps. Starting to feel the weight.
 - Set 3: 65% of perceived max, 5 reps. Working weight, controlled.
 - Set 4: 75% of perceived max, 3 reps. Challenging but not maximal.
-- Set 5: Genuine 3-rep max attempt. Full effort. Record this weight.
+- Set 5: Genuine 3-rep max attempt with good form. Record this weight.
+For each main lift: sets:5, reps:"12/8/5/3/3RM", reps_per_set:["12","8","5","3","3RM"].
+Notes field for each main lift: "Main lift - record every weight. Your next plan is built from Set 5. Estimated 1RM = Set 5 weight x 1.1 (Epley formula for 3 reps)."
 
-For each compound lift: sets:5, reps:"12/8/5/3/3RM", reps_per_set:["12","8","5","3","3RM"].
-Notes field for each compound lift: "Record every weight from every set. Your Month 1 programme is built from Set 5. Estimated 1RM = Set 5 weight x 1.1 (Epley formula for 3 reps)."
-
-ISOLATION LIFTS (curls, triceps extensions and pushdowns, lateral and rear delt raises, flies, leg extensions, leg curls, calf raises) are never taken to a 3-rep max. They get exactly 3 sets:
+WORKING-WEIGHT LIFTS ("test":"working") - single-leg and balance lifts (lunges, split squats, step-ups, single-leg Romanian deadlifts), any other compound lift, anything near an injured joint, and machine or isolation lifts that are safe to push (leg curl, leg extension, calf raise, pull-down and row variants). Never taken to a 3-rep max. Exactly 3 sets:
 - Set 1: about 50% of perceived max, 15 reps. Warm-up.
 - Set 2: about 70%, 12 reps.
-- Set 3: a genuine 10-12 rep max - the most weight for 10-12 clean reps. Record this weight and the reps.
-For each isolation lift: sets:3, reps:"15/12/10-12RM", reps_per_set:["15","12","10-12RM"].
-Notes field for each isolation lift: "Record every weight. Set 3 is your 10-12 rep max - your Month 1 weights are built from it."
+- Set 3: the most weight for 10-12 clean reps. Record this weight and the reps.
+For each working-weight lift: sets:3, reps:"15/12/10-12RM", reps_per_set:["15","12","10-12RM"].
+Notes field for each working-weight lift: "Record every weight. Set 3 is the most you can lift for 10-12 clean reps - never a 3-rep max."
+
+STARTING-WEIGHT LIFTS ("test":"start") - stretch-position and small-muscle exercises: incline curls and other curls, flies, pullovers, lateral, front and rear delt raises, kickbacks, Y-raises, face pulls, overhead and lying triceps extensions. These are NEVER pushed - they only find a comfortable starting weight. Place them at the END of the session. Exactly 3 sets of 12-15 at a light weight:
+For each starting-weight lift: sets:3, reps:"12-15", reps_per_set:["12-15","12-15","12-15"].
+Notes field for each starting-weight lift: "Don't go heavy on this one - find a comfortable weight you can control for 12-15 reps. It just sets your starting weight."
+Ab sessions and cardio are not tested.
 Session names: "Assessment - [focus area]" e.g. "Assessment - Upper Body Push", "Assessment - Lower Body".`:''}
 
 ${useAssessment?`TEST WEEK: every session in this plan is an assessment session using the protocol above - the weekly sets per muscle and effort targets start with the first full month, which is built from these results. Across the week, test every main muscle at least once with exercises the user can safely do (injuries, avoided exercises and equipment first), and give every exercise its "muscle" field.`:`${volumeBlock}
@@ -5305,7 +5407,7 @@ The standard required: "Setup: Feet hip-width, grip just outside shoulders. Do: 
 RULES: ${days} sessions, as many exercises in each as the weekly sets above need (usually 4-7), reps_per_set entries must equal sets count. List sessions ONCE only.${hasValidPreferredDays?` Sessions must be on day_of_week ${preferredDaysList.join(', ')} only.`:''}
 
 \`\`\`json
-{"notes":"","sessions":[{"name":"Session 1","day_of_week":1,"type":"strength","warm_up_cardio":"5 min light cardio","exercises":[{"name":"","muscle":"","sets":3,"reps":"10-12","reps_per_set":["10-12","10-12","10-12"],"rest_seconds":90,"tempo":"2-1-2","notes":"","how_to":"Setup: X. Do: X. Avoid: X."}]}],"ab_sessions":[{"name":"Ab Session A - Upper and Obliques","day_of_week":3,"day_type":"rest_day","duration_mins":12,"exercises":[{"name":"","sets":3,"reps":"15-20","reps_per_set":["15-20","15-20","15-20"],"rest_seconds":30,"how_to":"","progression_note":""}]},{"name":"Ab Session B - Lower and Anti-Rotation","day_of_week":6,"day_type":"rest_day","duration_mins":12,"exercises":[{"name":"","sets":3,"reps":"12-15","reps_per_set":["12-15","12-15","12-15"],"rest_seconds":30,"how_to":"","progression_note":""}]}],"cardio_sessions":[{"day_of_week":0,"type":"","duration_mins":0,"intensity":"","notes":""}]}
+{"notes":"","sessions":[{"name":"Session 1","day_of_week":1,"type":"strength","warm_up_cardio":"5 min light cardio","exercises":[{"name":"","muscle":"","test":"","sets":3,"reps":"10-12","reps_per_set":["10-12","10-12","10-12"],"rest_seconds":90,"tempo":"2-1-2","notes":"","how_to":"Setup: X. Do: X. Avoid: X."}]}],"ab_sessions":[{"name":"Ab Session A - Upper and Obliques","day_of_week":3,"day_type":"rest_day","duration_mins":12,"exercises":[{"name":"","sets":3,"reps":"15-20","reps_per_set":["15-20","15-20","15-20"],"rest_seconds":30,"how_to":"","progression_note":""}]},{"name":"Ab Session B - Lower and Anti-Rotation","day_of_week":6,"day_type":"rest_day","duration_mins":12,"exercises":[{"name":"","sets":3,"reps":"12-15","reps_per_set":["12-15","12-15","12-15"],"rest_seconds":30,"how_to":"","progression_note":""}]}],"cardio_sessions":[{"day_of_week":0,"type":"","duration_mins":0,"intensity":"","notes":""}]}
 \`\`\`
 All ${days} sessions listed. Injuries enforced. JSON only.`;
 }
@@ -6713,6 +6815,27 @@ function trainingCapProblems(sessions){
   }
   return out;
 }
+// The test week's three tiers (rehearsal item 13, 26 Oct 2026): the server asks again when a test week breaks them
+const TEST_UNILATERAL_RE=/single[- ]leg|one[- ]leg|single[- ]arm|split squat|\blunges?\b|step[- ]?ups?|bulgarian|pistol|skater|cossack/i;
+const TEST_START_RE=/(?<!\b(?:leg|hamstring|nordic|lying leg|seated leg) )\bcurls?\b|\bfl(?:y|ye|ies|yes)\b|pullover|(?<!\bcalf )\braises?\b|kickback|face pull|(?:overhead|lying|french|skull).*extension|triceps? extension|skull ?crusher/i;
+const TEST_NOTES={main:'Main lift - work up to a hard 3 reps on the last set, with good form.',working:'Find the most you can lift for 10-12 clean reps on the last set - never a 3-rep max.',start:"Don't go heavy on this one - find a comfortable weight you can control. It just sets your starting weight."};
+function testWeekProblems(sessions){
+  const p=[];
+  for(const s of sessions||[]){
+    const ex=Array.isArray(s?.exercises)?s.exercises:[];
+    const mains=ex.filter(e=>e?.test==='main').length;
+    if(mains>1)p.push('"'+(s?.name||'a session')+'" has '+mains+' main lifts - at most 1 per session');
+    for(const e of ex){
+      const n=String(e?.name||''),t=e?.test,reps=String(e?.reps||'');
+      if(!['main','working','start'].includes(t)){p.push('"'+n+'" needs a test tier ("test": "main", "working" or "start")');continue;}
+      if(t==='main'&&TEST_UNILATERAL_RE.test(n))p.push('"'+n+'" is a single-leg or balance lift - it must be "working" (10-12 rep max), never a 3-rep max');
+      if(t!=='start'&&TEST_START_RE.test(n))p.push('"'+n+'" is a stretch-position or small-muscle exercise - it must be "start" (light, never pushed)');
+      if(t!=='main'&&/\b3\s*RM\b/i.test(reps))p.push('"'+n+'" goes to a 3-rep max but is not the main lift');
+      if(t==='start'&&/RM/i.test(reps))p.push('"'+n+'" is a starting-weight exercise - no rep max');
+    }
+  }
+  return[...new Set(p)];
+}
 // ---- train rules end ----
 
 let trainView={mode:'week',sidx:null,step:0,touched:false};
@@ -7079,6 +7202,7 @@ function trainSessionHtml(){
     <div style="font-size:13px;color:var(--tx2);margin-top:4px">${setCount} sets x ${escapeHtml(ex.reps||'8-12')}${ex.rest_seconds?' - rest '+escapeHtml(ex.rest_seconds)+'s':''}${ex.tempo?` - tempo ${escapeHtml(ex.tempo)} <span style="cursor:pointer;color:var(--tx3)" onclick="${tempoHelp}">(?)</span>`:''}</div>
     ${effort?`<div style="font-size:13px;color:var(--ac);margin-top:6px">🎯 ${escapeHtml(effort.text)}</div>`:''}
     ${ex.notes?`<div class="ex-note" style="margin-top:6px">${escapeHtml(ex.notes)}</div>`:''}
+    ${TEST_NOTES[ex.test]&&isTestWeekPlan()?`<div class="ex-note" style="margin-top:6px;${ex.test==='start'?'color:var(--warn)':''}">${ex.test==='start'?'⚠️':ex.test==='main'?'🎯':'📏'} ${escapeHtml(TEST_NOTES[ex.test])}</div>`:''}
     ${/pallof/i.test(ex.name||'')&&matchInjuryKeys(CU?.injuries||'').includes('Bad shoulder')?`<div class="ex-note" style="margin-top:6px;color:var(--warn)">⚠️ ${escapeHtml(PALLOF_SHOULDER_NOTE)}</div>`:''}
     ${ex.progression_note?`<div class="ex-note" style="margin-top:6px">${escapeHtml(ex.progression_note)}</div>`:''}
     <div style="display:flex;gap:8px;margin:12px 0;flex-wrap:wrap">
@@ -7232,6 +7356,9 @@ async function logWorkout(sidx){
             for(const ex of exData){
               // Compound lifts: Set 5 (the 3-rep max). Isolation lifts have 3 sets: the last (a 10-12 rep max)
               const set5=(ex.sets||[]).length>=5?ex.sets[4]:ex.sets?.[ex.sets.length-1];
+              // A starting-weight lift (rehearsal item 13) is saved as a starting weight, never an estimated max
+              const tier=(userTrainingPlan.sessions[parseInt(sessIdx)]?.exercises||[]).find(p=>p.name===ex.name)?.test;
+              if(tier==='start'){const w=Math.max(0,...(ex.sets||[]).map(x=>parseFloat(x.weight_kg)||0));if(w>0)knownNums.push(`${ex.name}: start at ${w}kg (starting weight, not a max)`);continue;}
               if(set5?.weight_kg>0){
                 // Epley: weight x (1 + reps/30) - x 1.1 for the 3-rep test (was x 1.0667, the 2-rep factor)
                 const r5=Math.min(12,Math.max(1,parseInt(set5.reps)||3));
@@ -8455,7 +8582,7 @@ ${renderFoodSetupCard()}
         </div>
         <label class="flbl" style="margin-bottom:6px;display:block">Which days?</label>
         <div class="pills" id="prof-batch-days">
-          ${['All week - cook once eat all week','Weekdays only','Weekend batch, fresh weekdays'].map(s=>`<div class="pill ${(CU.batch_days||'All week - cook once eat all week')===s?'on':''}" onclick="updateBatchDays(this,'${s}')">${s}</div>`).join('')}
+          ${Object.entries(BATCH_DAY_LABELS).map(([k,s])=>`<div class="pill ${batchDaysKey(CU.batch_days)===k?'on':''}" onclick="updateBatchDays(this,'${s}')">${s}</div>`).join('')}
         </div>
       </div>
       <div style="font-size:11px;color:var(--tx3);margin-top:8px">Changes apply on your next plan generation.</div>
@@ -8714,7 +8841,7 @@ async function saveFoodSetup(){
     const patch={10:equipment.join(','),11:cardio.join(','),12:diet,13:allergies.join(','),14:flavours.join(','),15:region,26:kitchen.join(','),27:mpd,28:snack.join(',')};
     // The hard cheeses that are fine for them (only builds with the question - supabase/036)
     const hcEl=document.getElementById('prof-hardcheese');
-    const hardCheeses=hcEl?[...hcEl.querySelectorAll('.pill.on')].map(p=>p.dataset.cheese).filter(Boolean):null;
+    const hardCheeses=hcEl?hardCheesesFromForm('prof'):null;
     if(hardCheeses)patch.hard_cheeses=hardCheeses;
     const patched=await patchUserRow(CU.user_id,patch,CU);
     if(!patched)throw new Error('your profile was not found. Please sign out and back in.');
@@ -9254,6 +9381,7 @@ function discardOnboardingProgress(){
 // ONBOARDING
 // ============================================================
 function openNewUser(){
+  if(!sbUser){alert('Please log in first.');return;}
   obStep=0;obAvatar='💪';
   document.getElementById('ob-modal-title').textContent='Before You Begin';
   document.getElementById('ob-prog').style.display='none';
@@ -9517,7 +9645,7 @@ async function createUser(){
   const batchDetail=getOnPills('ob-batch-detail')||'';
   // Combine cooking style and what slots are batched into one field
   const batchCooking=batchDetail?`${batchCookingBase} (${batchDetail})`:batchCookingBase;
-  const batchDays=getOnPills('ob-batch-days')||'All week - cook once eat all week';
+  const batchDays=getOnPills('ob-batch-days')||BATCH_DAY_LABELS.all;
   const dietary=document.getElementById('ob-dietary').value;
   // The pills plus anything typed in "Anything else?" (F6); "None" only counts on its own
   let allergies=[...getOnPills('ob-allergies').split(','),...(document.getElementById('ob-allergies-other')?.value||'').split(',')].map(x=>x.trim()).filter(Boolean);
@@ -10357,7 +10485,7 @@ function profileToCU(p,user){
     is_new_user:p.is_new_user===false?'false':'true',weigh_in_day:p.weigh_in_day||'Sunday',
     batch_cooking:(p.batch_cooking||'Mix - I decide per meal')+((p.batch_detail||[]).length?' ('+p.batch_detail.join(',')+')':''),
     ingredient_dislikes:p.ingredient_dislikes||'',food_loves:p.food_loves||'',spice_level:p.spice_level||'Medium',
-    batch_days:p.batch_days||'All week - cook once eat all week',
+    batch_days:p.batch_days||BATCH_DAY_LABELS.all,
     cook_time:cookTimeToText(p.cook_time)||'Breakfast:Under 5 mins, Lunch:5 to 15 mins, Dinner:15 to 30 mins, Snacks:Grab and go - no prep',
     lunch_situation:p.lunch_situation||'I have a fridge and microwave at work',
     weekly_budget:p.weekly_budget||'Mid-range - good ingredients, sensible spend',
@@ -10404,6 +10532,8 @@ async function saveRapportAnswers(userId,round,answers){
 function showAuthScreen(){
   document.getElementById('app-screen').classList.remove('active');
   document.getElementById('login-screen').classList.add('active');
+  // The old Sheets profile list (and its "+ Create New Profile") and the "continue setup" banner never show here (item 19)
+  for(const id of ['user-sel','ob-resume-banner']){const el=document.getElementById(id);if(el)el.style.display='none';}
 }
 function showAuthView(id){
   document.querySelectorAll('#login-screen .view').forEach(v=>v.style.display=v.id===id?'block':'none');
@@ -10839,7 +10969,7 @@ async function saveWallShare(el){
 // ---- Hard cheeses (24 Oct 2026, supabase/036): Profile > Food and Kit ----
 function hardCheeseProfHtml(){
   const on=(CU?.hard_cheeses||[]).map(x=>String(x).toLowerCase());
-  return`<div class="frow"><label class="flbl">Lactose intolerant? Aged hard cheeses that are fine for you</label>
+  return`<div class="frow" id="prof-hardcheese-wrap" style="${lactoseOnlyOf(currentFoodRules())?'':'display:none'}"><label class="flbl">Lactose intolerant? Aged hard cheeses that are fine for you</label>
     <div style="font-size:12px;color:var(--tx2);margin-bottom:6px;line-height:1.5">These have almost no lactose and many people who are lactose intolerant eat them fine. Tick only the ones that agree with you - leave them all unticked if you are not sure.</div>
     <div class="pills" id="prof-hardcheese">${HARD_CHEESES.map(([n])=>`<div class="pill${on.includes(n.toLowerCase())?' on':''}" data-cheese="${escapeHtml(n)}" onclick="tpill(this)">${escapeHtml(n)}</div>`).join('')}</div></div>`;
 }
@@ -11417,6 +11547,7 @@ function signOut(){
   const wasIn=!!sbUser;sbUser=null;
   if(sb&&wasIn)sb.auth.signOut({scope:'local'}).catch(e=>console.error('Log out:',e));
   sheetsSignOut();
+  for(const id of ['user-sel','ob-resume-banner']){const el=document.getElementById(id);if(el)el.style.display='none';}
   stopGenPoll();genRun=null;
   allUsers=[];lastSeasonWinners=[];wallReportCounts={};myShopRatings={};compMembers=[];compResults=[];
   document.querySelectorAll('#login-screen input').forEach(i=>i.value='');
@@ -11766,6 +11897,8 @@ function accountCardHtml(){
 // SIGN-UP QUESTIONS - saved to the profile instead of creating a Sheets row
 // ============================================================
 async function createUser(){
+  // Invite-only (rehearsal item 19): the questions belong to a logged-in account
+  if(!sbUser){alert('Please log in first - your account is made for you, then you answer these questions.');return;}
   const username=document.getElementById('ob-username').value.trim();
   const pin=document.getElementById('ob-pin').value;
   const age=document.getElementById('ob-age').value;
@@ -11789,7 +11922,7 @@ async function createUser(){
   const batchDetail=getOnPills('ob-batch-detail')||'';
   // Combine cooking style and what slots are batched into one field
   const batchCooking=batchDetail?`${batchCookingBase} (${batchDetail})`:batchCookingBase;
-  const batchDays=getOnPills('ob-batch-days')||'All week - cook once eat all week';
+  const batchDays=getOnPills('ob-batch-days')||BATCH_DAY_LABELS.all;
   const dietary=document.getElementById('ob-dietary').value;
   // The pills plus anything typed in "Anything else?" (F6); "None" only counts on its own
   let allergies=[...getOnPills('ob-allergies').split(','),...(document.getElementById('ob-allergies-other')?.value||'').split(',')].map(x=>x.trim()).filter(Boolean);
@@ -11842,7 +11975,7 @@ async function createUser(){
     // Training style (034): same sessions each week unless they picked the progressive block
     const training_style=document.querySelector('#ob-style-pick .pill.on')?.dataset.style==='block'?'block':'steady';
     // The aged hard cheeses they ticked as fine (036)
-    const hard_cheeses=[...document.querySelectorAll('#ob-hardcheese .pill.on')].map(p=>p.dataset.cheese).filter(Boolean);
+    const hard_cheeses=hardCheesesFromForm('ob');
     const {data:p,error}=await sb.from('profiles').update({...sheetPatchToProfile(fields),wall_share,medicines,training_style,hard_cheeses}).eq('id',sbUser.id).select().maybeSingle();
     if(error)throw new Error(friendlyDbError(error));
     if(!p)throw new Error('Your profile could not be found. Please log out and back in.');
@@ -11933,6 +12066,17 @@ async function executeAccountDeletion(){
   }finally{if(btn)btn.disabled=false;}
 }
 
+
+// ---- The hard-cheese question follows the allergy and diet answers (rehearsal item 6, 26 Oct 2026) ----
+document.addEventListener('click',e=>{
+  if(e.target.closest('#ob-allergies,#new-user-modal'))syncHardCheese('ob');
+  if(e.target.closest('#prof-allergies'))syncHardCheese('prof');
+});
+for(const ev of ['input','change'])document.addEventListener(ev,e=>{
+  const id=e.target?.id||'';
+  if(id==='ob-allergies-other'||id==='ob-dietary')syncHardCheese('ob');
+  if(id==='prof-allergies-other'||id==='prof-dietary')syncHardCheese('prof');
+});
 
 init();
 
