@@ -3548,8 +3548,11 @@ function topUpWithVariety(options,tickedIdx,target){
   while(chosen.length<target&&rest.length){
     let best=0,bestScore=Infinity;
     rest.forEach((o,i)=>{
-      const score=seen('cuisine',String(o.cuisine||'').toLowerCase())*2+seen('main_protein',String(o.main_protein||'').toLowerCase());
-      if(score<bestScore){bestScore=score;best=i;}
+      // the same favourite again in this section counts against variety (rehearsal 26 Oct 2026: 5 of 6 breakfasts were wraps)
+      const fav=String(o.from_favourite||'').trim().toLowerCase();
+      const score=seen('cuisine',String(o.cuisine||'').toLowerCase())*2+seen('main_protein',String(o.main_protein||'').toLowerCase())+(fav?seen('from_favourite',fav)*4:0);
+      // ties keep the AI's own order (_order), not the favourites-first display order
+      if(score<bestScore||(score===bestScore&&(o._order??i)<(rest[best]?._order??best))){bestScore=score;best=i;}
     });
     chosen.push(rest.splice(best,1)[0]);
   }
@@ -3557,7 +3560,7 @@ function topUpWithVariety(options,tickedIdx,target){
 }
 
 function favouritesFirst(meals){
-  return Object.fromEntries(Object.entries(meals||{}).map(([c,l])=>[c,Array.isArray(l)?[...l].sort((a,b)=>(b?.from_favourite?1:0)-(a?.from_favourite?1:0)):l]));
+  return Object.fromEntries(Object.entries(meals||{}).map(([c,l])=>[c,Array.isArray(l)?l.map((m,i)=>m&&typeof m==='object'?{...m,_order:i}:m).sort((a,b)=>(b?.from_favourite?1:0)-(a?.from_favourite?1:0)):l]));
 }
 function showMealPicker(meals){
   return new Promise(resolve=>{
