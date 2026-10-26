@@ -125,6 +125,12 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .pill{padding:7px 14px;background:var(--s2);border:1px solid var(--b1);border-radius:100px;font-size:12px;cursor:pointer;transition:all .15s;user-select:none;}
 .pill:hover{border-color:var(--ac);}
 .pill.on{background:var(--acdim);border-color:var(--ac);color:var(--ac);}
+.allergy-chip::after{content:" \00d7";opacity:.75;}
+.allergy-drop{display:none;max-height:260px;overflow-y:auto;border:1px solid var(--b1);border-radius:10px;background:var(--s1);margin-top:6px;}
+.allergy-opt{padding:9px 12px;font-size:13px;cursor:pointer;border-top:1px solid var(--b1);}
+.allergy-opt span{color:var(--tx3);font-size:11px;}
+.allergy-opt:hover{background:var(--s2);}
+.allergy-sec{padding:7px 12px;font-size:11px;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em;}
 
 /* GRID */
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
@@ -820,7 +826,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
       <div class="frow"><label class="flbl">What Time Do You Usually Train?</label><div class="pills" id="ob-train-time"><div class="pill on" onclick="selSingle(this,'ob-train-time')">Morning</div><div class="pill" onclick="selSingle(this,'ob-train-time')">Evening</div><div class="pill" onclick="selSingle(this,'ob-train-time')">Varies</div></div></div>
       <div class="frow"><label class="flbl">How Active Is Your Job? <span style="color:var(--tx3);font-weight:400;font-size:10px">(affects how much cardio we give you)</span></label><div class="pills" id="ob-occupation"><div class="pill" onclick="selSingle(this,'ob-occupation')">Sedentary - desk/office all day</div><div class="pill on" onclick="selSingle(this,'ob-occupation')">Light activity - some walking</div><div class="pill" onclick="selSingle(this,'ob-occupation')">Moderate physical - on your feet</div><div class="pill" onclick="selSingle(this,'ob-occupation')">Heavy manual - physical all day</div></div></div>
       <div class="frow"><label class="flbl">Preferred Weigh-In Day <span style="color:var(--tx3);font-weight:400;font-size:10px">(we'll remind you every week)</span></label><select class="fsel" id="ob-weigh-in-day"><option value="Monday">Monday</option><option value="Tuesday">Tuesday</option><option value="Wednesday">Wednesday</option><option value="Thursday">Thursday</option><option value="Friday">Friday</option><option value="Saturday">Saturday</option><option value="Sunday" selected>Sunday</option></select></div>
-      <div class="frow"><label class="flbl">Equipment Access</label><div class="pills" id="ob-equip"><div class="pill" onclick="tpill(this)">Full Commercial Gym</div><div class="pill" onclick="tpill(this)">Home Gym</div><div class="pill" onclick="tpill(this)">Barbells Only</div><div class="pill" onclick="tpill(this)">Dumbbells Only</div><div class="pill" onclick="tpill(this)">Bodyweight Only</div><div class="pill" onclick="tpill(this);toggleOther(this,'ob-equip-other')">Other</div></div><input class="finput" id="ob-equip-other" placeholder="e.g. cable machine, leg press, smith machine..." style="display:none;margin-top:8px"></div>
+      <div class="frow"><label class="flbl">Equipment Access</label><div class="pills" id="ob-equip"><div class="pill" onclick="tpill(this)">Full Commercial Gym</div><div class="pill" onclick="tpill(this)">Home Gym</div><div class="pill" onclick="tpill(this)">Barbells</div><div class="pill" onclick="tpill(this)">Dumbbells</div><div class="pill" onclick="tpill(this)">Bodyweight</div><div class="pill" onclick="tpill(this);toggleOther(this,'ob-equip-other')">Other</div></div><input class="finput" id="ob-equip-other" placeholder="e.g. cable machine, leg press, smith machine..." style="display:none;margin-top:8px"></div>
       <div class="frow"><label class="flbl">Cardio Available</label><div class="pills" id="ob-cardio"><div class="pill" onclick="tpill(this)">Running</div><div class="pill" onclick="tpill(this)">Walking</div><div class="pill" onclick="tpill(this)">Outdoor Bike</div><div class="pill" onclick="tpill(this)">Stationary Bike</div><div class="pill" onclick="tpill(this)">Rowing Machine</div><div class="pill" onclick="tpill(this);toggleOther(this,'ob-cardio-other')">Other</div></div><input class="finput" id="ob-cardio-other" placeholder="e.g. treadmill, cross trainer, stair climber, swimming..." style="display:none;margin-top:8px"></div>
       <div style="display:flex;gap:10px"><button class="btn btn-ghost" onclick="obBack(2)">← Back</button><button class="btn" style="flex:1" onclick="obNext(2)">Continue →</button></div>
     </div>
@@ -828,33 +834,12 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
     <div class="ob-step" id="ob3">
       <div class="frow"><label class="flbl">Kitchen Appliances You Have</label><div class="pills" id="ob-kitchen"><div class="pill" onclick="tpill(this)">Oven</div><div class="pill" onclick="tpill(this)">Hob</div><div class="pill" onclick="tpill(this)">Air Fryer</div><div class="pill" onclick="tpill(this)">Slow Cooker</div><div class="pill" onclick="tpill(this)">Blender</div><div class="pill" onclick="tpill(this)">Microwave</div><div class="pill" onclick="tpill(this)">Rice Cooker</div><div class="pill" onclick="tpill(this)">Instant Pot</div></div>
       <input class="finput" id="ob-kitchen-other" placeholder="Anything else? (e.g. Soup maker, Thermomix...)" style="margin-top:8px"></div>
-      <div class="frow"><label class="flbl">Meal Prep Style</label>
-        <div class="pills" id="ob-batch">
-          <div class="pill" onclick="selSingle(this,'ob-batch');obBatchChange(this)">Batch cook everything possible</div>
-          <div class="pill" onclick="selSingle(this,'ob-batch');obBatchChange(this)">Fresh meals every day</div>
-          <div class="pill on" onclick="selSingle(this,'ob-batch');obBatchChange(this)">Mix - I decide per meal</div>
-        </div>
-        <div style="font-size:11px;color:var(--tx3);margin-top:6px">This shapes how your meal plan is built</div>
+      <div class="frow"><label class="flbl">How Do You Make Each Meal?</label>
+        <div style="font-size:11px;color:var(--tx3);margin-bottom:8px">Cook fresh, prepare ahead (the night before or in the morning), or batch cook. This shapes how your meal plan is built.</div>
+        <div id="ob-meal-prep"><div style="margin-bottom:12px"><div style="font-size:11px;color:var(--tx2);margin-bottom:5px;letter-spacing:.5px">🌅 BREAKFAST</div><div class="pills" id="ob-prep-breakfast"><div class="pill on" data-prep="fresh" onclick="prepPick(this,'ob','breakfast')">Cook fresh</div><div class="pill" data-prep="ahead" onclick="prepPick(this,'ob','breakfast')">Prepare ahead</div><div class="pill" data-prep="batch" onclick="prepPick(this,'ob','breakfast')">Batch cook</div></div><div id="ob-prep-note-breakfast" style="font-size:11px;color:var(--tx3);margin:6px 0 5px">Made when you eat it. How long can you spend?</div><div class="pills" id="ob-cook-time-breakfast" style=""><div class="pill on" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-breakfast')">Under 5 mins</div><div class="pill" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-breakfast')">5 to 15 mins</div><div class="pill" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-breakfast')">15 to 30 mins</div></div></div><div style="margin-bottom:12px"><div style="font-size:11px;color:var(--tx2);margin-bottom:5px;letter-spacing:.5px">🥗 LUNCH</div><div class="pills" id="ob-prep-lunch"><div class="pill" data-prep="fresh" onclick="prepPick(this,'ob','lunch')">Cook fresh</div><div class="pill" data-prep="ahead" onclick="prepPick(this,'ob','lunch')">Prepare ahead</div><div class="pill on" data-prep="batch" onclick="prepPick(this,'ob','lunch')">Batch cook</div></div><div id="ob-prep-note-lunch" style="font-size:11px;color:var(--tx3);margin:6px 0 5px">A longer cook once, then reheat a portion each day.</div><div class="pills" id="ob-cook-time-lunch" style="display:none"><div class="pill" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-lunch')">Under 5 mins</div><div class="pill on" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-lunch')">5 to 15 mins</div><div class="pill" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-lunch')">15 to 30 mins</div></div></div><div style="margin-bottom:12px"><div style="font-size:11px;color:var(--tx2);margin-bottom:5px;letter-spacing:.5px">🍽️ DINNER</div><div class="pills" id="ob-prep-dinner"><div class="pill on" data-prep="fresh" onclick="prepPick(this,'ob','dinner')">Cook fresh</div><div class="pill" data-prep="ahead" onclick="prepPick(this,'ob','dinner')">Prepare ahead</div><div class="pill" data-prep="batch" onclick="prepPick(this,'ob','dinner')">Batch cook</div></div><div id="ob-prep-note-dinner" style="font-size:11px;color:var(--tx3);margin:6px 0 5px">Made when you eat it. How long can you spend?</div><div class="pills" id="ob-cook-time-dinner" style=""><div class="pill" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-dinner')">Under 15 mins</div><div class="pill on" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-dinner')">15 to 30 mins</div><div class="pill" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-dinner')">30 to 60 mins</div><div class="pill" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-dinner')">60+ mins - love cooking</div></div></div><div style="margin-bottom:12px"><div style="font-size:11px;color:var(--tx2);margin-bottom:5px;letter-spacing:.5px">🍎 SNACKS</div><div class="pills" id="ob-prep-snack"><div class="pill on" data-prep="fresh" onclick="prepPick(this,'ob','snack')">Cook fresh</div><div class="pill" data-prep="ahead" onclick="prepPick(this,'ob','snack')">Prepare ahead</div><div class="pill" data-prep="batch" onclick="prepPick(this,'ob','snack')">Batch cook</div></div><div id="ob-prep-note-snack" style="font-size:11px;color:var(--tx3);margin:6px 0 5px">Made when you eat it. How long can you spend?</div><div class="pills" id="ob-cook-time-snacks" style=""><div class="pill on" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-snacks')">Grab and go - no prep</div><div class="pill" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-snacks')">Up to 10 mins</div></div></div><div id="ob-batch-days-row" style=""><div style="font-size:11px;color:var(--tx2);margin-bottom:5px">Which days do you batch cook for?</div><div class="pills" id="ob-batch-days"><div class="pill on" onclick="selSingle(this,'ob-batch-days')">All week - cook once, eat every day</div><div class="pill" onclick="selSingle(this,'ob-batch-days')">Weekdays - cook once for Monday to Friday</div><div class="pill" onclick="selSingle(this,'ob-batch-days')">Weekend - cook once for Saturday and Sunday</div></div></div></div>
       </div>
-      <div class="frow" id="ob-batch-detail-row">
-        <label class="flbl">What do you batch cook? <span style="color:var(--tx3);font-weight:400;font-size:10px">(tick all that apply)</span></label>
-        <div class="pills" id="ob-batch-detail">
-          <div class="pill" onclick="tpill(this)">Batch breakfast</div>
-          <div class="pill on" onclick="tpill(this)">Batch lunches</div>
-          <div class="pill" onclick="tpill(this)">Batch dinners</div>
-          <div class="pill" onclick="tpill(this)">Batch snacks</div>
-        </div>
-        <div style="margin-top:10px">
-          <div style="font-size:11px;color:var(--tx2);margin-bottom:5px">Which days?</div>
-          <div class="pills" id="ob-batch-days">
-            <div class="pill on" onclick="selSingle(this,'ob-batch-days')">All week - cook once, eat every day</div>
-            <div class="pill" onclick="selSingle(this,'ob-batch-days')">Weekdays - cook once for Monday to Friday</div>
-            <div class="pill" onclick="selSingle(this,'ob-batch-days')">Weekend - cook once for Saturday and Sunday</div>
-          </div>
-        </div>
-      </div>
-      <div class="frow"><label class="flbl">Dietary Type</label><select class="fsel" id="ob-dietary"><option value="meat-eater">Meat Eater</option><option value="pescatarian">Pescatarian</option><option value="vegetarian">Vegetarian</option><option value="vegan">Vegan</option></select></div>
-      <div class="frow"><label class="flbl">Allergies / Intolerances</label><div class="pills" id="ob-allergies"><div class="pill" onclick="tpill(this)">Gluten</div><div class="pill" onclick="tpill(this)">Dairy</div><div class="pill" onclick="tpill(this)">Lactose intolerant</div><div class="pill" onclick="tpill(this)">Nuts</div><div class="pill" onclick="tpill(this)">Eggs</div><div class="pill" onclick="tpill(this)">Soy</div><div class="pill" onclick="tpill(this)">None</div></div><input class="finput" id="ob-allergies-other" style="margin-top:8px" placeholder="Anything else? e.g. shellfish, sesame, lactose intolerant"></div>
+      <div class="frow"><label class="flbl">Dietary Type</label><select class="fsel" id="ob-dietary" onchange="dietOtherSync('ob')"><option value="meat-eater">Meat Eater</option><option value="flexitarian">Flexitarian (mostly plant-based)</option><option value="pescatarian">Pescatarian</option><option value="vegetarian">Vegetarian</option><option value="vegan">Vegan</option><option value="halal">Halal</option><option value="kosher-style">Kosher-style</option><option value="other">Other (type it)</option></select><input class="finput" id="ob-dietary-other" style="margin-top:8px;display:none" placeholder="Your diet in a few words, e.g. no beef, Jain, low FODMAP"></div>
+      <div class="frow"><label class="flbl">Allergies / Intolerances</label><div style="font-size:12px;color:var(--tx3);margin-bottom:6px">Search and pick every one that applies, or tap None.</div><div class="allergy-picker"><div class="pills" id="ob-allergies"><div class="pill allergy-none" onclick="allergyNone(this,'ob')">None</div></div><input class="finput" id="ob-allergies-search" style="margin-top:8px" autocomplete="off" placeholder="Search, e.g. peanuts, mustard, shellfish" oninput="allergySearch('ob')" onfocus="allergySearch('ob')"><div class="allergy-drop" id="ob-allergies-drop"></div></div><input class="finput" id="ob-allergies-other" style="margin-top:8px" placeholder="Not on the list? Type it here - we check it with AI"></div>
       <div class="frow">
         <label class="flbl">Ingredients You Dislike or Want to Avoid</label>
         <div class="pills" id="ob-dislikes" style="gap:6px">
@@ -902,47 +887,6 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
       <div class="frow">
         <label class="flbl">Ingredients and Foods You Love ❤️</label>
         <textarea class="ftarea" id="ob-food-loves" placeholder="Tell us what you love - e.g. salmon, sweet potato, peanut butter, Mexican flavours, spicy food, creamy sauces... The more you tell us the better your meals will be." style="min-height:70px"></textarea>
-      </div>
-      <div class="frow">
-        <label class="flbl">Cook Time Per Meal Slot <span style="color:var(--tx3);font-weight:400;font-size:10px">(we'll build recipes to fit)</span></label>
-        <div style="display:grid;gap:10px;margin-top:4px">
-          <div>
-            <div style="font-size:11px;color:var(--tx2);margin-bottom:5px;letter-spacing:.5px">🌅 BREAKFAST</div>
-            <div class="pills" id="ob-cook-time-breakfast">
-              <div class="pill on" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-breakfast')">Under 5 mins</div>
-              <div class="pill" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-breakfast')">5 to 15 mins</div>
-              <div class="pill" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-breakfast')">15 to 30 mins</div>
-              <div class="pill" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-breakfast')">Batch cook it</div>
-            </div>
-          </div>
-          <div>
-            <div style="font-size:11px;color:var(--tx2);margin-bottom:5px;letter-spacing:.5px">🥗 LUNCH</div>
-            <div class="pills" id="ob-cook-time-lunch">
-              <div class="pill" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-lunch')">Under 5 mins</div>
-              <div class="pill on" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-lunch')">5 to 15 mins</div>
-              <div class="pill" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-lunch')">15 to 30 mins</div>
-              <div class="pill" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-lunch')">Batch cook it</div>
-            </div>
-          </div>
-          <div>
-            <div style="font-size:11px;color:var(--tx2);margin-bottom:5px;letter-spacing:.5px">🍽️ DINNER</div>
-            <div class="pills" id="ob-cook-time-dinner">
-              <div class="pill" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-dinner')">Under 15 mins</div>
-              <div class="pill on" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-dinner')">15 to 30 mins</div>
-              <div class="pill" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-dinner')">30 to 60 mins</div>
-              <div class="pill" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-dinner')">60+ mins - love cooking</div>
-              <div class="pill" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-dinner')">Batch cook it</div>
-            </div>
-          </div>
-          <div>
-            <div style="font-size:11px;color:var(--tx2);margin-bottom:5px;letter-spacing:.5px">🍎 SNACKS</div>
-            <div class="pills" id="ob-cook-time-snacks">
-              <div class="pill on" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-snacks')">Grab and go - no prep</div>
-              <div class="pill" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-snacks')">Up to 10 mins</div>
-              <div class="pill" style="font-size:11px" onclick="selSingle(this,'ob-cook-time-snacks')">Batch prep snacks</div>
-            </div>
-          </div>
-        </div>
       </div>
       <div class="frow">
         <label class="flbl">Lunch Situation <span style="color:var(--tx3);font-weight:400;font-size:10px">(affects lunch recipes)</span></label>
@@ -1000,7 +944,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
         </div>
       </div>
       <div class="frow"><label class="flbl">Spice Level</label><div class="pills" id="ob-spice"><div class="pill" onclick="selSingle(this,'ob-spice')">Mild - no heat at all</div><div class="pill on" onclick="selSingle(this,'ob-spice')">Medium - a little kick</div><div class="pill" onclick="selSingle(this,'ob-spice')">Hot - bring it on</div></div></div>
-      <div class="frow"><label class="flbl">Ingredient Region</label><select class="fsel" id="ob-region"><option value="uk">UK (grams, ml - Tesco / Sainsbury's)</option><option value="us">US (cups, oz)</option><option value="both">Both - UK primary with US alternatives</option></select></div>
+      <div class="frow"><label class="flbl">Ingredient Region</label><select class="fsel" id="ob-region"><option value="uk">UK (grams, ml)</option><option value="us">US (cups, oz)</option><option value="both">Both - UK primary with US alternatives</option></select></div>
       <div style="display:flex;gap:10px"><button class="btn btn-ghost" onclick="obBack(4)">← Back</button><button class="btn" style="flex:1" onclick="obNext(4)">Continue →</button></div>
     </div>
 
@@ -1300,7 +1244,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='26 Oct group 2 recipes';
+const APP_BUILD='26 Oct group 3 sign-up';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -2396,7 +2340,7 @@ function userFromRow(r){
   return{
     user_id:r[0],username:r[1],pin:'',age:r[3],sex:r[4],
     weight_kg:r[5],height_cm:r[6],goal:r[7],experience:r[8],
-    training_days:r[9],equipment:r[10]?String(r[10]).split(','):[],
+    training_days:r[9],equipment:normEquip(r[10]?String(r[10]).split(','):[]),
     cardio_options:r[11]?String(r[11]).split(','):[],dietary_type:r[12],
     allergies:r[13]?String(r[13]).split(','):[],flavour_prefs:r[14]?String(r[14]).split(','):[],
     ingredient_region:r[15],created_at:r[16],
@@ -2627,10 +2571,16 @@ function snapshotObForm(){
   return snap;
 }
 const obFormDefaults=snapshotObForm();
+// Equipment answers saved before 26 Oct 2026 said "Barbells Only" etc. (Group 3 item 1): read as the new names
+const EQUIP_RENAMED={'barbells only':'Barbells','dumbbells only':'Dumbbells','bodyweight only':'Bodyweight'};
+function normEquip(list){return[...new Set((list||[]).map(x=>String(x).trim()).filter(Boolean).map(x=>EQUIP_RENAMED[x.toLowerCase()]||x))];}
 function resetObForm(){
   try{
+    // picked allergies are added to the page, so they go before the pills are put back by position
+    document.querySelectorAll('.ob-step .allergy-chip').forEach(c=>c.remove());
     for(const [id,v] of Object.entries(obFormDefaults.fields)){const e=document.getElementById(id);if(!e)continue;if(e.type==='checkbox')e.checked=v;else e.value=v;}
     document.querySelectorAll('.ob-step .pill').forEach((p,i)=>p.classList.toggle('on',!!obFormDefaults.pills[i]));
+    prepSyncAll('ob');dietOtherSync('ob');
   }catch(e){}
 }
 function signOut(){
@@ -3600,13 +3550,86 @@ const BATCH_DAY_LABELS={all:'All week - cook once, eat every day',weekdays:'Week
 // Old answers ("Weekdays only", "Weekend batch, fresh weekdays", "All week - cook once eat all week") carry over
 function batchDaysKey(v){const t=String(v||'').toLowerCase();return/weekend/.test(t)?'weekend':/weekday/.test(t)?'weekdays':'all';}
 const BATCH_SLOT_CATS={breakfast:'breakfasts',lunch:'lunches',dinner:'dinners',snack:'snacks'};
+// ---- Meal prep per meal (Group 3 item 2, 26 Oct 2026): one answer per meal - cook fresh, prepare ahead or batch cook.
+// Saved in batch_cooking as "Per meal (Breakfast:fresh,Lunch:batch,Dinner:ahead,Snacks:fresh)" (no new column - the
+// new backend keeps the bracket part in batch_detail as before); a batched slot's time is saved as "Batch cook it". Older
+// answers ("Mix - I decide per meal (Batch lunches)", "Batch cook it" times) are read into the same shape. ----
+const PREP_LABELS={fresh:'Cook fresh',ahead:'Prepare ahead',batch:'Batch cook'};
+const PREP_NOTES={fresh:'Made when you eat it. How long can you spend?',ahead:'Made the night before or in the morning, keeps 1-2 days in the fridge. How long can you spend?',batch:'A longer cook once, then reheat a portion each day.'};
+const PREP_ROWS=[
+  {slot:'breakfast',id:'breakfast',label:'Breakfast',emoji:'🌅',times:['Under 5 mins','5 to 15 mins','15 to 30 mins'],time:'Under 5 mins',prep:'fresh',batchTime:'Batch cook it'},
+  {slot:'lunch',id:'lunch',label:'Lunch',emoji:'🥗',times:['Under 5 mins','5 to 15 mins','15 to 30 mins'],time:'5 to 15 mins',prep:'batch',batchTime:'Batch cook it'},
+  {slot:'dinner',id:'dinner',label:'Dinner',emoji:'🍽️',times:['Under 15 mins','15 to 30 mins','30 to 60 mins','60+ mins - love cooking'],time:'15 to 30 mins',prep:'fresh',batchTime:'Batch cook it'},
+  {slot:'snack',id:'snacks',label:'Snacks',emoji:'🍎',times:['Grab and go - no prep','Up to 10 mins'],time:'Grab and go - no prep',prep:'fresh',batchTime:'Batch prep snacks'}];
+// {breakfast,lunch,dinner,snack: 'fresh'|'ahead'|'batch'} from a profile
+function mealPrepOf(u){
+  const bc=String(u?.batch_cooking||''),m=bc.match(/^Per meal\s*\((.*)\)\s*$/i);
+  if(m){
+    const o=Object.fromEntries(PREP_ROWS.map(r=>[r.slot,'fresh']));
+    for(const part of m[1].split(',')){
+      const [k,v]=part.split(':').map(x=>String(x||'').trim().toLowerCase());
+      const key=k==='snacks'?'snack':k;
+      if(key in o&&PREP_LABELS[v])o[key]=v;
+    }
+    return o;
+  }
+  // Older answers: the style, the ticked meals and any "Batch cook it" time
+  const lc=bc.toLowerCase(),ct=String(u?.cook_time||''),everything=lc.includes('batch cook everything');
+  const on=(detail,slot,inEverything)=>(everything&&inEverything)||lc.includes(detail)||new RegExp(slot+':\\s*Batch','i').test(ct);
+  return{breakfast:on('batch breakfast','Breakfast',true)?'batch':'fresh',lunch:on('batch lunch','Lunch',true)?'batch':'fresh',
+    dinner:on('batch dinner','Dinner',true)?'batch':'fresh',snack:on('batch snack','Snacks',false)?'batch':'fresh'};
+}
+function mealPrepValue(o){return'Per meal ('+PREP_ROWS.map(r=>r.label+':'+(o[r.slot]||'fresh')).join(',')+')';}
+// In words, for the AI: "Breakfast: cook fresh, Lunch: batch cook, ..."
+function mealPrepText(u){const o=mealPrepOf(u);return PREP_ROWS.map(r=>r.label+': '+PREP_LABELS[o[r.slot]].toLowerCase()).join(', ');}
+// The grid: prefix 'ob' = sign-up (written into the page by the same markup), 'prof' = Profile
+function mealPrepGridHtml(p,u){
+  const o=u?mealPrepOf(u):Object.fromEntries(PREP_ROWS.map(r=>[r.slot,r.prep]));
+  const ct=String(u?.cook_time||'');
+  const rows=PREP_ROWS.map(r=>{
+    const saved=ct.match(new RegExp(r.label+':([^,]+)'))?.[1]?.trim();
+    const t=r.times.includes(saved)?saved:r.time;
+    return`<div style="margin-bottom:12px"><div style="font-size:11px;color:var(--tx2);margin-bottom:5px;letter-spacing:.5px">${r.emoji} ${r.label.toUpperCase()}</div>`
+      +`<div class="pills" id="${p}-prep-${r.slot}">${Object.entries(PREP_LABELS).map(([k,l])=>`<div class="pill${o[r.slot]===k?' on':''}" data-prep="${k}" onclick="prepPick(this,'${p}','${r.slot}')">${l}</div>`).join('')}</div>`
+      +`<div id="${p}-prep-note-${r.slot}" style="font-size:11px;color:var(--tx3);margin:6px 0 5px">${PREP_NOTES[o[r.slot]]}</div>`
+      +`<div class="pills" id="${p}-cook-time-${r.id}" style="${o[r.slot]==='batch'?'display:none':''}">${r.times.map(s=>`<div class="pill${s===t?' on':''}" style="font-size:11px" onclick="selSingle(this,'${p}-cook-time-${r.id}')">${s}</div>`).join('')}</div></div>`;
+  }).join('');
+  const any=Object.values(o).includes('batch');
+  const dk=u?batchDaysKey(u.batch_days):'all';
+  return`<div id="${p}-meal-prep">${rows}<div id="${p}-batch-days-row" style="${any?'':'display:none'}"><div style="font-size:11px;color:var(--tx2);margin-bottom:5px">Which days do you batch cook for?</div>`
+    +`<div class="pills" id="${p}-batch-days">${Object.entries(BATCH_DAY_LABELS).map(([k,s])=>`<div class="pill${k===dk?' on':''}" onclick="selSingle(this,'${p}-batch-days')">${s}</div>`).join('')}</div></div></div>`;
+}
+function prepPick(el,p,slot){
+  el.parentElement.querySelectorAll('.pill').forEach(x=>x.classList.toggle('on',x===el));
+  prepSyncAll(p);
+}
+// Shows each row's time choices and note for its answer, and the batch days when any meal is batch cooked
+function prepSyncAll(p){
+  let any=false;
+  for(const r of PREP_ROWS){
+    const k=document.querySelector('#'+p+'-prep-'+r.slot+' .pill.on')?.dataset.prep||r.prep;
+    if(k==='batch')any=true;
+    const times=document.getElementById(p+'-cook-time-'+r.id);if(times)times.style.display=k==='batch'?'none':'';
+    const note=document.getElementById(p+'-prep-note-'+r.slot);if(note)note.textContent=PREP_NOTES[k];
+  }
+  const days=document.getElementById(p+'-batch-days-row');if(days)days.style.display=any?'':'none';
+}
+// What the grid holds, in the saved shapes: batch_cooking, cook_time and batch_days
+function mealPrepFromForm(p){
+  const o={},times=[];
+  for(const r of PREP_ROWS){
+    const k=document.querySelector('#'+p+'-prep-'+r.slot+' .pill.on')?.dataset.prep||r.prep;
+    o[r.slot]=k;
+    const t=document.querySelector('#'+p+'-cook-time-'+r.id+' .pill.on')?.textContent.trim()||r.time;
+    times.push(r.label+':'+(k==='batch'?r.batchTime:t));
+  }
+  return{batchCooking:mealPrepValue(o),cookTime:times.join(', '),batchDays:document.querySelector('#'+p+'-batch-days .pill.on')?.textContent.trim()||BATCH_DAY_LABELS.all};
+}
 function batchPlan(u){
-  const bc=String(u?.batch_cooking||'').toLowerCase(),ct=String(u?.cook_time||'');
-  const everything=bc.includes('batch cook everything');
-  const on=(detail,slot,inEverything)=>(everything&&inEverything)||bc.includes(detail)||new RegExp(slot+':\\s*Batch','i').test(ct);
-  const slots={breakfast:on('batch breakfast','Breakfast',true),lunch:on('batch lunch','Lunch',true),dinner:on('batch dinner','Dinner',true),snack:on('batch snack','Snacks',false)};
+  const prep=mealPrepOf(u);
+  const slots=Object.fromEntries(Object.keys(BATCH_SLOT_CATS).map(k=>[k,prep[k]==='batch']));
   const daysKey=batchDaysKey(u?.batch_days),days=BATCH_DAY_SETS[daysKey];
-  return{slots,daysKey,days,portions:days.length,freshDays:ROT_DAYS.filter(d=>!days.includes(d)),any:Object.values(slots).some(Boolean)};
+  return{slots,prep,daysKey,days,portions:days.length,freshDays:ROT_DAYS.filter(d=>!days.includes(d)),any:Object.values(slots).some(Boolean)};
 }
 // A batched slot that is not batched every day: its last 2 picks are cooked fresh on the other days (D1). Used by the
 // picker and by the server, which rebuilds the picks from the names it offered (so it never trusts the phone's marks)
@@ -3618,29 +3641,34 @@ function markFreshPicks(picked,u){
   }
   return out;
 }
-// What a picked meal must be: 'batch' (one portion per batch day), 'single' (one serving) or 'free' (extras - as written)
+// What a picked meal must be: 'batch' (one portion per batch day), 'ahead' (one serving made ahead - its meal is
+// "Prepare ahead"), 'single' (one serving) or 'free' (extras - as written). A batched meal's fresh picks are single.
 function mealBatchRole(cat,meal,bp){
   const slot=Object.keys(BATCH_SLOT_CATS).find(k=>BATCH_SLOT_CATS[k]===cat);
   if(!slot)return cat==='evening_snacks'?'single':'free';
-  return bp.slots[slot]&&!meal?.fresh?'batch':'single';
+  if(bp.slots[slot])return meal?.fresh?'single':'batch';
+  return bp.prep?.[slot]==='ahead'?'ahead':'single';
 }
+// What a made-ahead meal has to be (Group 3 item 2)
+const AHEAD_RULE='It is made the night before or in the morning and keeps 1-2 days in the fridge: eaten cold or quickly reheated, nothing that goes soggy or grey (keep dressings and crunchy toppings separate), and the method says when to make it (e.g. "the night before") and how to store it.';
 // The line a recipe instruction gets for one role
 function batchRoleLine(role,bp){
   return role==='batch'?'It must be a batch-cook recipe: bulk_cook true, batch_portions '+bp.portions+' and servings '+bp.portions+', with every ingredient quantity for the full batch of '+bp.portions+' portions.'
-    :role==='single'?'It must be a single serving: bulk_cook false, batch_portions 1, servings 1.':'';
+    :role==='single'?'It must be a single serving: bulk_cook false, batch_portions 1, servings 1.'
+    :role==='ahead'?'It must be a single serving made ahead: bulk_cook false, batch_portions 1, servings 1. '+AHEAD_RULE:'';
 }
 // What is wrong with a written recipe for its role (empty = right). A single-recipe answer has no bulk_cook field,
 // so servings equal to the batch size counts as a batch.
 function batchRoleProblem(recipe,role,bp){
   const sv=parseInt(recipe?.servings)||1,bpn=parseInt(recipe?.batch_portions)||0;
   if(role==='batch'){const n=recipe?.bulk_cook?(bpn||sv):sv;return n===bp.portions?'':'"'+recipe?.name+'" must make '+bp.portions+' portions (bulk_cook true, batch_portions '+bp.portions+', servings '+bp.portions+') - it makes '+n;}
-  if(role==='single')return recipe?.bulk_cook||sv!==1?'"'+recipe?.name+'" must be a single serving (bulk_cook false, servings 1)':'';
+  if(role==='single'||role==='ahead')return recipe?.bulk_cook||sv!==1?'"'+recipe?.name+'" must be a single serving (bulk_cook false, servings 1)':'';
   return'';
 }
 // The recipe set to its role's flags once it passes
 function setBatchFlags(recipe,role,bp){
   if(role==='batch'){recipe.bulk_cook=true;recipe.batch_portions=bp.portions;recipe.servings=bp.portions;}
-  else if(role==='single'){recipe.bulk_cook=false;recipe.batch_portions=1;recipe.servings=1;}
+  else if(role==='single'||role==='ahead'){recipe.bulk_cook=false;recipe.batch_portions=1;recipe.servings=1;}
   return recipe;
 }
 // The app sets the batched days of the rotation itself (the AI fills the rest): each week a batched slot uses ONE batch
@@ -4139,20 +4167,133 @@ const FOOD_GROUPS={
   dairy:{label:'dairy',words:['milk','yogurt','yoghurt','cheese','butter','cream','whey','ghee','paneer','feta','quark','parmesan','halloumi','mozzarella','cheddar','custard','casein','kefir','mascarpone','ricotta','creme fraiche','buttermilk'],
     always:['whey','casein'],   // not paneer, ghee or buttermilk: "vegan paneer" (tofu) and plant "buttermilk" are real
     safe:/(dairy[- ]free|non[- ]dairy|vegan|plant[- ]based|(soya?|oat|almond|coconut|rice|cashew|hazelnut|pea|hemp)\s+(milk|yogh?urt|cream|butter|cheese)|peanut butter|nut butter|seed butter|apple butter|cocoa butter|butter ?beans?|cream of tartar)/i},
-  nuts:{label:'nuts',words:['nut','almond','cashew','walnut','pecan','hazelnut','pistachio','peanut','macadamia','praline','marzipan','pesto','satay','nutella','frangipane'],
+  nuts:{label:'nuts',words:['nut','almond','cashew','walnut','pecan','hazelnut','pistachio','peanut','groundnut','macadamia','praline','marzipan','pesto','satay','nutella','frangipane','gianduja','trail mix'],
     safe:/nut[- ]free/i},
+  // Peanuts and tree nuts on their own (Group 3, 26 Oct 2026, D3): a peanut allergy no longer rules out almonds, and the other way round
+  peanuts:{label:'peanuts',words:['peanut','groundnut','monkey nut','satay','mixed nut','nut butter','nut mix','trail mix'],safe:/(peanut|nut)[- ]free/i},
+  treenuts:{label:'tree nuts',words:['almond','cashew','walnut','pecan','hazelnut','pistachio','macadamia','brazil nut','pine nut','praline','marzipan','frangipane','nutella','gianduja','pesto','amaretti','mixed nut','nut butter','nut milk','nut mix','trail mix'],safe:/(tree[- ]?nut|nut)[- ]free/i},
+  pinenuts:{label:'pine nuts',words:['pine nut','pinenut','pesto'],safe:/pine[- ]?nut[- ]free/i},
   gluten:{label:'gluten',words:['wheat','flour','bread','pasta','spaghetti','penne','fusilli','noodle','couscous','bulgur','barley','rye','seitan','soy sauce','breadcrumb','tortilla','pitta','wrap','cracker','oat','bagel','orzo','semolina','crouton','panko','malt','lasagne','gnocchi','crumpet','muffin'],
     safe:/(gluten[- ]free|rice noodles?|rice flour|corn ?flour|cornstarch|almond flour|coconut flour|chickpea flour|gram flour|buckwheat|corn tortillas?|tamari|lettuce wraps?)/i},
   eggs:{label:'egg',words:['egg','mayonnaise','mayo','meringue','aioli'],safe:/(egg[- ]free|vegan)/i},
   soy:{label:'soy',words:['soy','soya','tofu','tempeh','edamame','miso','tamari'],safe:/soya?[- ]free/i},
   meat:{label:'meat',words:['chicken','beef','pork','lamb','turkey','bacon','ham','mince','chorizo','sausage','steak','duck','venison','salami','prosciutto','pepperoni','gelatin','gelatine','lard','meatball','pancetta','gammon'],
     safe:/(vegan|vegetarian|plant[- ]based|meat[- ]free|quorn|jackfruit|-style|veggie|soya? mince)/i},
-  fish:{label:'fish',words:['fish','salmon','tuna','prawn','cod','mackerel','sardine','anchovy','anchovies','haddock','shrimp','crab','lobster','mussel','squid','scallop','trout','sea bass','oyster','worcestershire'],safe:/(vegan|vegetarian)/i},
+  fish:{label:'fish',words:['fish','salmon','tuna','prawn','cod','mackerel','sardine','anchovy','anchovies','haddock','shrimp','crab','lobster','mussel','squid','scallop','trout','sea bass','oyster','worcestershire'],safe:/(vegan|vegetarian|oyster mushrooms?)/i},
   honey:{label:'honey',words:['honey'],safe:null},
-  shellfish:{label:'shellfish',words:['shellfish','prawn','shrimp','crab','lobster','mussel','scallop','oyster','squid','clam','crayfish','langoustine'],safe:/(vegan|vegetarian)/i},
-  sesame:{label:'sesame',words:['sesame','tahini','hummus','houmous'],safe:/sesame[- ]free/i}   // 'sesame-free' is not sesame (24 Oct 2026 test run)
+  shellfish:{label:'shellfish',words:['shellfish','prawn','shrimp','crab','lobster','mussel','scallop','oyster','squid','calamari','octopus','clam','cockle','whelk','crayfish','langoustine','scampi'],safe:/(vegan|vegetarian|oyster mushrooms?)/i},
+  crustaceans:{label:'crustaceans',words:['crustacean','prawn','shrimp','crab','lobster','crayfish','langoustine','scampi'],safe:/(vegan|vegetarian)/i},
+  molluscs:{label:'molluscs',words:['mollusc','mussel','oyster','squid','calamari','scallop','clam','octopus','cockle','whelk','snail','escargot'],safe:/(vegan|vegetarian|oyster mushrooms?)/i},
+  sesame:{label:'sesame',words:['sesame','tahini','hummus','houmous'],safe:/sesame[- ]free/i},   // 'sesame-free' is not sesame (24 Oct 2026 test run)
+  // The rest of the UK's 14 label allergens, then common intolerances and avoidances (Group 3, 26 Oct 2026, D4).
+  // Only foods a word check can catch reliably; anything else is typed and checked by the AI food check.
+  celery:{label:'celery',words:['celery','celeriac'],safe:/celery[- ]free/i},
+  mustard:{label:'mustard',words:['mustard','dijon'],safe:/mustard[- ]free/i},
+  lupin:{label:'lupin',words:['lupin','lupini'],safe:/lupin[- ]free/i},
+  sulphites:{label:'sulphites',words:['sulphite','sulfite','metabisulphite','wine','cider','beer','ale','lager','prosecco','sherry','dried apricot','golden sultana','sausage','balsamic'],safe:/(sulph?ite[- ]free|sulfite[- ]free|unsulph?ured|unsulfured|ginger beer|root beer)/i},
+  coconut:{label:'coconut',words:['coconut','copra'],safe:/coconut[- ]free/i},
+  corn:{label:'corn',words:['corn','sweetcorn','maize','polenta','cornflour','cornstarch','cornmeal','popcorn','cornflake','corn syrup','tortilla chip','nacho','grits','masa'],safe:/corn[- ]free/i},
+  kiwi:{label:'kiwi',words:['kiwi'],safe:null},
+  strawberries:{label:'strawberries',words:['strawberry','strawberries'],safe:null},
+  nightshades:{label:'nightshades',note:'black and white pepper are fine; sweet potato is fine',words:['tomato','potato','pepper','aubergine','eggplant','chilli','chili','chile','paprika','cayenne','jalapeno','chipotle','habanero','scotch bonnet','passata','ketchup','harissa','sriracha','salsa','pimento','pimiento','goji','tomatillo','gnocchi','curry powder','peri peri','piri piri','gochujang','tabasco','hot sauce','sambal','chorizo','nduja'],
+    safe:/((black|white|pink|green)\s+peppercorns?|(black|white|sichuan|szechuan)\s+pepper\b|salt and pepper|pepper to taste|sweet potato(es)?|nightshade[- ]free)/i},
+  garlic:{label:'garlic',words:['garlic','aioli','toum'],safe:/garlic[- ]free/i},
+  onion:{label:'onion',words:['onion','shallot','leek','chive','scallion'],safe:/onion[- ]free/i},
+  pork:{label:'pork',words:['pork','bacon','ham','gammon','pancetta','prosciutto','chorizo','salami','pepperoni','nduja','lard','lardon','sausage','black pudding','gelatine','gelatin','crackling','spare rib'],
+    safe:/((turkey|chicken|beef|lamb|halal|vegan|vegetarian|veggie|plant[- ]based|quorn|meat[- ]free|soya?)\s+(sausages?|bacon|ham|rashers?|chorizo|salami|pepperoni|meatballs?)|turkey rashers?|(beef|bovine|fish|halal)\s+gelatine?|pork[- ]free)/i},
+  alcohol:{label:'alcohol',words:['wine','beer','ale','lager','stout','cider','rum','brandy','cognac','vodka','whisky','whiskey','bourbon','gin','tequila','sherry','marsala','vermouth','mirin','sake','prosecco','champagne','liqueur','kirsch','amaretto','cointreau'],
+    safe:/(alcohol[- ]free|non[- ]alcoholic|(wine|cider|sherry|rice|malt|balsamic)\s+vinegar|ginger beer|root beer)/i},
+  legumes:{label:'legumes',words:['chickpea','lentil','pea','bean','edamame','hummus','houmous','falafel','dal','dhal','daal','mangetout','sugar snap','lupin','gram flour','besan'],safe:/((vanilla|coffee|cocoa|cacao|jelly)\s+beans?|legume[- ]free)/i},
+  seeds:{label:'seeds',words:['sunflower','pumpkin seed','pepita','poppy seed','chia','flax','linseed','hemp','mixed seed','seed butter','seed mix'],safe:/seed[- ]free/i},
+  banana:{label:'banana',words:['banana','plantain'],safe:null},
+  avocado:{label:'avocado',words:['avocado','guacamole'],safe:null},
+  citrus:{label:'citrus',words:['lemon','lime','orange','grapefruit','clementine','satsuma','mandarin','tangerine','yuzu','citrus','marmalade','bergamot'],safe:/((orange|yellow)\s+(bell\s+)?peppers?|orange lentils?|lemon ?grass|citrus[- ]free)/i},
+  stonefruit:{label:'stone fruit',words:['peach','nectarine','plum','apricot','cherry','cherries','prune','damson','greengage','kirsch'],safe:/(cherry tomato(es)?|plum tomato(es)?)/i},
+  apple:{label:'apple',words:['apple','cider'],safe:null},
+  mushrooms:{label:'mushrooms',words:['mushroom','portobello','portabella','shiitake','porcini','enoki','chanterelle','morel','truffle','quorn','mycoprotein'],safe:/mushroom[- ]free/i},
+  redmeat:{label:'red meat',words:['beef','pork','lamb','mutton','veal','venison','goat','rabbit','bison','steak','bacon','ham','gammon','pancetta','prosciutto','chorizo','salami','pepperoni','lard','sausage','burger','meatball','mince','gelatine','gelatin','black pudding','oxtail','brisket','sirloin'],
+    safe:/((chicken|turkey|fish|tuna|salmon|cod|vegan|vegetarian|veggie|plant[- ]based|quorn|meat[- ]free|soya?|bean|cauliflower|halloumi|mushroom|lentil)\s+(sausages?|bacon|rashers?|meatballs?|burgers?|steaks?|mince|chorizo|ham)|turkey rashers?|fish\s+gelatine?)/i},
+  yeast:{label:'yeast',words:['yeast','marmite','vegemite','bread','breadcrumb','panko','bagel','pitta','brioche','naan','sourdough','flatbread','crumpet','english muffin','pizza dough'],safe:/(yeast[- ]free|soda bread|unleavened)/i},
+  caffeine:{label:'caffeine',words:['coffee','espresso','tea','matcha','cola','energy drink','guarana','pre-workout','yerba mate'],safe:/(decaf|decaffeinated|caffeine[- ]free|herbal tea|fruit tea|rooibos|peppermint tea|chamomile|camomile)/i},
+  chilli:{label:'chilli',words:['chilli','chili','chile','cayenne','jalapeno','chipotle','habanero','scotch bonnet','bird\'s eye','sriracha','harissa','gochujang','tabasco','hot sauce','sambal','peri peri','piri piri','nduja','jerk'],safe:/(chill?i|chile)[- ]free/i},
+  // kosher-style: a recipe with both is flagged (wordFlagRecipe's combo check)
+  meatdairy:{label:'meat with dairy',combo:['meat','dairy'],note:'never meat (including poultry) and dairy in the same recipe',words:[],safe:null},
+  sweeteners:{label:'sweeteners',words:['sweetener','sucralose','aspartame','acesulfame','saccharin','stevia','erythritol','xylitol','sorbitol','maltitol','splenda','canderel','truvia','sugar-free syrup','zero-calorie syrup','diet cola','diet coke','sugar-free jelly'],safe:null}
 };
-const DIET_BANS={vegan:['meat','fish','dairy','eggs','honey'],vegetarian:['meat','fish'],pescatarian:['meat'],'meat-eater':[]};
+// The allergy list people pick from (Group 3, 26 Oct 2026). n = the name saved on the profile (no commas),
+// g = its food group, uk14 = one of the 14 allergens UK food labels must show. lactose: the lactose rule
+// (lactoseOnlyOf), not a milk allergy. Older answers (Gluten, Dairy, Nuts, Soy) keep working through ALLERGY_GROUP.
+const ALLERGY_LIST=[
+  {n:'Milk / dairy',g:'dairy',uk14:true,hint:'milk, cheese, butter, cream, yoghurt, whey'},
+  {n:'Cereals with gluten',g:'gluten',uk14:true,hint:'wheat, rye, barley, oats'},
+  {n:'Crustaceans',g:'crustaceans',uk14:true,hint:'prawns, crab, lobster, crayfish'},
+  {n:'Molluscs',g:'molluscs',uk14:true,hint:'mussels, oysters, squid, scallops'},
+  {n:'Eggs',g:'eggs',uk14:true},
+  {n:'Fish',g:'fish',uk14:true},
+  {n:'Peanuts',g:'peanuts',uk14:true,hint:'peanuts, groundnuts, satay'},
+  {n:'Tree nuts',g:'treenuts',uk14:true,hint:'almonds, cashews, walnuts, hazelnuts, pistachios, pecans'},
+  {n:'Sesame',g:'sesame',uk14:true,hint:'sesame seeds, tahini, hummus'},
+  {n:'Soya',g:'soy',uk14:true,hint:'soya, tofu, edamame, soy sauce'},
+  {n:'Celery',g:'celery',uk14:true,hint:'celery and celeriac'},
+  {n:'Mustard',g:'mustard',uk14:true},
+  {n:'Lupin',g:'lupin',uk14:true,hint:'lupin flour, in some breads and pastries'},
+  {n:'Sulphites',g:'sulphites',uk14:true,hint:'wine, dried apricots, many sausages'},
+  {n:'Lactose intolerant',g:'dairy',lactose:true,hint:'not a milk allergy - lactose-free products are fine'},
+  {n:'Coeliac disease',g:'gluten'},
+  {n:'Wheat',g:'gluten'},
+  {n:'Shellfish (all)',g:'shellfish',hint:'crustaceans and molluscs'},
+  {n:'Pine nuts',g:'pinenuts',hint:'pine nuts and pesto'},
+  {n:'Coconut',g:'coconut'},
+  {n:'Corn / maize',g:'corn',hint:'sweetcorn, polenta, cornflour'},
+  {n:'Kiwi',g:'kiwi'},
+  {n:'Strawberries',g:'strawberries'},
+  {n:'Nightshades',g:'nightshades',hint:'tomato, potato, peppers, aubergine, chilli, paprika'},
+  {n:'Garlic',g:'garlic'},
+  {n:'Onion and leeks',g:'onion',hint:'onion, shallot, leek, chives, spring onion'},
+  {n:'Pork',g:'pork',hint:'pork, bacon, ham, most sausages, gelatine'},
+  {n:'Red meat (alpha-gal)',g:'redmeat',hint:'beef, pork, lamb, venison, gelatine'},
+  {n:'Legumes',g:'legumes',hint:'chickpeas, lentils, peas, beans'},
+  {n:'Seeds',g:'seeds',hint:'sunflower, pumpkin, poppy, chia, flax, hemp'},
+  {n:'Banana',g:'banana'},
+  {n:'Avocado',g:'avocado'},
+  {n:'Citrus fruit',g:'citrus',hint:'lemon, lime, orange, grapefruit'},
+  {n:'Stone fruit',g:'stonefruit',hint:'peach, plum, cherry, apricot, nectarine'},
+  {n:'Apple',g:'apple'},
+  {n:'Mushrooms and Quorn',g:'mushrooms'},
+  {n:'Yeast',g:'yeast',hint:'most bread, Marmite'},
+  {n:'Caffeine',g:'caffeine',hint:'coffee, tea, cola, energy drinks'},
+  {n:'Chilli',g:'chilli',hint:'chilli, cayenne, hot sauces'},
+  {n:'Sweeteners',g:'sweeteners',hint:'sucralose, aspartame, stevia - most protein powders have them'}];
+// The label mark a group is printed as on products (brand list, supplement labels): peanuts and tree nuts
+// are both "nuts" there, crustaceans and molluscs both "shellfish"
+const LABEL_MARK={peanuts:'nuts',treenuts:'nuts',crustaceans:'shellfish',molluscs:'shellfish'};
+function labelMarks(keys){return[...new Set((keys||[]).map(k=>LABEL_MARK[k]||k))];}
+// Halal and kosher-style (Group 3, 26 Oct 2026, D2): pork and alcohol / pork and shellfish are word-checked;
+// kosher-style's "never meat and dairy in one recipe" is the meatdairy pair (wordFlagRecipe's combo check).
+// Flexitarian bans nothing (dietRuleText leans it plant-based). "Other: ..." is the person's own words - no
+// word check, the AI food check and every food instruction carry it.
+const DIET_BANS={vegan:['meat','fish','dairy','eggs','honey'],vegetarian:['meat','fish'],pescatarian:['meat'],'meat-eater':[],flexitarian:[],halal:['pork','alcohol'],'kosher-style':['pork','shellfish','meatdairy']};
+// The diet's own rule in words, for every food instruction ('' when the diet needs none)
+function dietRuleText(rules){
+  const d=String(rules?.dietary_type||'').trim(),k=d.toLowerCase();
+  if(k==='flexitarian')return'FLEXITARIAN: mostly plant-based - about two thirds of the meals vegetarian, the rest with lean meat or fish.';
+  if(k==='halal')return'HALAL: no pork or pork products (bacon, ham, lard, pork gelatine), no alcohol in the cooking (wine, beer, mirin); write the meat and poultry as halal (e.g. "halal chicken breast").';
+  if(k==='kosher-style')return'KOSHER-STYLE: no pork and no shellfish; never meat (including poultry) and dairy in the same recipe - fish with dairy is fine; write the meat as kosher (e.g. "kosher chicken breast").';
+  if(/^other:/i.test(d)&&d.slice(6).trim())return'THIS PERSON\'S OWN DIET - follow it exactly in every recipe: '+d.slice(6).trim();
+  return'';
+}
+// The diet as the form holds it: 'Other: their words' when Other is chosen
+function dietFromForm(prefix){
+  const v=document.getElementById(prefix+'-dietary')?.value||'';
+  if(v!=='other')return v;
+  const t=String(document.getElementById(prefix+'-dietary-other')?.value||'').replace(/,/g,';').trim();
+  return t?'Other: '+t:'';
+}
+function dietOtherSync(prefix){
+  const box=document.getElementById(prefix+'-dietary-other');
+  if(box)box.style.display=document.getElementById(prefix+'-dietary')?.value==='other'?'':'none';
+  if(typeof syncHardCheese==='function')syncHardCheese(prefix);
+}
 // Aged hard cheeses with almost no lactose. Someone lactose intolerant ticks the ones that agree with them
 // (user decision 24 Oct 2026: "let them say which ones are ok for them"); stored in profiles.hard_cheeses (036).
 const HARD_CHEESES=[
@@ -4175,7 +4316,7 @@ function lactoseOnlyOf(rules){
 function hardCheeseFormRules(prefix){
   const allergies=[...document.querySelectorAll('#'+prefix+'-allergies .pill.on')].map(p=>p.textContent.trim())
     .concat((document.getElementById(prefix+'-allergies-other')?.value||'').split(',')).map(x=>x.trim()).filter(Boolean);
-  return{dietary_type:document.getElementById(prefix+'-dietary')?.value||'',allergies};
+  return{dietary_type:dietFromForm(prefix),allergies};
 }
 function syncHardCheese(prefix){
   const wrap=document.getElementById(prefix+'-hardcheese-wrap');if(!wrap)return false;
@@ -4200,11 +4341,12 @@ function lactoseRuleText(rules){
 // bannedGroups, so the AI and the checker can never disagree.
 function foodRuleWordsText(rules){
   const groups=Object.values(bannedGroups(rules||{}));
-  if(!groups.length)return'';
+  const diet=dietRuleText(rules);
+  if(!groups.length)return diet?'\n'+diet:'';
   return'\nFOOD RULE WORDS - required: every recipe is checked word by word against this person\'s rules. Never use these, not even in a note such as "no cheese" or "instead of butter" - leave them out entirely:\n'
-    +groups.map(g=>'- '+g.label+': '+g.words.join(', ')).join('\n')
+    +groups.map(g=>g.combo?'- '+g.label+': '+g.note:'- '+g.label+': '+g.words.join(', ')+(g.note?' ('+g.note+')':'')).join('\n')
     +'\nA swap only passes when its name says so every time it appears - e.g. "dairy-free yoghurt", "lactose-free milk", "sesame-free bread", "gluten-free pasta", "egg-free mayonnaise", "nut-free pesto", "soya mince".'
-    +(lactoseRuleText(rules)?'\n'+lactoseRuleText(rules):'');
+    +(lactoseRuleText(rules)?'\n'+lactoseRuleText(rules):'')+(diet?'\n'+diet:'');
 }
 // The food groups named in one allergy as typed (24 Oct 2026 audit S1): "milk allergy", "cow's milk",
 // "lactose intolerant", "peanut allergy", "coeliac". lactose:true when it is lactose intolerance only.
@@ -4215,16 +4357,36 @@ function allergyGroupsOf(raw){
   const g=[];
   const milk=/\b(milk|dairy|whey|casein)\b/.test(a),lact=/\blactose\b/.test(a);
   if(milk||lact)g.push('dairy');
-  if(/\b(nuts?|peanuts?|tree ?nuts?|almonds?|cashews?|walnuts?|hazelnuts?|pecans?|pistachios?|macadamias?|brazil nuts?)\b/.test(a))g.push('nuts');
+  // Peanuts and tree nuts are their own groups; a nut allergy in general ("nuts", "nut allergy") means both
+  const pea=/\b(peanuts?|groundnuts?|monkey ?nuts?)\b/.test(a),tree=/\b(tree ?nuts?|almonds?|cashews?|walnuts?|hazelnuts?|pecans?|pistachios?|macadamias?|brazil ?nuts?)\b/.test(a),pine=/\bpine ?nuts?\b/.test(a);
+  if(pea)g.push('peanuts');if(tree)g.push('treenuts');if(pine)g.push('pinenuts');
+  if(!pea&&!tree&&!pine&&/\bnuts?\b/.test(a))g.push('nuts');
   if(/\b(gluten|wheat|coeliac|celiac|barley|rye)\b/.test(a))g.push('gluten');
   if(/\beggs?\b/.test(a))g.push('eggs');
   if(/\bsoya?\b/.test(a))g.push('soy');
-  if(/\b(shellfish|crustaceans?|prawns?|shrimps?|crabs?|lobsters?|molluscs?|mussels?|oysters?|squid|scallops?)\b/.test(a))g.push('shellfish');
+  if(/\bshellfish\b/.test(a))g.push('shellfish');
+  if(/\b(crustaceans?|prawns?|shrimps?|crabs?|lobsters?|crayfish|langoustines?|scampi)\b/.test(a))g.push('crustaceans');
+  if(/\b(molluscs?|mollusks?|mussels?|oysters?|squid|calamari|scallops?|clams?|octopus|cockles?|whelks?|snails?)\b/.test(a))g.push('molluscs');
   if(/\b(fish|cod|salmon|tuna|haddock|mackerel)\b/.test(a))g.push('fish');
   if(/\b(sesame|tahini)\b/.test(a))g.push('sesame');
-  return{groups:g,lactose:lact&&!milk};
+  // The groups added on 26 Oct 2026 (Group 3), read from words typed in
+  for(const [k,re] of [['celery',/\b(celery|celeriac)\b/],['mustard',/\bmustard\b/],['lupin',/\blupin[ei]?\b/],
+    ['sulphites',/\b(sulph?ites?|sulfites?|sulph?ur dioxide|sulfur dioxide|metabisulph?ite)\b/],['coconut',/\bcoconuts?\b/],
+    ['corn',/\b(corn|maize|sweetcorn)\b/],['kiwi',/\bkiwis?\b/],['strawberries',/\bstrawberr(y|ies)\b/],['nightshades',/\bnightshades?\b/],
+    ['garlic',/\bgarlic\b/],['onion',/\b(onions?|leeks?|shallots?|alliums?)\b/],['pork',/\b(pork|pig|bacon)\b/],['alcohol',/\balcohol\b/],
+    ['legumes',/\b(legumes?|pulses?|chickpeas?|lentils?)\b/],['banana',/\bbananas?\b/],['avocado',/\bavocados?\b/],
+    ['citrus',/\b(citrus|lemons?|limes?|oranges?)\b/],['stonefruit',/\bstone ?fruits?\b/],['apple',/\bapples?\b/],
+    ['mushrooms',/\b(mushrooms?|fungi|fungus|quorn|mycoprotein)\b/],['redmeat',/\b(alpha[- ]?gal|red meat|mammalian meat)\b/],
+    ['yeast',/\byeast\b/],['caffeine',/\b(caffeine|coffee)\b/],['chilli',/\b(chill?ies|chill?i|chile|spicy food)\b/],
+    ['sweeteners',/\b(sweeteners?|aspartame|sucralose|stevia|xylitol|sorbitol|erythritol)\b/]])if(re.test(a))g.push(k);
+  // seeds, but a sesame seed allergy is sesame only
+  if(/\b(seeds?|sunflower|chia|flax|linseed)\b/.test(a.replace(/sesame seeds?/g,'')))g.push('seeds');
+  return{groups:[...new Set(g)],lactose:lact&&!milk};
 }
-const ALLERGY_GROUP={gluten:'gluten',wheat:'gluten',coeliac:'gluten',celiac:'gluten',dairy:'dairy',lactose:'dairy',milk:'dairy',nuts:'nuts',nut:'nuts','tree nuts':'nuts',peanuts:'nuts',peanut:'nuts',eggs:'eggs',egg:'eggs',soy:'soy',soya:'soy',fish:'fish',shellfish:'shellfish',sesame:'sesame'};
+// Exact answers, lower case: the older pill names and short words, then every name on ALLERGY_LIST (not lactose
+// intolerance - allergyGroupsOf reads that as the lactose rule)
+const ALLERGY_GROUP={gluten:'gluten',wheat:'gluten',coeliac:'gluten',celiac:'gluten',dairy:'dairy',lactose:'dairy',milk:'dairy',nuts:'nuts',nut:'nuts','tree nuts':'treenuts','tree nut':'treenuts',peanuts:'peanuts',peanut:'peanuts',eggs:'eggs',egg:'eggs',soy:'soy',soya:'soy',fish:'fish',shellfish:'shellfish',sesame:'sesame',
+  ...Object.fromEntries(ALLERGY_LIST.filter(x=>!x.lactose).map(x=>[x.n.toLowerCase(),x.g]))};
 // The food groups one set of rules rules out, as {key:{label,words,safe}}
 function bannedGroups(rules){
   const out={};
@@ -4256,9 +4418,12 @@ function wordFlagRecipe(recipe,groups){
   // Everything the person reads is checked: the list, the groups, the swaps and any make-your-own blend (26 Oct 2026)
   const more=[...(Array.isArray(recipe.ingredient_groups)?recipe.ingredient_groups.flatMap(g=>Array.isArray(g?.items)?g.items:[]):[]),
     ...(recipe.swaps&&typeof recipe.swaps==='object'?(Array.isArray(recipe.swaps)?recipe.swaps:Object.values(recipe.swaps)):[]),...(Array.isArray(recipe.make_your_own?.items)?recipe.make_your_own.items:[])];
-  const phrases=[String(recipe.ingredients_uk||''),...more.map(String)].join('\n').split(/[,;\n]/).map(p=>p.trim()).filter(Boolean);
+  // accents are dropped first, so "jalapeño" and "crème fraîche" are checked like the plain spellings
+  const phrases=[String(recipe.ingredients_uk||''),...more.map(String)].join('\n').normalize('NFD').replace(/[\u0300-\u036f]/g,'').split(/[,;\n]/).map(p=>p.trim()).filter(Boolean);
   const esc=w=>w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-  for(const g of Object.values(groups)){
+  const short=phrase=>phrase.replace(/\(.*?\)/g,'').replace(/\s+/g,' ').trim();
+  // The first phrase holding one of the group's words, or ''
+  const hit=g=>{
     for(const phrase of phrases){
       // A safe phrase ("dairy-free yoghurt") excuses the phrase - except the words that are always that food
       const excused=g.safe&&g.safe.test(phrase);
@@ -4269,10 +4434,21 @@ function wordFlagRecipe(recipe,groups){
           // named as a safe version ("200g soya mince") - not a new ingredient (23 Oct 2026)
           const pointsBack=new RegExp('\\b(for|to|into|onto|over|with|on|around)\\s+(the\\s+)?'+esc(w)+'(?:e?s)?\\b','i').test(phrase);
           if(pointsBack&&g.safe&&phrases.some(p=>p!==phrase&&g.safe.test(p)&&new RegExp('\\b'+esc(w)+'(?:e?s)?\\b','i').test(p)))continue;
-          return'Contains '+g.label+': '+phrase.replace(/\(.*?\)/g,'').replace(/\s+/g,' ').trim().slice(0,48);
+          return phrase;
         }
       }
     }
+    return'';
+  };
+  for(const g of Object.values(groups)){
+    // Two foods that may not meet in one recipe (kosher-style: meat with dairy)
+    if(g.combo){
+      const a=hit(FOOD_GROUPS[g.combo[0]]),b=a&&hit(FOOD_GROUPS[g.combo[1]]);
+      if(a&&b)return'Contains '+g.label+': '+(short(a).slice(0,22)+' + '+short(b).slice(0,22));
+      continue;
+    }
+    const p=hit(g);
+    if(p)return'Contains '+g.label+': '+short(p).slice(0,48);
   }
   return'';
 }
@@ -4301,7 +4477,7 @@ const FOOD_CHECK_SYS='You are a careful food safety checker for a meal planning 
 function foodCheckPrompt(rules,recipes){
   return`Check each recipe below against this person's food rules.
 RULES NOW - Diet: ${rules.dietary_type||'not set'}. Allergies and intolerances: ${normAllergies(rules.allergies)||'none'}.
-${lactoseRuleText(rules)?lactoseRuleText(rules)+'\n':''}Decide whether ANY ingredient breaks a rule. Include hidden sources: pesto contains nuts and cheese, soy sauce contains gluten and soy, Worcestershire sauce contains fish, mayonnaise contains egg, stock and gravy often contain gluten, many protein powders contain milk. Be strict - if an ingredient commonly contains a ruled-out food and the recipe does not say a free-from version, flag it. Do not flag an ingredient that is clearly a free-from or plant-based version.
+${lactoseRuleText(rules)?lactoseRuleText(rules)+'\n':''}${dietRuleText(rules)?dietRuleText(rules)+'\n':''}Decide whether ANY ingredient breaks a rule. Include hidden sources: pesto contains nuts and cheese, soy sauce contains gluten and soy, Worcestershire sauce contains fish, mayonnaise contains egg, stock and gravy often contain gluten, many protein powders contain milk. Be strict - if an ingredient commonly contains a ruled-out food and the recipe does not say a free-from version, flag it. Do not flag an ingredient that is clearly a free-from or plant-based version.
 RECIPES:
 ${recipes.map(({meal},i)=>`${i+1}. ${meal.name} :: ${String(meal.ingredients_uk||'').replace(/\s+/g,' ').slice(0,900)}`).join('\n')}
 Return ONLY this JSON, with one entry per recipe that breaks a rule and an empty list if none do:
@@ -4910,7 +5086,7 @@ function favouritesRule(u){
 function buildMealNamesPrompt(changeLevel='fresh', monthNumber=1, progressionContext='', rapportContext=''){
   const u=CU;
   const mt=getMealTargets();
-  const batchPref=u.batch_cooking||'mix';
+  const batchPref=mealPrepText(u);
   const snackStyle=u.snack_style||'both';
   const monthNote=monthNumber>1?`This is ${monthLabel(monthNumber)} of the programme. The user has real logged data now. Adjust meal variety and calorie targets based on the changeLevel parameter.`:`${monthLabel(1)} - building from profile data.`;
   // Build prior meal names list so AI knows what to avoid repeating if user wants variety
@@ -4929,13 +5105,13 @@ ${monthNote}
 ${progressionContext?'\n'+progressionContext:''}${rapportContext}
 Dietary:${u.dietary_type}, Allergies:${u.allergies?.join(',')||'none'}
 Cuisines:${u.flavour_prefs?.join(',')||'varied'}, Spice level:${u.spice_level||'Medium'}
-Snack style:${snackStyle}, Meals/day:${mt.mpd} (${mt.snackCount} snack slot${mt.snackCount!==1?'s':''}), Batch pref:${batchPref}
+Snack style:${snackStyle}, Meals/day:${mt.mpd} (${mt.snackCount} snack slot${mt.snackCount!==1?'s':''}), Meal prep:${batchPref}
 INGREDIENT DISLIKES - NEVER use these: ${u.ingredient_dislikes||'none'}
 FOOD LOVES - incorporate these where possible: ${u.food_loves||'varied'}${getHealthDietLine()}${foodRuleWordsText(currentFoodRules())}${favouritesRule(u)}
 ${MEAL_NAME_RULE}
 COOKING TIME PER SLOT - strictly enforce these limits in every recipe:
 ${u.cook_time||'Breakfast:Under 5 mins, Lunch:5 to 15 mins, Dinner:15 to 30 mins, Snacks:Grab and go - no prep'}
-Breakfast and snack times are hard limits. If a slot says 'Batch cook it' generate recipes designed to be made in bulk and portioned.
+Breakfast and snack times are hard limits. A batch-cooked meal ("Batch cook it") gets recipes designed to be made in bulk and portioned; a meal made ahead (Meal prep above) gets single servings that keep 1-2 days in the fridge - e.g. overnight oats, a salad or wrap made the night before.
 LUNCH SITUATION: ${u.lunch_situation||'fridge and microwave at work'}. Lunches must work for this. If no fridge, all lunches must be safe unrefrigerated for 4+ hours.
 BUDGET: ${u.weekly_budget||'Mid-range'}. Budget means cheap staples (rice, oats, eggs, tinned fish, frozen veg). No limit means premium ingredients fine.
 Daily totals: ${mt.daily.calories}kcal P:${mt.daily.protein}g C:${mt.daily.carbs}g F:${mt.daily.fats}g
@@ -5014,10 +5190,10 @@ function buildChosenRecipesPrompt(chosenMeals, batch){
   const u=CU;
   const mt=getMealTargets();
   const hasAirFryer=(u.kitchen||'').includes('Air Fryer');
-  const batchPref=u.batch_cooking||'mix';
+  const batchPref=mealPrepText(u);
   // Batch or single serving for every meal (rehearsal item 18): from the one rule, never left to the AI
   const bp=batchPlan(u);
-  const roleNames={batch:[],single:[]};
+  const roleNames={batch:[],ahead:[],single:[]};
   for(const [cat,list] of Object.entries(chosenMeals||{}))for(const m of list||[]){if(!m?.name)continue;const r=mealBatchRole(cat,m,bp);if(roleNames[r])roleNames[r].push(m.name);}
   const cats={breakfasts:[],snacks:[],lunches:[],dinners:[],evening_snacks:[],protein_desserts:[],low_calorie_meals:[],bulking_meals:[]};
   for(const [cat,meals] of Object.entries(chosenMeals)){if(cats[cat]!==undefined)cats[cat]=meals.map(m=>m.name).filter(Boolean);}
@@ -5043,7 +5219,7 @@ DAILY TOTAL: ${mt.breakfast.calories} + (${mt.midSnacks}x${mt.snack.calories}) +
 ${allMeals}
 ${built?`BUILT AROUND - each meal's main ingredients, already checked against this person's food rules (keep to them, add nothing that breaks a rule):\n${built}\n`:''}
 USER: ${u.username}, dietary:${u.dietary_type}, allergies:${u.allergies?.join(',')||'none'}${regionPromptLine()}
-Kitchen:${u.kitchen||'standard'}, Air fryer:${hasAirFryer}, Batch pref:${batchPref}
+Kitchen:${u.kitchen||'standard'}, Air fryer:${hasAirFryer}, Meal prep:${batchPref}
 Spice level: ${u.spice_level||'Medium'} - calibrate all heat/spice to this level
 INGREDIENT DISLIKES - NEVER use these ingredients: ${u.ingredient_dislikes||'none'}
 FOOD LOVES - include these where it makes sense: ${u.food_loves||''}${getHealthDietLine()}${foodRuleWordsText(currentFoodRules())}
@@ -5065,7 +5241,7 @@ INGREDIENT QUANTITY RULE - required, not optional: every single ingredient, incl
 INGREDIENT STATE RULE - required: list every ingredient in its raw, as-purchased state (e.g. "raw chicken breast, diced" not "cooked chicken breast"), unless it is genuinely used without further cooking. The method must then actually cook or prepare every one of those ingredients - if rice or any other component appears in the ingredients list, the method must include the step that cooks it, not just "serve with rice" as an afterthought with no cooking step of its own.
 DISH NAME CONSISTENCY - required: if the dish name specifies a particular type or style of an ingredient (e.g. a dish called "... with Sticky Rice" or "... with Basmati"), the ingredients list must use that exact type, not a different or more generic one. Never name a dish after one specific ingredient and then list something else in the ingredients. When any ingredient genuinely has meaningfully different common varieties (rice, pasta, onion, chilli, etc.), name the specific variety being used rather than defaulting to the generic term.
 SERVINGS CONSISTENCY - required: the "servings" field and the ingredient quantities given must match each other exactly. If this is a batch-cook recipe, "servings" must equal "batch_portions", and every ingredient quantity must be the amount for the FULL BATCH - never write batch-sized quantities under a "servings":1 label.
-BATCH OR SINGLE SERVING - required for every meal below, exactly as listed (this user batch cooks on: ${BATCH_DAY_LABELS[bp.daysKey]}):${roleNames.batch.length?`\n- Batch cook - bulk_cook true, batch_portions ${bp.portions}, servings ${bp.portions}, every quantity for the full batch of ${bp.portions} portions: ${roleNames.batch.join(', ')}`:''}${roleNames.single.length?`\n- Single serving - bulk_cook false, batch_portions 1, servings 1: ${roleNames.single.join(', ')}`:''}\n- Any other meal: a single serving unless it is naturally a tray bake or batch (then servings = the number of portions it makes).
+BATCH OR SINGLE SERVING - required for every meal below, exactly as listed (this user batch cooks on: ${BATCH_DAY_LABELS[bp.daysKey]}):${roleNames.batch.length?`\n- Batch cook - bulk_cook true, batch_portions ${bp.portions}, servings ${bp.portions}, every quantity for the full batch of ${bp.portions} portions: ${roleNames.batch.join(', ')}`:''}${roleNames.ahead.length?`\n- Made ahead, single serving - bulk_cook false, batch_portions 1, servings 1. ${AHEAD_RULE}: ${roleNames.ahead.join(', ')}`:''}${roleNames.single.length?`\n- Single serving - bulk_cook false, batch_portions 1, servings 1: ${roleNames.single.join(', ')}`:''}\n- Any other meal: a single serving unless it is naturally a tray bake or batch (then servings = the number of portions it makes).
 METHOD SPECIFICITY - required, not optional: every cooking step involving heat must state an actual temperature and time (e.g. "200°C for 20 minutes", "medium heat for 6-8 minutes"), never vague terms like "cook until done" or "bake until golden" on their own - pair any visual/textural cue with a concrete time or temperature.
 ${recipeQualityRules()}
 
@@ -5809,7 +5985,7 @@ const BRAND_LIST=[
 // told apart from a dairy allergy, and a "no added sugar" health note
 function brandContext(rules,health,region){
   const allergies=(rules?.allergies||[]).map(a=>String(a).toLowerCase());
-  const banned=Object.keys(bannedGroups(rules||{}));
+  const banned=labelMarks(Object.keys(bannedGroups(rules||{})));
   const lactose=allergies.some(a=>a.includes('lactose'));
   const otherDairy=String(rules?.dietary_type||'').toLowerCase()==='vegan'||allergies.some(a=>/\b(dairy|milk)\b/.test(a));
   return{banned,lactoseOnly:lactose&&!otherDairy,noSugar:/no added sugar|sugar[- ]free|low sugar|diabet/i.test(String(health||'')),uk:region!=='us'};
@@ -8116,7 +8292,7 @@ function suppCandidates(card,u){
     const r=allergyGroupsOf(raw);
     if(!r.groups.length){typed.push(raw);continue;}
     if(r.groups.includes('dairy')&&!r.lactose)milkAllergy=true;
-    for(const g of r.groups)if(!groups.includes(g))groups.push(g);
+    for(const g of labelMarks(r.groups))if(!groups.includes(g))groups.push(g);
   }
   // Lactose intolerance on its own: only a product that contains milk is out
   const lactoseOnly=groups.includes('dairy')&&!milkAllergy;
@@ -8134,6 +8310,8 @@ function suppCandidates(card,u){
     let hide=false;const check=[...typed];
     for(const g of groups){
       if(g==='dairy'&&lactoseOnly&&card.name==='Whey Protein Isolate')continue;
+      // a group the product labels here never list (mustard, celery, garlic...): check the label
+      if(!SUPP_ALLERGY_WORD[g]){check.push(FOOD_GROUPS[g]?.label||g);continue;}
       if(p.c.includes(g)){hide=true;break;}
       if(g==='dairy'&&lactoseOnly)continue;
       if(p.may&&p.may.includes(g)){hide=true;break;}
@@ -8481,45 +8659,8 @@ ${renderFoodSetupCard()}
         <textarea class="ftarea" id="prof-food-loves" style="min-height:60px">${CU.food_loves||''}</textarea>
       </div>
       <div class="frow">
-        <label class="flbl">Cooking Time Per Meal Slot</label>
-        <div style="display:grid;gap:8px;margin-top:4px">
-          <div>
-            <div style="font-size:11px;color:var(--tx2);margin-bottom:4px">🌅 Breakfast</div>
-            <div class="pills" id="prof-cook-time-breakfast">
-              ${['Under 5 mins','5 to 15 mins','15 to 30 mins','Batch cook it'].map(s=>{
-                const cur=(CU.cook_time||'').match(/Breakfast:([^,]+)/)?.[1]?.trim()||'Under 5 mins';
-                return `<div class="pill ${cur===s?'on':''}" style="font-size:11px" onclick="selSingle(this,'prof-cook-time-breakfast')">${s}</div>`;
-              }).join('')}
-            </div>
-          </div>
-          <div>
-            <div style="font-size:11px;color:var(--tx2);margin-bottom:4px">🥗 Lunch</div>
-            <div class="pills" id="prof-cook-time-lunch">
-              ${['Under 5 mins','5 to 15 mins','15 to 30 mins','Batch cook it'].map(s=>{
-                const cur=(CU.cook_time||'').match(/Lunch:([^,]+)/)?.[1]?.trim()||'5 to 15 mins';
-                return `<div class="pill ${cur===s?'on':''}" style="font-size:11px" onclick="selSingle(this,'prof-cook-time-lunch')">${s}</div>`;
-              }).join('')}
-            </div>
-          </div>
-          <div>
-            <div style="font-size:11px;color:var(--tx2);margin-bottom:4px">🍽️ Dinner</div>
-            <div class="pills" id="prof-cook-time-dinner">
-              ${['Under 15 mins','15 to 30 mins','30 to 60 mins','60+ mins - love cooking','Batch cook it'].map(s=>{
-                const cur=(CU.cook_time||'').match(/Dinner:([^,]+)/)?.[1]?.trim()||'15 to 30 mins';
-                return `<div class="pill ${cur===s?'on':''}" style="font-size:11px" onclick="selSingle(this,'prof-cook-time-dinner')">${s}</div>`;
-              }).join('')}
-            </div>
-          </div>
-          <div>
-            <div style="font-size:11px;color:var(--tx2);margin-bottom:4px">🍎 Snacks</div>
-            <div class="pills" id="prof-cook-time-snacks">
-              ${['Grab and go - no prep','Up to 10 mins','Batch prep snacks'].map(s=>{
-                const cur=(CU.cook_time||'').match(/Snacks:([^,]+)/)?.[1]?.trim()||'Grab and go - no prep';
-                return `<div class="pill ${cur===s?'on':''}" style="font-size:11px" onclick="selSingle(this,'prof-cook-time-snacks')">${s}</div>`;
-              }).join('')}
-            </div>
-          </div>
-        </div>
+        <label class="flbl">How Do You Make Each Meal?</label>
+        ${mealPrepGridHtml('prof',CU)}
       </div>
       <div class="frow">
         <label class="flbl">Lunch Situation</label>
@@ -8545,24 +8686,6 @@ ${renderFoodSetupCard()}
         </select>
       </div>
       <button class="btn btn-ghost btn-sm" onclick="saveWeighInDay()">Save Day</button>
-    </div>
-
-    <div class="card">
-      <div class="card-lbl">Meal Prep Style</div>
-      <div class="pills" id="prof-batch">
-        ${['Batch cook everything possible','Fresh meals every day','Mix - I decide per meal'].map(s=>`<div class="pill ${((CU.batch_cooking||'Mix - I decide per meal').split(' (')[0])===s?'on':''}" onclick="updateBatchCooking(this,'${s}')">${s}</div>`).join('')}
-      </div>
-      <div id="prof-batch-days-row" style="margin-top:12px;${(CU.batch_cooking||'')===('Fresh meals every day')?'display:none':''}">
-        <label class="flbl" style="margin-bottom:6px;display:block">What do you batch cook?</label>
-        <div class="pills" id="prof-batch-detail" style="margin-bottom:10px">
-          ${['Batch breakfast','Batch lunches','Batch dinners','Batch snacks'].map(s=>`<div class="pill ${(CU.batch_cooking||'').includes(s)?'on':''}" onclick="updateBatchDetail(this)">${s}</div>`).join('')}
-        </div>
-        <label class="flbl" style="margin-bottom:6px;display:block">Which days?</label>
-        <div class="pills" id="prof-batch-days">
-          ${Object.entries(BATCH_DAY_LABELS).map(([k,s])=>`<div class="pill ${batchDaysKey(CU.batch_days)===k?'on':''}" onclick="updateBatchDays(this,'${s}')">${s}</div>`).join('')}
-        </div>
-      </div>
-      <div style="font-size:11px;color:var(--tx3);margin-top:8px">Changes apply on your next plan generation.</div>
     </div>
 
     <div class="card">
@@ -8604,21 +8727,20 @@ async function updateSpiceLevel(el,style){
 async function saveFoodPrefs(){
   const dislikes=document.getElementById('prof-dislikes')?.value.trim()||'';
   const loves=document.getElementById('prof-food-loves')?.value.trim()||'';
-  // Per-slot cook times
-  const ctB=Array.from(document.querySelectorAll('#prof-cook-time-breakfast .pill.on')).map(p=>p.textContent.trim())[0]||(CU.cook_time||'').match(/Breakfast:([^,]+)/)?.[1]?.trim()||'Under 5 mins';
-  const ctL=Array.from(document.querySelectorAll('#prof-cook-time-lunch .pill.on')).map(p=>p.textContent.trim())[0]||(CU.cook_time||'').match(/Lunch:([^,]+)/)?.[1]?.trim()||'5 to 15 mins';
-  const ctD=Array.from(document.querySelectorAll('#prof-cook-time-dinner .pill.on')).map(p=>p.textContent.trim())[0]||(CU.cook_time||'').match(/Dinner:([^,]+)/)?.[1]?.trim()||'15 to 30 mins';
-  const ctS=Array.from(document.querySelectorAll('#prof-cook-time-snacks .pill.on')).map(p=>p.textContent.trim())[0]||(CU.cook_time||'').match(/Snacks:([^,]+)/)?.[1]?.trim()||'Grab and go - no prep';
-  const cookTime=`Breakfast:${ctB}, Lunch:${ctL}, Dinner:${ctD}, Snacks:${ctS}`;
+  // The meal prep grid: how each meal is made, its time, the batch days
+  const prepForm=mealPrepFromForm('prof');
+  const cookTime=prepForm.cookTime;
   const lunchSit=Array.from(document.querySelectorAll('#prof-lunch-situation .pill.on')).map(p=>p.textContent.trim())[0]||CU.lunch_situation||'I have a fridge and microwave at work';
   const budget=Array.from(document.querySelectorAll('#prof-budget .pill.on')).map(p=>p.textContent.trim())[0]||CU.weekly_budget||'Mid-range - good ingredients, sensible spend';
   showLoad('Saving','Updating food preferences...');
   try{
-    await patchUserRow(CU.user_id,{35:dislikes,36:loves,39:cookTime,40:lunchSit,41:budget},CU);
+    await patchUserRow(CU.user_id,{34:prepForm.batchCooking,35:dislikes,36:loves,38:prepForm.batchDays,39:cookTime,40:lunchSit,41:budget},CU);
   }catch(e){hideLoad();alert('Error saving food preferences: '+e.message);return;}
   CU.ingredient_dislikes=dislikes;
   CU.food_loves=loves;
   CU.cook_time=cookTime;
+  CU.batch_cooking=prepForm.batchCooking;
+  CU.batch_days=prepForm.batchDays;
   CU.lunch_situation=lunchSit;
   CU.weekly_budget=budget;
   hideLoad();
@@ -8633,47 +8755,10 @@ async function saveWeighInDay(){
   celebrateMsg('weighInDayUpdated','📅','Weigh-In Day Updated!',{day});
 }
 
-// The profile's meal prep style is stored as "Style (Batch lunches,Batch dinners)",
-// the same shape onboarding writes. Built from the pills currently switched on.
-function profBatchValue(style){
-  if(style==='Fresh meals every day')return style;
-  const detail=getOnPills('prof-batch-detail');
-  return detail?`${style} (${detail})`:style;
-}
-
-async function updateBatchCooking(el,style){
-  const value=profBatchValue(style);
-  if(!await updateUserField(34,value))return;
-  document.querySelectorAll('#prof-batch .pill').forEach(p=>p.classList.remove('on'));
-  el.classList.add('on');
-  CU.batch_cooking=value;
-  // Show/hide batch days row based on selection
-  const daysRow=document.getElementById('prof-batch-days-row');
-  if(daysRow)daysRow.style.display=style==='Fresh meals every day'?'none':'block';
-  celebrateMsg('batchStyleUpdated','🍳','Meal Prep Style Updated!');
-}
-
-// "What do you batch cook?" pills in Profile - saved as soon as one is tapped
-async function updateBatchDetail(el){
-  el.classList.toggle('on');
-  const style=(CU.batch_cooking||'Mix - I decide per meal').split(' (')[0];
-  const value=profBatchValue(style);
-  if(!await updateUserField(34,value)){el.classList.toggle('on');return;}
-  CU.batch_cooking=value;
-}
-
 function dismissPhotoPrompt(btn){
   try{localStorage.setItem('last_photo_prompt_'+CU.user_id,Date.now());}catch(e){}
   btn.closest('.alert')?.remove();
 }
-async function updateBatchDays(el,days){
-  if(!await updateUserField(38,days))return;
-  document.querySelectorAll('#prof-batch-days .pill').forEach(p=>p.classList.remove('on'));
-  el.classList.add('on');
-  CU.batch_days=days;
-  celebrateMsg('batchDaysUpdated','📅','Batch Days Updated!');
-}
-
 async function saveApiKey(){
   const key=document.getElementById('prof-apikey')?.value.trim();
   if(!key)return;
@@ -8744,6 +8829,50 @@ async function changePin(){
   }
 }
 
+// ---- Allergy picker (Group 3, 26 Oct 2026): search ALLERGY_LIST and pick; each pick is a chip (.pill.on, so
+// getOnPills reads it as before), "None" clears them, anything not on the list goes in the typed box (AI-checked).
+// Sign-up ('ob') has the same markup written into the page; Profile ('prof') is built by allergyPickerHtml. ----
+function allergyChipHtml(name,prefix){return`<div class="pill on allergy-chip" data-allergy="${escapeHtml(name)}" onclick="allergyRemove(this,'${prefix}')">${escapeHtml(name)}</div>`;}
+function allergyKnown(name){const a=String(name||'').trim().toLowerCase();return!!ALLERGY_GROUP[a]||ALLERGY_LIST.some(x=>x.n.toLowerCase()===a);}
+function allergyPickerHtml(prefix,current){
+  const cur=(Array.isArray(current)?current:String(current||'').split(',')).map(x=>String(x).trim()).filter(Boolean);
+  const none=cur.length>0&&cur.every(x=>x.toLowerCase()==='none');
+  const known=cur.filter(allergyKnown);
+  return{html:`<div class="allergy-picker"><div class="pills" id="${prefix}-allergies"><div class="pill allergy-none${none?' on':''}" onclick="allergyNone(this,'${prefix}')">None</div>${known.map(n=>allergyChipHtml(n,prefix)).join('')}</div><input class="finput" id="${prefix}-allergies-search" style="margin-top:8px" autocomplete="off" placeholder="Search, e.g. peanuts, mustard, shellfish" oninput="allergySearch('${prefix}')" onfocus="allergySearch('${prefix}')"><div class="allergy-drop" id="${prefix}-allergies-drop"></div></div>`,
+    other:cur.filter(x=>!allergyKnown(x)&&x.toLowerCase()!=='none').join(', ')};
+}
+function allergyPicked(prefix){return[...document.querySelectorAll('#'+prefix+'-allergies .allergy-chip')].map(c=>c.dataset.allergy);}
+function allergySearch(prefix){
+  const box=document.getElementById(prefix+'-allergies-drop');if(!box)return;
+  const q=String(document.getElementById(prefix+'-allergies-search')?.value||'').trim().toLowerCase();
+  const picked=allergyPicked(prefix).map(x=>x.toLowerCase());
+  const list=ALLERGY_LIST.filter(x=>!picked.includes(x.n.toLowerCase())&&(!q||x.n.toLowerCase().includes(q)||String(x.hint||'').toLowerCase().includes(q)));
+  const row=x=>`<div class="allergy-opt" data-allergy="${escapeHtml(x.n)}" onclick="allergyAdd(this.dataset.allergy,'${prefix}')"><b>${escapeHtml(x.n)}</b>${x.hint?` <span>${escapeHtml(x.hint)}</span>`:''}</div>`;
+  const sec=(t,l)=>l.length?`<div class="allergy-sec">${t}</div>`+l.map(row).join(''):'';
+  // A search lists names that start with it first, then names that contain it, then matches in the examples
+  const rank=x=>{const n=x.n.toLowerCase();return n.startsWith(q)?0:new RegExp('\\b'+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).test(n)?1:n.includes(q)?2:3;};
+  box.innerHTML=q&&list.length?list.map((x,i)=>[rank(x),i,x]).sort((a,b)=>a[0]-b[0]||a[1]-b[1]).map(([,,x])=>row(x)).join('')
+    :list.length?sec('On food labels (the UK 14)',list.filter(x=>x.uk14))+sec('Intolerances and other foods',list.filter(x=>!x.uk14))
+    :'<div class="allergy-sec">Not on the list - type it in the box below and we check it with AI</div>';
+  box.style.display='block';
+}
+function allergyClose(prefix){const b=document.getElementById(prefix+'-allergies-drop');if(b)b.style.display='none';}
+function allergyAdd(name,prefix){
+  const wrap=document.getElementById(prefix+'-allergies');if(!wrap||allergyPicked(prefix).includes(name))return;
+  wrap.querySelectorAll('.allergy-none').forEach(p=>p.classList.remove('on'));
+  wrap.insertAdjacentHTML('beforeend',allergyChipHtml(name,prefix));
+  const s=document.getElementById(prefix+'-allergies-search');if(s)s.value='';
+  allergyClose(prefix);syncHardCheese(prefix);
+}
+function allergyRemove(el,prefix){el.remove();syncHardCheese(prefix);}
+function allergyNone(el,prefix){
+  el.classList.toggle('on');
+  if(el.classList.contains('on'))document.querySelectorAll('#'+prefix+'-allergies .allergy-chip').forEach(c=>c.remove());
+  allergyClose(prefix);syncHardCheese(prefix);
+}
+// A tap anywhere else closes the list
+document.addEventListener('click',e=>{if(!e.target.closest('.allergy-picker'))document.querySelectorAll('.allergy-drop').forEach(b=>b.style.display='none');});
+
 // ---- PROFILE: FOOD AND KIT ----
 // The choices come from the sign-up form itself, so the two can never drift apart.
 function obPillTexts(obId){
@@ -8761,7 +8890,7 @@ function profPillSet(id,obId,current){
   };
 }
 function renderFoodSetupCard(){
-  const al=profPillSet('prof-allergies','ob-allergies',CU.allergies);
+  const al=allergyPickerHtml('prof',CU.allergies);
   const fl=profPillSet('prof-flavours','ob-flavours',CU.flavour_prefs);
   const sn=profPillSet('prof-snack','ob-snack-style',CU.snack_style);
   const eq=profPillSet('prof-equip','ob-equip',CU.equipment);
@@ -8771,8 +8900,8 @@ function renderFoodSetupCard(){
   return`
     <div class="card">
       <div class="card-lbl">Food and Kit</div>
-      <div class="frow"><label class="flbl">Dietary Type</label><select class="fsel" id="prof-dietary">${obOptionsHtml('ob-dietary',CU.dietary_type)}</select></div>
-      <div class="frow"><label class="flbl">Allergies / Intolerances</label>${al.html}${other('prof-allergies-other',al.other,'Anything else? e.g. shellfish, sesame')}</div>
+      <div class="frow"><label class="flbl">Dietary Type</label><select class="fsel" id="prof-dietary" onchange="dietOtherSync('prof')">${obOptionsHtml('ob-dietary',/^other:/i.test(CU.dietary_type||'')?'other':CU.dietary_type)}</select><input class="finput" id="prof-dietary-other" value="${escapeHtml(/^other:/i.test(CU.dietary_type||'')?String(CU.dietary_type).slice(6).trim():'')}" placeholder="Your diet in a few words, e.g. no beef, Jain, low FODMAP" style="margin-top:8px;${/^other:/i.test(CU.dietary_type||'')?'':'display:none'}"></div>
+      <div class="frow"><label class="flbl">Allergies / Intolerances</label>${al.html}${other('prof-allergies-other',al.other,'Not on the list? Type it here - we check it with AI')}</div>
       <div class="alert alert-warn" style="font-size:12px">Keep these up to date. Every recipe we write follows them, so if an allergy is missing here we cannot leave that food out. A change does not rewrite the plan you already have - generate a new plan after changing your diet or allergies.</div>
       <div class="frow"><label class="flbl">Cuisine Preferences</label>${fl.html}</div>
       <div class="frow"><label class="flbl">Snack Style</label>${sn.html}</div>
@@ -8790,7 +8919,8 @@ function renderFoodSetupCard(){
 }
 async function saveFoodSetup(){
   const list=(pillsId,otherId)=>[...getOnPills(pillsId).split(','),...(otherId?(document.getElementById(otherId)?.value||''):'').split(',')].map(x=>x.trim()).filter(Boolean);
-  const diet=document.getElementById('prof-dietary')?.value||CU.dietary_type;
+  const diet=dietFromForm('prof');
+  if(!diet){alert('Please type your diet in a few words, or choose one from the list.');return;}
   let allergies=list('prof-allergies','prof-allergies-other');
   // "None" only means something on its own
   if(allergies.some(a=>a.toLowerCase()!=='none'))allergies=allergies.filter(a=>a.toLowerCase()!=='none');
@@ -9334,8 +9464,7 @@ function resumeOnboarding(){
     document.getElementById('ob-known-numbers').style.display=pillOn('ob-baseline-type','Know')?'block':'none';
     document.getElementById('ob-equip-other').style.display=pillOn('ob-equip','Other')?'block':'none';
     document.getElementById('ob-cardio-other').style.display=pillOn('ob-cardio','Other')?'block':'none';
-    const batchRow=document.getElementById('ob-batch-detail-row');
-    if(batchRow)batchRow.style.display=pillOn('ob-batch','Fresh meals every day')?'none':'block';
+    prepSyncAll('ob');
     updateObTrainDaysHint();
     updateObAbDaysHint();
     // The PIN and API key are never saved, and the PIN box is on step 1 - so
@@ -9425,7 +9554,8 @@ function obNext(n){
   }
   if(n===3){
     if(!getOnPills('ob-kitchen')){alert('Please select the kitchen appliances you have.');return;}
-    if(!getOnPills('ob-allergies')&&!(document.getElementById('ob-allergies-other')?.value||'').trim()){alert('Please select your allergies, type them in "Anything else?", or tap None.');return;}
+    if(!getOnPills('ob-allergies')&&!(document.getElementById('ob-allergies-other')?.value||'').trim()){alert('Please pick your allergies from the list, type them in the box below it, or tap None.');return;}
+    if(!dietFromForm('ob')){alert('Please type your diet in a few words, or choose one from the list.');return;}
   }
   if(n===4){
     if(!getOnPills('ob-snack-style')){alert('Please select your snack style.');return;}
@@ -9464,32 +9594,6 @@ function obBack(n){
 
 function selAv(el,av){document.querySelectorAll('#ob-avatars .pill').forEach(p=>p.classList.remove('on'));el.classList.add('on');obAvatar=av;}
 function tpill(el){el.classList.toggle('on');}
-function toggleBatchDays(el){obBatchChange(el);}
-function obBatchChange(el){
-  const val=el.textContent.trim();
-  const detailRow=document.getElementById('ob-batch-detail-row');
-  if(!detailRow)return;
-  detailRow.style.display=val.includes('Fresh meals every day')?'none':'block';
-  // If batch everything, tick all detail meal options automatically
-  if(val.includes('Batch cook everything possible')){
-    document.querySelectorAll('#ob-batch-detail .pill').forEach(p=>p.classList.add('on'));
-    // Also auto-select the batch option in cook time per meal slot, since
-    // choosing to batch everything implies batching every slot
-    const batchLabels={
-      'ob-cook-time-breakfast':'Batch cook it',
-      'ob-cook-time-lunch':'Batch cook it',
-      'ob-cook-time-dinner':'Batch cook it',
-      'ob-cook-time-snacks':'Batch prep snacks'
-    };
-    for(const cid in batchLabels){
-      const container=document.getElementById(cid);
-      if(!container)continue;
-      container.querySelectorAll('.pill').forEach(p=>{
-        p.classList.toggle('on',p.textContent.trim()===batchLabels[cid]);
-      });
-    }
-  }
-}
 function toggleOther(el,inputId){
   // Show/hide the free-text input when the Other pill is toggled
   const inp=document.getElementById(inputId);
@@ -9623,12 +9727,10 @@ async function createUser(){
   const kitchenOther=document.getElementById('ob-kitchen-other')?.value.trim()||'';
   const kitchen=[kitchenBase,kitchenOther].filter(Boolean).join(',');
   const weighInDay=document.getElementById('ob-weigh-in-day')?.value||'Sunday';
-  const batchCookingBase=getOnPills('ob-batch')||'Mix - I decide per meal';
-  const batchDetail=getOnPills('ob-batch-detail')||'';
-  // Combine cooking style and what slots are batched into one field
-  const batchCooking=batchDetail?`${batchCookingBase} (${batchDetail})`:batchCookingBase;
-  const batchDays=getOnPills('ob-batch-days')||BATCH_DAY_LABELS.all;
-  const dietary=document.getElementById('ob-dietary').value;
+  // How each meal is made, its time and the batch days (the meal prep grid)
+  const prepForm=mealPrepFromForm('ob');
+  const batchCooking=prepForm.batchCooking,batchDays=prepForm.batchDays;
+  const dietary=dietFromForm('ob');
   // The pills plus anything typed in "Anything else?" (F6); "None" only counts on its own
   let allergies=[...getOnPills('ob-allergies').split(','),...(document.getElementById('ob-allergies-other')?.value||'').split(',')].map(x=>x.trim()).filter(Boolean);
   if(allergies.some(a=>a.toLowerCase()!=='none'))allergies=allergies.filter(a=>a.toLowerCase()!=='none');
@@ -9641,12 +9743,7 @@ async function createUser(){
   const ingredientDislikes=[getOnPills('ob-dislikes'),document.getElementById('ob-dislike-other')?.value.trim()].filter(Boolean).join(',');
   const foodLoves=document.getElementById('ob-food-loves')?.value.trim()||'';
   const spiceLevel=getOnPills('ob-spice')||'Medium';
-  // Per-slot cook times
-  const cookTimeBreakfast=getOnPills('ob-cook-time-breakfast')||'Under 5 mins';
-  const cookTimeLunch=getOnPills('ob-cook-time-lunch')||'5 to 15 mins';
-  const cookTimeDinner=getOnPills('ob-cook-time-dinner')||'15 to 30 mins';
-  const cookTimeSnacks=getOnPills('ob-cook-time-snacks')||'Grab and go - no prep';
-  const cookTime=`Breakfast:${cookTimeBreakfast}, Lunch:${cookTimeLunch}, Dinner:${cookTimeDinner}, Snacks:${cookTimeSnacks}`;
+  const cookTime=prepForm.cookTime;
   const lunchSituation=getOnPills('ob-lunch-situation')||'I have a fridge and microwave at work';
   const weeklyBudget=getOnPills('ob-budget')||'Mid-range - good ingredients, sensible spend';
   const occupation=getOnPills('ob-occupation')||'Light activity - some walking';
