@@ -9615,7 +9615,8 @@ function cheatDayHtml(){
   if(!goalsOn()||!CU?.cheat_day_opt||!userMealPlan)return'';
   const s=cheatDayState(cheatDayContext());
   const prog=`meals logged ${s.mealHit} of ${s.mealDays} days, sessions ${s.sessDone} of ${s.sessPlanned}`;
-  if(s.state==='tracking')return`<div class="alert alert-info">🍕 Cheat day at the end of this plan month: ${prog} - ${s.onTrack?'on track ✓':'you need 95% of both to earn it'}.</div>`;
+  const when=s.days?.length?' (the weekend of '+s.days.map(d=>dayFromKey(d).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})).join(' / ')+')':'';
+  if(s.state==='tracking')return`<div class="alert alert-info">🍕 Cheat day at the end of this plan month${when}: ${s.mealDays?`${prog} - ${s.onTrack?'on track ✓':'you need 95% of both to earn it'}`:'follow the plan - 95% of your sessions and meals logged on 95% of days - to earn it'}.</div>`;
   if(s.state==='event')return`<div class="alert alert-info">🍕 No cheat day this month - you have a social event that week, which already gives you room.</div>`;
   if(s.state==='earned')return`<div class="alert alert-ok">🍕 You've earned your cheat day! Pick your day:
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${s.days.map(d=>`<button class="btn btn-sm" data-day="${d}" onclick="saveCheatDay(this.dataset.day)">${cheatDayLabel(d)}</button>`).join('')}<button class="btn btn-ghost btn-sm" onclick="saveCheatDay('')">Not this month</button></div>
