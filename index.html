@@ -3511,13 +3511,7 @@ function pickMeals(optionsByCat,tickedByCat){
     const ticked=tickedByCat?.[cat]||[];
     picked[cat]=options.length?topUpWithVariety(options,ticked,targets[cat]):[];
   }
-  // A batched slot that is not batched every day: its last 2 picks are cooked fresh on the other days (D1)
-  const bp=batchPlan(CU);
-  if(bp.freshDays.length)for(const [slot,cat] of Object.entries(BATCH_SLOT_CATS)){
-    const list=picked[cat]||[];
-    if(bp.slots[slot]&&list.length>2)picked[cat]=list.map((m,i)=>i>=list.length-2?{...m,fresh:true}:m);
-  }
-  return picked;
+  return markFreshPicks(picked,CU);
 }
 function confirmMealPicks(chooseForMe=false){
   const ticked={};
@@ -3590,6 +3584,16 @@ function batchPlan(u){
   const slots={breakfast:on('batch breakfast','Breakfast',true),lunch:on('batch lunch','Lunch',true),dinner:on('batch dinner','Dinner',true),snack:on('batch snack','Snacks',false)};
   const daysKey=batchDaysKey(u?.batch_days),days=BATCH_DAY_SETS[daysKey];
   return{slots,daysKey,days,portions:days.length,freshDays:ROT_DAYS.filter(d=>!days.includes(d)),any:Object.values(slots).some(Boolean)};
+}
+// A batched slot that is not batched every day: its last 2 picks are cooked fresh on the other days (D1). Used by the
+// picker and by the server, which rebuilds the picks from the names it offered (so it never trusts the phone's marks)
+function markFreshPicks(picked,u){
+  const bp=batchPlan(u),out={...picked};
+  for(const [slot,cat] of Object.entries(BATCH_SLOT_CATS)){
+    const list=(out[cat]||[]).map(m=>{const c={...m};delete c.fresh;return c;});
+    out[cat]=bp.freshDays.length&&bp.slots[slot]&&list.length>2?list.map((m,i)=>i>=list.length-2?{...m,fresh:true}:m):list;
+  }
+  return out;
 }
 // What a picked meal must be: 'batch' (one portion per batch day), 'single' (one serving) or 'free' (extras - as written)
 function mealBatchRole(cat,meal,bp){
