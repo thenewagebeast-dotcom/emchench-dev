@@ -243,6 +243,7 @@ body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradie
 .det-lbl{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--tx3);margin-bottom:6px;font-weight:600;}
 .ingr{font-size:13px;color:var(--tx2);line-height:1.9;margin-bottom:12px;}
 .method{counter-reset:step;}
+.myo{background:var(--s2);border:1px solid var(--b1);border-radius:8px;padding:10px 12px;margin:8px 0 12px;}
 .gsec{font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--ac);margin:14px 0 6px;}
 .gsec:first-child{margin-top:0;}
 .gtxt{font-size:14px;line-height:1.6;color:var(--tx);margin-bottom:6px;}
@@ -1384,7 +1385,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='26 Oct group 1 fixes';
+const APP_BUILD='26 Oct group 2 recipes';
 const API_URL=''; // preview: no Google Sheets address, so nothing here can reach a sheet
 
 // AI models. Sonnet runs everything except the training plan, which runs on
@@ -3527,6 +3528,17 @@ function pickerOptions(cat){
 // up to the target with the options whose cuisine and main protein are least
 // represented so far (ties keep the AI's own order). Disliked meals are never
 // added automatically.
+function withFavourites(optionsByCat,tickedByCat,targets){
+  const out=Object.fromEntries(Object.entries(tickedByCat).map(([c,l])=>[c,[...(l||[])]]));
+  const list=c=>(optionsByCat?.[c]||[]).filter(m=>m&&m.name);
+  const favOf=o=>String(o?.from_favourite||'').trim().toLowerCase();
+  const covered=new Set(Object.keys(targets).flatMap(c=>(out[c]||[]).map(i=>favOf(list(c)[i])).filter(Boolean)));
+  for(const c of Object.keys(targets)){
+    if(!(targets[c]>0))continue;
+    list(c).forEach((o,i)=>{const f=favOf(o);if(!f||covered.has(f)||dislikedMeals.some(d=>d.name===o.name))return;(out[c]=out[c]||[]).push(i);covered.add(f);});
+  }
+  return out;
+}
 function topUpWithVariety(options,tickedIdx,target){
   const chosen=tickedIdx.map(i=>options[i]).filter(Boolean);
   const rest=options.filter((o,i)=>!tickedIdx.includes(i)&&!dislikedMeals.some(d=>d.name===o.name));
@@ -3542,10 +3554,14 @@ function topUpWithVariety(options,tickedIdx,target){
   return chosen.map(m=>({name:m.name}));
 }
 
+function favouritesFirst(meals){
+  return Object.fromEntries(Object.entries(meals||{}).map(([c,l])=>[c,Array.isArray(l)?[...l].sort((a,b)=>(b?.from_favourite?1:0)-(a?.from_favourite?1:0)):l]));
+}
 function showMealPicker(meals){
   return new Promise(resolve=>{
     _mealPickerResolve=resolve;
-    _mealPickerOptions=meals;
+    // Favourites first in each section (rehearsal item 10) - sorted in the data itself, so tick positions match
+    _mealPickerOptions=favouritesFirst(meals);
     const targets=getPickTargets();
     const cats=[
       {k:'breakfasts',l:'Breakfasts',icon:'🌅'},
@@ -3572,13 +3588,15 @@ function showMealPicker(meals){
           <input type="checkbox" data-cat="${cat.k}" data-idx="${i}" style="width:18px;height:18px;accent-color:var(--ac);flex-shrink:0">
           <div>
             <div style="font-size:14px;font-weight:600">${escapeHtml(m.name)}</div>
+            ${m.from_favourite?`<div style="font-size:12px;color:var(--ac)">⭐ From your favourites: ${escapeHtml(m.from_favourite)}</div>`:''}
             <div style="font-size:12px;color:var(--tx2)">${m.cuisine?escapeHtml(m.cuisine)+' - ':''}${parseInt(m.calories)||0}kcal - P:${parseInt(m.protein)||0}g C:${parseInt(m.carbs)||0}g F:${parseInt(m.fats)||0}g - ${escapeHtml(m.difficulty||'easy')}</div>
           </div>
         </label>`;
       });
       html+='</div>';
     }
-    document.getElementById('meal-picker-content').innerHTML=html;
+    const anyFav=Object.values(_mealPickerOptions).some(l=>Array.isArray(l)&&l.some(m=>m?.from_favourite));
+    document.getElementById('meal-picker-content').innerHTML=(anyFav?'<div style="font-size:12px;color:var(--tx2);margin-bottom:12px">⭐ = from the favourites you told us. They are listed first, and "Choose for me" always includes at least one for each favourite.</div>':'')+html;
     openModal('meal-picker-modal');
   });
 }
@@ -3589,6 +3607,8 @@ function showMealPicker(meals){
 function pickMeals(optionsByCat,tickedByCat){
   const targets=getPickTargets();
   const picked={};
+  // At least one option for each favourite goes in, unless one is already ticked (rehearsal item 10, D1)
+  tickedByCat=withFavourites(optionsByCat,tickedByCat||{},targets);
   for(const cat of Object.keys(targets)){
     const options=(optionsByCat?.[cat]||[]).filter(m=>m&&m.name);
     const ticked=tickedByCat?.[cat]||[];
@@ -4016,7 +4036,7 @@ Japanese: Dashi (kombu and bonito, or a vegetarian kombu-only version) is the sa
 
 Chinese: Ginger, garlic and spring onion form the aromatic base for most stir-fries, added to hot oil first. High heat is essential for a proper stir-fry - do not overcrowd the pan or everything will steam instead of sear. Light soy sauce for seasoning, dark soy sauce (used more sparingly) for colour and deeper flavour - they are not interchangeable. Shaoxing wine, where called for, adds a depth that is noticeably missing without it; dry sherry is the closest widely available UK substitute.
 
-West Indian / Caribbean: Use browning sauce, green seasoning (fresh herbs: thyme, scallion, garlic, scotch bonnet blended), allspice (pimento), whole scotch bonnet (not blended - keep whole for flavour without full heat unless user is Hot). Marinate proteins minimum 2 hours, overnight preferred - state this explicitly in the recipe. Do not substitute mild chilli flakes for scotch bonnet. When scotch bonnet is used, add this note inline in the recipe ingredients: "(substitute: habanero sauce as closest alternative, or dried scotch bonnet flakes - both widely available in UK supermarkets)".
+West Indian / Caribbean: Use browning sauce, green seasoning (fresh herbs: thyme, scallion, garlic, scotch bonnet blended), allspice (pimento), whole scotch bonnet (not blended - keep whole for flavour without full heat unless user is Hot). Marinate proteins minimum 2 hours, overnight preferred - state this explicitly in the recipe. Do not substitute mild chilli flakes for scotch bonnet. When scotch bonnet is used, add a swap (never inside the ingredient line): "No scotch bonnet? Use habanero sauce or dried scotch bonnet flakes". A Jamaican or West Indian curry is marinated in green seasoning and curry powder, and the curry powder is "burned" (toasted in hot oil for about a minute) before the meat goes in; thyme, allspice and whole scotch bonnet go into the pot. Jerk uses a jerk marinade (scotch bonnet, allspice, thyme, spring onion, garlic, lime) and is best grilled or roasted for char.
 
 Indian: Use whole spices bloomed in oil (cumin seeds, mustard seeds, cardamom) before adding ground spices. Garam masala goes in at the end, not at the start. Do not use generic "curry powder" as the only spice - it is a shortcut that produces flat flavour. Specify kashmiri chilli for colour without excessive heat.
 
@@ -4110,13 +4130,21 @@ function regionFieldLimit(){
 // The ingredient lists for one recipe, in the user's region. The US list is only
 // shown as the main list when the plan was written for a US user - older plans
 // hold "differences only" there, which would be an incomplete recipe.
+// Swaps and a make-your-own blend (26 Oct 2026), shown under the ingredients in both recipe views
+function recipeExtrasHtml(recipe){
+  const swaps=(Array.isArray(recipe.swaps)?recipe.swaps:[]).map(x=>String(x||'').trim()).filter(Boolean);
+  const m=recipe.make_your_own;
+  const myo=m&&Array.isArray(m.items)&&m.items.length?m:null;
+  return(swaps.length?`<div class="ingr-sec">Swaps</div><ul class="ingr-list">${swaps.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul>`:'')
+    +(myo?`<div class="myo"><div class="ingr-sec">Make your own ${escapeHtml(myo.name||'blend')}</div><ul class="ingr-list">${myo.items.map(x=>`<li>${escapeHtml(String(x))}</li>`).join('')}</ul>${myo.how?`<div style="font-size:13px;color:var(--tx2);line-height:1.5">${escapeHtml(myo.how)}</div>`:''}</div>`:'');
+}
 function ingredientsHtml(recipe){
   const r=userRegion();
   const serves=recipe.servings||1;
   const metric=recipe.ingredients_uk?escapeHtml(scaleIngredientText(recipe.ingredients_uk)):'';
   const us=escapeHtml(recipe.ingredients_us||'');
   if(r==='us'&&us&&userMealPlan?.meals?.built_for?.region==='us'){
-    return`<div class="det-lbl">Ingredients (US) - Serves ${escapeHtml(serves)}</div><div class="ingr">${us}</div>${metric?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">Metric: ${metric}</div>`:''}`;
+    return`<div class="det-lbl">Ingredients (US) - Serves ${escapeHtml(serves)}</div><div class="ingr">${us}</div>${metric?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">Metric: ${metric}</div>`:''}`+recipeExtrasHtml(recipe);
   }
   // Grouped one per line (24 Oct 2026), resized like the rest; otherwise the list split at its semicolons
   const groups=(Array.isArray(recipe.ingredient_groups)?recipe.ingredient_groups:[]).filter(g=>g&&Array.isArray(g.items)&&g.items.length);
@@ -4124,7 +4152,7 @@ function ingredientsHtml(recipe){
   const list=items=>'<ul class="ingr-list">'+items.map(i=>`<li>${escapeHtml(scaleIngredientText(String(i)))}</li>`).join('')+'</ul>';
   const body=groups.length?groups.map(g=>(g.title?`<div class="ingr-sec">${escapeHtml(g.title)}</div>`:'')+list(g.items)).join(''):lines.length>=3?list(lines):metric;
   return(metric||groups.length?`<div class="det-lbl">Ingredients (UK) - Serves ${escapeHtml(serves)}</div><div class="ingr">${body}</div>`:'')
-    +(r!=='uk'&&us?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">US: ${us}</div>`:'');
+    +(r!=='uk'&&us?`<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">US: ${us}</div>`:'')+recipeExtrasHtml(recipe);
 }
 
 // ---- FOOD RULES A PLAN WAS WRITTEN FOR ----
@@ -4307,7 +4335,10 @@ function addedGroups(oldRules,newRules){
 }
 // Word matching on one recipe's ingredient list. Returns a reason, or ''.
 function wordFlagRecipe(recipe,groups){
-  const phrases=String(recipe.ingredients_uk||'').split(/[,;\n]/).map(p=>p.trim()).filter(Boolean);
+  // Everything the person reads is checked: the list, the groups, the swaps and any make-your-own blend (26 Oct 2026)
+  const more=[...(Array.isArray(recipe.ingredient_groups)?recipe.ingredient_groups.flatMap(g=>Array.isArray(g?.items)?g.items:[]):[]),
+    ...(Array.isArray(recipe.swaps)?recipe.swaps:[]),...(Array.isArray(recipe.make_your_own?.items)?recipe.make_your_own.items:[])];
+  const phrases=[String(recipe.ingredients_uk||''),...more.map(String)].join('\n').split(/[,;\n]/).map(p=>p.trim()).filter(Boolean);
   const esc=w=>w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
   for(const g of Object.values(groups)){
     for(const phrase of phrases){
@@ -4445,10 +4476,12 @@ INGREDIENT STATE RULE - required: list every ingredient in its raw, as-purchased
 DISH NAME CONSISTENCY - required: if the dish name specifies a particular type of an ingredient, the ingredients list must use that exact type, not a different or more generic one - and name the specific variety of anything that genuinely has meaningfully different common types, rather than defaulting to a generic term.
 METHOD SPECIFICITY - required: every cooking step involving heat must state an actual temperature and time, never vague terms like "cook until done" on their own.
 METHOD: in sections, in cooking order - each section a short heading (e.g. "Make the sauce", "Cook the pasta", "Bring it together", "To serve") and its steps; a simple dish can have one section. One action per step, as many steps as the dish genuinely needs - each step up to 60 words, written for a beginner: the pan or tray and its size, the heat level and time, what it should look, smell or feel like when it is ready (e.g. "until golden at the edges"), any resting time, and a quick fix where things often go wrong (e.g. "if it starts to stick, add a splash of water"). Explain any cooking term in brackets the first time it appears (e.g. "al dente (cooked through but still with a slight bite)"). No filler steps.
-INGREDIENT GROUPS: the same ingredients as ingredients_uk, grouped under headings that match the method sections (e.g. "For the sauce", "For the pasta") - one ingredient with its quantity per item, every ingredient in ingredients_uk exactly once and nothing extra.
+INGREDIENT GROUPS: what the person reads - the ingredients grouped under headings that match the method sections (e.g. "For the sauce", "For the pasta"), one ingredient with its quantity per item. Never put part labels such as "(curry)", "(rice)" or "(for the sauce)" inside a group - the heading already says it. An ingredient used in two parts appears in each group with that part's amount. Together the groups hold exactly what ingredients_uk holds (which is for the shopping list and may label a split ingredient "(for the curry)") - nothing missing, nothing extra. In the method, refer to a split ingredient naturally ("the garlic for the curry"), never "the curry garlic".
+SWAPS: up to 3 short swap ideas for a hard-to-find or optional ingredient (e.g. "No scotch bonnet? Use habanero sauce or dried scotch bonnet flakes"), each up to 20 words - never inside an ingredient line. Say only what to use instead, and every swap must follow this person's food rules. An empty list when none are needed.
+MAKE YOUR OWN: only when the recipe uses a spice blend or paste that is hard to find or much better homemade (e.g. Jamaican curry powder, jerk seasoning, garam masala, ras el hanout, za'atar): {"name":"","items":["amount and spice"],"how":"one line, up to 25 words"}. Otherwise null. The recipe still lists the ready-made blend in its ingredients.
 ${recipeDetailLimits()}
 ${recipeQualityRules()}
-Reply ONLY with valid JSON: {"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"servings":1,"ingredients_uk":"","ingredients_us":"","ingredient_groups":[{"title":"","items":[""]}],"method":[{"title":"","steps":[""]}],${RECIPE_DETAIL_FIELDS},"micronutrients":"","bulk_cook":false}`;
+Reply ONLY with valid JSON: {"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"servings":1,"ingredients_uk":"","ingredients_us":"","ingredient_groups":[{"title":"","items":[""]}],"swaps":[],"make_your_own":null,"method":[{"title":"","steps":[""]}],${RECIPE_DETAIL_FIELDS},"micronutrients":"","bulk_cook":false}`;
 }
 
 // Replaces every flagged recipe with a new one written for the current rules,
@@ -4950,6 +4983,12 @@ function declinePatternAdj(){
 
 // Meal names say what is in a meal (23 Oct 2026: the AI was writing "Mango-Free", "Wasabi-Free", "Toastie-Free")
 const MEAL_NAME_RULE='MEAL NAMES: name each meal by what is in it. Never name a meal after something it leaves out (no "Honey-Free", "Mango-Free", "Wasabi-Free"). A free-from word is only for the person\'s own allergy or diet (e.g. "Dairy-Free" for a dairy allergy).';
+// Favourites (rehearsal item 10, 26 Oct 2026): every favourite becomes at least 2 options, marked, in its own style (D3)
+function favouritesRule(u){
+  const loves=String(u?.food_loves||'').trim();
+  if(!loves||/^(none|no|n\/a|varied)$/i.test(loves))return'';
+  return`\nFAVOURITES - required: turn each favourite dish or flavour in the user's food loves (${loves}) into at least 2 options, in more than one category where it fits (e.g. a lunch and a dinner), and put the favourite it comes from, in a few words, in "from_favourite" (an empty string for every other option). A favourite that names its own style keeps it - e.g. "Indian chicken curry" stays Indian even if Indian is not one of the user's cuisines; when it names no style, use the user's cuisines. Never break the food rules for a favourite.`;
+}
 function buildMealNamesPrompt(changeLevel='fresh', monthNumber=1, progressionContext='', rapportContext=''){
   const u=CU;
   const mt=getMealTargets();
@@ -4974,7 +5013,7 @@ Dietary:${u.dietary_type}, Allergies:${u.allergies?.join(',')||'none'}
 Cuisines:${u.flavour_prefs?.join(',')||'varied'}, Spice level:${u.spice_level||'Medium'}
 Snack style:${snackStyle}, Meals/day:${mt.mpd} (${mt.snackCount} snack slot${mt.snackCount!==1?'s':''}), Batch pref:${batchPref}
 INGREDIENT DISLIKES - NEVER use these: ${u.ingredient_dislikes||'none'}
-FOOD LOVES - incorporate these where possible: ${u.food_loves||'varied'}${getHealthDietLine()}${foodRuleWordsText(currentFoodRules())}
+FOOD LOVES - incorporate these where possible: ${u.food_loves||'varied'}${getHealthDietLine()}${foodRuleWordsText(currentFoodRules())}${favouritesRule(u)}
 ${MEAL_NAME_RULE}
 COOKING TIME PER SLOT - strictly enforce these limits in every recipe:
 ${u.cook_time||'Breakfast:Under 5 mins, Lunch:5 to 15 mins, Dinner:15 to 30 mins, Snacks:Grab and go - no prep'}
@@ -4999,10 +5038,10 @@ ${changeInstruction}${getDislikedMealsLine()}
 
 Return ONLY this JSON:
 \`\`\`json
-{"daily_targets":{"calories":${mt.daily.calories},"protein":${mt.daily.protein},"carbs":${mt.daily.carbs},"fats":${mt.daily.fats},"water_ml":${mt.daily.water_ml}},"meals":{"breakfasts":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":"","key_ingredients":[""]}],"snacks":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":"","key_ingredients":[""]}],"lunches":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":"","key_ingredients":[""]}],"dinners":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":"","key_ingredients":[""]}],"evening_snacks":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":"","key_ingredients":[""]}]}}
+{"daily_targets":{"calories":${mt.daily.calories},"protein":${mt.daily.protein},"carbs":${mt.daily.carbs},"fats":${mt.daily.fats},"water_ml":${mt.daily.water_ml}},"meals":{"breakfasts":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":"","key_ingredients":[""],"from_favourite":""}],"snacks":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":"","key_ingredients":[""],"from_favourite":""}],"lunches":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":"","key_ingredients":[""],"from_favourite":""}],"dinners":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":"","key_ingredients":[""],"from_favourite":""}],"evening_snacks":[{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":"","key_ingredients":[""],"from_favourite":""}]}}
 \`\`\`
-Exactly 10 per category including evening_snacks. Macros per meal must match per-meal targets above. Varied, creative, matched to user preferences. Names only - no method. key_ingredients: the 3-8 ingredients that make the dish what it is, including any cheese or other dairy, nuts, seeds, sauces, breads or wraps - the recipe is built from these, so they must follow every food rule above.
-VARIETY - required: within each category spread the 10 options evenly across the user's chosen cuisines, use at least 4 different main proteins, and never offer two options that are basically the same dish. Fill in cuisine (one of the user's cuisines) and main_protein (the single main protein source) for every option.`;}
+Exactly 10 per category including evening_snacks. Macros per meal must match per-meal targets above. Varied, creative, matched to user preferences. Names only - no method. key_ingredients: the 3-8 ingredients that make the dish what it is, including its defining base, marinade, paste or spice blend (e.g. green seasoning, jerk marinade, green curry paste) and any cheese or other dairy, nuts, seeds, sauces, breads or wraps - the recipe is built from these, so they must follow every food rule above.
+VARIETY - required: within each category spread the 10 options evenly across the user's chosen cuisines, use at least 4 different main proteins, and never offer two options that are basically the same dish. Fill in cuisine (one of the user's cuisines - or the style a favourite names, see FAVOURITES) and main_protein (the single main protein source) for every option.`;}
 
 function buildExtraNamesPrompt(){
   const u=CU;
@@ -5010,7 +5049,7 @@ function buildExtraNamesPrompt(){
   const goal=u.goal||'maintain';
   const wantsBulking=goal==='bulk'||goal==='strength';
   const wantsLowCal=goal==='cut'||goal==='endurance';
-  const ns=`{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":"","key_ingredients":[""]}`;
+  const ns=`{"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"bulk_cook":false,"cuisine":"","main_protein":"","key_ingredients":[""],"from_favourite":""}`;
   return`Generate 10 extra meal name options per category. Names, macros, difficulty and prep time ONLY - no recipes.
 
 USER: ${u.username}, goal:${goal}, dietary:${u.dietary_type}, allergies:${u.allergies?.join(',')||'none'}
@@ -5029,8 +5068,8 @@ Return ONLY this JSON:
 \`\`\`json
 {"protein_desserts":[${ns}]${wantsLowCal?`,"low_calorie_meals":[${ns}]`:''}${wantsBulking?`,"bulking_meals":[${ns}]`:''}}
 \`\`\`
-Exactly 10 per category. Macros must match targets above. key_ingredients: the 3-8 ingredients that make the dish what it is, including any cheese or other dairy, nuts, seeds, sauces, breads or wraps - they must follow every food rule above. Names only - no ingredients, no method.
-VARIETY - required: within each category spread the 10 options evenly across the user's chosen cuisines, use at least 4 different main proteins, and never offer two options that are basically the same dish. Fill in cuisine (one of the user's cuisines) and main_protein (the single main protein source) for every option.${getDislikedMealsLine()}`;}
+Exactly 10 per category. Macros must match targets above. key_ingredients: the 3-8 ingredients that make the dish what it is, including its defining base, marinade, paste or spice blend (e.g. green seasoning, jerk marinade, green curry paste) and any cheese or other dairy, nuts, seeds, sauces, breads or wraps - they must follow every food rule above. Names only - no ingredients, no method.
+VARIETY - required: within each category spread the 10 options evenly across the user's chosen cuisines, use at least 4 different main proteins, and never offer two options that are basically the same dish. Fill in cuisine (one of the user's cuisines - or the style a favourite names, see FAVOURITES) and main_protein (the single main protein source) for every option.${getDislikedMealsLine()}`;}
 
 // ---- Recipe detail (Phase 4c, agreed 23 Oct 2026) - one source for every recipe the AI
 // writes: the meal plan recipes, meal swaps and replacements for flagged meals ----
@@ -5049,6 +5088,7 @@ function recipeQualityRules(){
   return`FLAVOUR RULE - required: give every recipe as much flavour as this person's rules allow, built in layers - aromatics (onion, garlic, ginger, chilli to their spice level), browning or searing, toasting the spices, a marinade where the cook time allows, acid (citrus or vinegar) to lift it, fresh herbs, and a finishing touch (zest, toasted seeds, a drizzle). Never add more salt or sugar than their health line allows - get the flavour from herbs, garlic, citrus and spices instead.
 PRODUCT NAMES RULE - required: for any free-from or plant-based item, name the actual product type every time it appears - in ingredients_uk, ingredients_us, the method and shopping (e.g. "200g soya mince", "300ml oat milk", "150g lactose-free Greek-style yoghurt", "40g vegan cheddar-style cheese") - never "mince", "milk", "yoghurt" or "cheese" on its own for these. No brand names.
 MACROS RULE - required: work out each recipe's calories, protein, carbs and fats from its own ingredients and amounts, per serving - never write the meal slot's target as the recipe's numbers. If the amounts do not reach the target, change the amounts, not the numbers.
+AUTHENTIC RULE - required: cook each dish the way it is really made in its cuisine - its traditional base, marinade, paste or spice blend and its key method steps (see the cuisine standards). Never leave out the element that defines the dish: e.g. a Jamaican curry is marinated in green seasoning and its curry powder is toasted in hot oil before the meat goes in; a Thai green curry starts by frying green curry paste in coconut cream; a jerk dish uses a jerk marinade of scotch bonnet, allspice, thyme and spring onion. Make it fit this person's rules and cook time some other way, never by dropping the defining element.
 NAME MATCH RULE - required: keep each meal name exactly as given, and use every food the name promises in that form - "Smoked Salmon" means smoked salmon (not tinned), "Chicken Thigh" means thigh (not breast). Make the ingredients fit the name, never the other way round.`;
 }
 
@@ -5067,7 +5107,7 @@ function buildChosenRecipesPrompt(chosenMeals, batch){
   // What each meal is built around (its checked key ingredients, NO-FAILED-PLANS-SPEC part 0)
   const built=Object.values(chosenMeals||{}).flat().filter(m=>m&&m.name&&Array.isArray(m.key_ingredients)&&m.key_ingredients.length).map(m=>`- ${m.name}: ${m.key_ingredients.join(', ')}`).join('\n');
   if(!allMeals.trim())return'{}';
-  const sc=`{"name":"","bulk_cook":false,"batch_portions":1,"difficulty":"easy","servings":1,"calories":0,"protein":0,"carbs":0,"fats":0,"micronutrients":"","ingredients_uk":"","ingredients_us":"","ingredient_groups":[{"title":"","items":[""]}],"method":[{"title":"","steps":[""]}],${RECIPE_DETAIL_FIELDS},"prep_time_mins":0}`;
+  const sc=`{"name":"","bulk_cook":false,"batch_portions":1,"difficulty":"easy","servings":1,"calories":0,"protein":0,"carbs":0,"fats":0,"micronutrients":"","ingredients_uk":"","ingredients_us":"","ingredient_groups":[{"title":"","items":[""]}],"swaps":[],"make_your_own":null,"method":[{"title":"","steps":[""]}],${RECIPE_DETAIL_FIELDS},"prep_time_mins":0}`;
   const schemaKeys=Object.entries(cats).filter(([,names])=>names.length).map(([cat])=>`"${cat}":[${sc}]`).join(',');
 
   const catTargets=`STRICT MACRO TARGETS - portions MUST be scaled so macros land within 5% of these:
@@ -5098,7 +5138,9 @@ FIELD LIMITS - these are ceilings to stop rambling, not targets to hit. Include 
 ingredients_uk: up to 130 words, every single ingredient with its own specific quantity.
 ${regionFieldLimit()}
 method: in sections, in cooking order - each section a short heading (e.g. "Make the sauce", "Cook the pasta", "Bring it together", "To serve") and its steps; a simple dish can have one section. One action per step, as many steps as the dish genuinely needs - each step up to 60 words, written for a beginner: the pan or tray and its size, the heat level and time, what it should look, smell or feel like when it is ready (e.g. "until golden at the edges"), any resting time, and a quick fix where things often go wrong (e.g. "if it starts to stick, add a splash of water"). Explain any cooking term in brackets the first time it appears (e.g. "al dente (cooked through but still with a slight bite)"). No filler steps.
-ingredient_groups: the same ingredients as ingredients_uk, grouped under headings that match the method sections (e.g. "For the sauce", "For the pasta") - one ingredient with its quantity per item, every ingredient in ingredients_uk exactly once and nothing extra.
+ingredient_groups: what the person reads - the ingredients grouped under headings that match the method sections (e.g. "For the sauce", "For the pasta"), one ingredient with its quantity per item. Never put part labels such as "(curry)", "(rice)" or "(for the sauce)" inside a group - the heading already says it. An ingredient used in two parts appears in each group with that part's amount. Together the groups hold exactly what ingredients_uk holds (which is for the shopping list and may label a split ingredient "(for the curry)") - nothing missing, nothing extra. In the method, refer to a split ingredient naturally ("the garlic for the curry"), never "the curry garlic".
+swaps: up to 3 short swap ideas for a hard-to-find or optional ingredient (e.g. "No scotch bonnet? Use habanero sauce or dried scotch bonnet flakes"), each up to 20 words - never inside an ingredient line. Say only what to use instead, and every swap must follow this person's food rules. An empty list when none are needed.
+make_your_own: only when the recipe uses a spice blend or paste that is hard to find or much better homemade (e.g. Jamaican curry powder, jerk seasoning, garam masala, ras el hanout, za'atar): {"name":"","items":["amount and spice"],"how":"one line, up to 25 words"}. Otherwise null. The recipe still lists the ready-made blend in its ingredients.
 micronutrients: up to 15 words.
 ${recipeDetailLimits()}
 INGREDIENT QUANTITY RULE - required, not optional: every single ingredient, including every spice and seasoning, must have a specific measured quantity (tsp, tbsp, g, ml, or a count). Never list a spice or ingredient by name alone with no amount - "turmeric" on its own is not acceptable, "1 tsp turmeric" is. This applies even when several vegetables get blended or cooked together - "400g onion, tomato, garlic, ginger" is not acceptable because there is no way to tell how much of each; write "100g onion, 100g tomato, 2 cloves garlic, 20g ginger" instead, even if they all go in the blender at the same time.
@@ -5405,6 +5447,8 @@ Cardio sessions must appear as full entries in the cardio_sessions array with sp
 EXERCISE TECHNIQUE DETAIL - critical, not optional: each how_to field (Setup/Do/Avoid) has up to 40 words - a ceiling to stop rambling, not a target to hit. Within that budget, each of the three sections must include at least one genuinely specific technical cue - a grip width, a stance width, a joint angle, or a range of motion cue. Never pad to fill space, and never cut a genuine technical cue just to stay under the ceiling. Generic filler wastes the word budget and is not acceptable.
 NOT acceptable: "Setup: Stand with feet apart. Do: Lower the weight. Avoid: Bad form."
 The standard required: "Setup: Feet hip-width, grip just outside shoulders. Do: Lower until upper arms are parallel to floor. Avoid: Flaring elbows past 45 degrees."
+
+EXERCISE NAMES - when an exercise is one of these, use this exact name (each has a full guide in the app): ${EXERCISE_LIBRARY.join(', ')}. Put variations such as strapped, paused, high box, partial range, tempo or a bench angle in the exercise's notes, never in its name.
 
 RULES: ${days} sessions, as many exercises in each as the weekly sets above need (usually 4-7), reps_per_set entries must equal sets count. List sessions ONCE only.${hasValidPreferredDays?` Sessions must be on day_of_week ${preferredDaysList.join(', ')} only.`:''}
 
@@ -6448,6 +6492,24 @@ function guideKey(name){
     .replace(/\bpull[\s-]?ups?\b/g,'pull up').replace(/\bchin[\s-]?ups?\b/g,'chin up').replace(/\bsit[\s-]?ups?\b/g,'sit up').replace(/\bstep[\s-]?ups?\b/g,'step up')
     .replace(/(\d+)\s*-?\s*degrees?\b/g,'$1 degree').replace(/[^a-z0-9 ]+/g,' ');
   return s.split(/\s+/).filter(Boolean).map(w=>w.length>3&&/s$/.test(w)&&!/(ss|us|is)$/.test(w)?w.slice(0,-1):w).join(' ');
+}
+// Which stored guide a plan's exercise name belongs to (rehearsal item 14, 26 Oct 2026). The library's stored keys stay
+// exactly as guideKey makes them; this only finds the right one: an exact match, then a short list of obvious ones, then the
+// same words in any order (one-arm = single-arm, RDL = Romanian deadlift). Equipment is never dropped in general, so a
+// cable lift never gets a barbell guide. Not in the library = its own key (a guide written for it).
+const GUIDE_ALIASES={'dumbbell hammer curl':'Hammer Curl','dumbbell concentration curl':'Concentration Curl','dumbbell incline curl':'Incline Dumbbell Curl',
+  'bent over dumbbell rear delt raise':'Dumbbell Rear Delt Fly','dumbbell rear delt raise':'Dumbbell Rear Delt Fly','bent over dumbbell rear delt fly':'Dumbbell Rear Delt Fly',
+  'dumbbell arnold press':'Arnold Press','dumbbell goblet squat':'Goblet Squat','kettlebell goblet squat':'Goblet Squat','dumbbell farmer carry':"Farmer's Carry",
+  'barbell romanian deadlift':'Romanian Deadlift','barbell good morning':'Good Morning','dumbbell bulgarian split squat':'Bulgarian Split Squat',
+  'bodyweight glute bridge':'Glute Bridge','forearm plank':'Plank','dumbbell pullover':'Dumbbell Pullover','cable face pull':'Face Pull','rope face pull':'Face Pull'};
+function guideLooseKey(k){return String(k||'').replace(/\bone arm\b/g,'single arm').replace(/\brdl\b/g,'romanian deadlift').split(' ').filter(Boolean).sort().join(' ');}
+let _guideLib=null;
+function guideLookupKey(name){
+  const k=guideKey(name);if(!k)return'';
+  if(!_guideLib){_guideLib={exact:new Set(),loose:new Map()};for(const n of EXERCISE_LIBRARY){const g=guideKey(n);_guideLib.exact.add(g);_guideLib.loose.set(guideLooseKey(g),g);}}
+  if(_guideLib.exact.has(k))return k;
+  if(GUIDE_ALIASES[k])return guideKey(GUIDE_ALIASES[k]);
+  return _guideLib.loose.get(guideLooseKey(k))||k;
 }
 const EXERCISE_GUIDE_SYS='You are E=MC-HENCH, a UK personal trainer writing clear, safe exercise guides for complete beginners. Everything you write is your own original wording. Respond with JSON only.';
 function exerciseGuidePrompt(name){
@@ -11834,7 +11896,7 @@ async function checkAiServer(){
 // (about 20 seconds) and then kept for everyone. Kept in memory for this visit.
 const guideCache={};
 async function exerciseGuideFor(name,onWait){
-  const key=guideKey(name);if(!key)return null;
+  const key=guideLookupKey(name);if(!key)return null;
   if(guideCache[key])return guideCache[key];
   const {data,error}=await sb.from('exercise_guides').select('guide').eq('key',key).maybeSingle();
   if(!error&&data?.guide)return(guideCache[key]=data.guide);
@@ -11848,8 +11910,16 @@ async function loadGuideAdmin(){
   const el=document.getElementById('guide-admin');if(!el)return;
   const [all,wait]=await Promise.all([sb.from('exercise_guides').select('key',{count:'exact',head:true}),sb.from('exercise_guides').select('key',{count:'exact',head:true}).eq('checked',false)]);
   if(all.error||wait.error){el.textContent='Could not load: '+friendlyDbError(all.error||wait.error);return;}
-  el.innerHTML='<div>'+(all.count||0)+' guides written - <strong>'+(wait.count||0)+'</strong> waiting for a check.</div>'
+  const {data:unchecked}=await sb.from('exercise_guides').select('key,name').eq('checked',false).order('written_at',{ascending:false}).limit(40);
+  const list=(unchecked||[]).map(g=>`<div style="display:flex;gap:6px;align-items:center;margin-top:4px"><span style="flex:1">${escapeHtml(g.name)}</span><button class="btn btn-ghost btn-sm" data-gname="${escapeHtml(g.name)}" onclick="openExerciseGuide(this.dataset.gname,'')">Read</button><button class="btn btn-ghost btn-sm" data-gkey="${escapeHtml(g.key)}" onclick="markGuideChecked(this)">Mark as checked</button></div>`).join('');
+  el.innerHTML='<div>'+(all.count||0)+' guides written - <strong>'+(wait.count||0)+'</strong> waiting for a check.</div>'+list
     +'<div style="margin-top:8px"><button class="btn btn-ghost btn-sm" id="guide-lib-btn" onclick="writeGuideLibrary()">Write the missing library guides</button> <span id="guide-lib-msg" style="font-size:12px"></span></div>';
+}
+// The admin ticks an AI-written guide once it has been read (the table lets the admin change only checked and note)
+async function markGuideChecked(btn){
+  const {error}=await sb.from('exercise_guides').update({checked:true,note:'Read by the admin '+new Date().toISOString().slice(0,10)}).eq('key',btn.dataset.gkey);
+  if(error){alert('Could not save: '+friendlyDbError(error));return;}
+  loadGuideAdmin().catch(()=>{});
 }
 async function writeGuideLibrary(){
   const msg=document.getElementById('guide-lib-msg'),btn=document.getElementById('guide-lib-btn');
@@ -11866,7 +11936,7 @@ async function writeGuideLibrary(){
       say('Writing '+(i+1)+'-'+(i+batch.length)+' of '+todo.length+'...');
       const r=await aiRequest('guide_write',{names:batch},30000);
       if(r.error)throw new Error(r.error.message);
-      const keys=batch.map(guideKey),t0=Date.now();
+      const keys=batch.map(guideLookupKey),t0=Date.now();
       while(Date.now()-t0<180000){
         await new Promise(res=>setTimeout(res,10000));
         const {count}=await sb.from('exercise_guides').select('key',{count:'exact',head:true}).in('key',keys);
