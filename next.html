@@ -4041,7 +4041,7 @@ Japanese: Dashi (kombu and bonito, or a vegetarian kombu-only version) is the sa
 
 Chinese: Ginger, garlic and spring onion form the aromatic base for most stir-fries, added to hot oil first. High heat is essential for a proper stir-fry - do not overcrowd the pan or everything will steam instead of sear. Light soy sauce for seasoning, dark soy sauce (used more sparingly) for colour and deeper flavour - they are not interchangeable. Shaoxing wine, where called for, adds a depth that is noticeably missing without it; dry sherry is the closest widely available UK substitute.
 
-West Indian / Caribbean: Use browning sauce, green seasoning (fresh herbs: thyme, scallion, garlic, scotch bonnet blended), allspice (pimento), whole scotch bonnet (not blended - keep whole for flavour without full heat unless user is Hot). Marinate proteins minimum 2 hours, overnight preferred - state this explicitly in the recipe. Do not substitute mild chilli flakes for scotch bonnet. When scotch bonnet is used, add a swap (never inside the ingredient line): "No scotch bonnet? Use habanero sauce or dried scotch bonnet flakes". A Jamaican or West Indian curry is marinated in green seasoning and curry powder, and the curry powder is "burned" (toasted in hot oil for about a minute) before the meat goes in; thyme, allspice and whole scotch bonnet go into the pot. Jerk uses a jerk marinade (scotch bonnet, allspice, thyme, spring onion, garlic, lime) and is best grilled or roasted for char.
+West Indian / Caribbean: Use browning sauce, green seasoning (fresh herbs: thyme, scallion, garlic, scotch bonnet blended), allspice (pimento), whole scotch bonnet (not blended - keep whole for flavour without full heat unless user is Hot). Marinate proteins minimum 2 hours, overnight preferred - state this explicitly in the recipe. Do not substitute mild chilli flakes for scotch bonnet. When scotch bonnet is used, put the substitute in swaps.if_missing (never inside the ingredient line): "No scotch bonnet? Use habanero sauce or dried scotch bonnet flakes". A Jamaican or West Indian curry is marinated in green seasoning and curry powder, and the curry powder is "burned" (toasted in hot oil for about a minute) before the meat goes in; thyme, allspice and whole scotch bonnet go into the pot. Jerk uses a jerk marinade (scotch bonnet, allspice, thyme, spring onion, garlic, lime) and is best grilled or roasted for char.
 
 Indian: Use whole spices bloomed in oil (cumin seeds, mustard seeds, cardamom) before adding ground spices. Garam masala goes in at the end, not at the start. Do not use generic "curry powder" as the only spice - it is a shortcut that produces flat flavour. Specify kashmiri chilli for colour without excessive heat.
 
@@ -4135,13 +4135,11 @@ function regionFieldLimit(){
 // The ingredient lists for one recipe, in the user's region. The US list is only
 // shown as the main list when the plan was written for a US user - older plans
 // hold "differences only" there, which would be an incomplete recipe.
-// Swaps and a make-your-own blend (26 Oct 2026), shown under the ingredients in both recipe views
+// A make-your-own blend (26 Oct 2026), shown under the ingredients in both recipe views (the swaps show in recipeAfterHtml)
 function recipeExtrasHtml(recipe){
-  const swaps=(Array.isArray(recipe.swaps)?recipe.swaps:[]).map(x=>String(x||'').trim()).filter(Boolean);
   const m=recipe.make_your_own;
   const myo=m&&Array.isArray(m.items)&&m.items.length?m:null;
-  return(swaps.length?`<div class="ingr-sec">Swaps</div><ul class="ingr-list">${swaps.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul>`:'')
-    +(myo?`<div class="myo"><div class="ingr-sec">Make your own ${escapeHtml(myo.name||'blend')}</div><ul class="ingr-list">${myo.items.map(x=>`<li>${escapeHtml(String(x))}</li>`).join('')}</ul>${myo.how?`<div style="font-size:13px;color:var(--tx2);line-height:1.5">${escapeHtml(myo.how)}</div>`:''}</div>`:'');
+  return(myo?`<div class="myo"><div class="ingr-sec">Make your own ${escapeHtml(myo.name||'blend')}</div><ul class="ingr-list">${myo.items.map(x=>`<li>${escapeHtml(String(x))}</li>`).join('')}</ul>${myo.how?`<div style="font-size:13px;color:var(--tx2);line-height:1.5">${escapeHtml(myo.how)}</div>`:''}</div>`:'');
 }
 function ingredientsHtml(recipe){
   const r=userRegion();
@@ -4342,7 +4340,7 @@ function addedGroups(oldRules,newRules){
 function wordFlagRecipe(recipe,groups){
   // Everything the person reads is checked: the list, the groups, the swaps and any make-your-own blend (26 Oct 2026)
   const more=[...(Array.isArray(recipe.ingredient_groups)?recipe.ingredient_groups.flatMap(g=>Array.isArray(g?.items)?g.items:[]):[]),
-    ...(Array.isArray(recipe.swaps)?recipe.swaps:[]),...(Array.isArray(recipe.make_your_own?.items)?recipe.make_your_own.items:[])];
+    ...(recipe.swaps&&typeof recipe.swaps==='object'?(Array.isArray(recipe.swaps)?recipe.swaps:Object.values(recipe.swaps)):[]),...(Array.isArray(recipe.make_your_own?.items)?recipe.make_your_own.items:[])];
   const phrases=[String(recipe.ingredients_uk||''),...more.map(String)].join('\n').split(/[,;\n]/).map(p=>p.trim()).filter(Boolean);
   const esc=w=>w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
   for(const g of Object.values(groups)){
@@ -4482,11 +4480,11 @@ DISH NAME CONSISTENCY - required: if the dish name specifies a particular type o
 METHOD SPECIFICITY - required: every cooking step involving heat must state an actual temperature and time, never vague terms like "cook until done" on their own.
 METHOD: in sections, in cooking order - each section a short heading (e.g. "Make the sauce", "Cook the pasta", "Bring it together", "To serve") and its steps; a simple dish can have one section. One action per step, as many steps as the dish genuinely needs - each step up to 60 words, written for a beginner: the pan or tray and its size, the heat level and time, what it should look, smell or feel like when it is ready (e.g. "until golden at the edges"), any resting time, and a quick fix where things often go wrong (e.g. "if it starts to stick, add a splash of water"). Explain any cooking term in brackets the first time it appears (e.g. "al dente (cooked through but still with a slight bite)"). No filler steps.
 INGREDIENT GROUPS: what the person reads - the ingredients grouped under headings that match the method sections (e.g. "For the sauce", "For the pasta"), one ingredient with its quantity per item. Never put part labels such as "(curry)", "(rice)" or "(for the sauce)" inside a group - the heading already says it. An ingredient used in two parts appears in each group with that part's amount. Together the groups hold exactly what ingredients_uk holds (which is for the shopping list and may label a split ingredient "(for the curry)") - nothing missing, nothing extra. In the method, refer to a split ingredient naturally ("the garlic for the curry"), never "the curry garlic".
-SWAPS: up to 3 short swap ideas for a hard-to-find or optional ingredient (e.g. "No scotch bonnet? Use habanero sauce or dried scotch bonnet flakes"), each up to 20 words - never inside an ingredient line. Say only what to use instead, and every swap must follow this person's food rules. An empty list when none are needed.
+SWAPS: a substitute for a hard-to-find or optional ingredient goes in swaps.if_missing (e.g. "No scotch bonnet? Use habanero sauce or dried scotch bonnet flakes") - never inside an ingredient line. Say only what to use instead; every swap follows this person's food rules.
 MAKE YOUR OWN: only when the recipe uses a spice blend or paste that is hard to find or much better homemade (e.g. Jamaican curry powder, jerk seasoning, garam masala, ras el hanout, za'atar): {"name":"","items":["amount and spice"],"how":"one line, up to 25 words"}. Otherwise null. The recipe still lists the ready-made blend in its ingredients.
 ${recipeDetailLimits()}
 ${recipeQualityRules()}
-Reply ONLY with valid JSON: {"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"servings":1,"ingredients_uk":"","ingredients_us":"","ingredient_groups":[{"title":"","items":[""]}],"swaps":[],"make_your_own":null,"method":[{"title":"","steps":[""]}],${RECIPE_DETAIL_FIELDS},"micronutrients":"","bulk_cook":false}`;
+Reply ONLY with valid JSON: {"name":"","calories":0,"protein":0,"carbs":0,"fats":0,"difficulty":"easy","prep_time_mins":0,"servings":1,"ingredients_uk":"","ingredients_us":"","ingredient_groups":[{"title":"","items":[""]}],"make_your_own":null,"method":[{"title":"","steps":[""]}],${RECIPE_DETAIL_FIELDS},"micronutrients":"","bulk_cook":false}`;
 }
 
 // Replaces every flagged recipe with a new one written for the current rules,
@@ -5112,7 +5110,7 @@ function buildChosenRecipesPrompt(chosenMeals, batch){
   // What each meal is built around (its checked key ingredients, NO-FAILED-PLANS-SPEC part 0)
   const built=Object.values(chosenMeals||{}).flat().filter(m=>m&&m.name&&Array.isArray(m.key_ingredients)&&m.key_ingredients.length).map(m=>`- ${m.name}: ${m.key_ingredients.join(', ')}`).join('\n');
   if(!allMeals.trim())return'{}';
-  const sc=`{"name":"","bulk_cook":false,"batch_portions":1,"difficulty":"easy","servings":1,"calories":0,"protein":0,"carbs":0,"fats":0,"micronutrients":"","ingredients_uk":"","ingredients_us":"","ingredient_groups":[{"title":"","items":[""]}],"swaps":[],"make_your_own":null,"method":[{"title":"","steps":[""]}],${RECIPE_DETAIL_FIELDS},"prep_time_mins":0}`;
+  const sc=`{"name":"","bulk_cook":false,"batch_portions":1,"difficulty":"easy","servings":1,"calories":0,"protein":0,"carbs":0,"fats":0,"micronutrients":"","ingredients_uk":"","ingredients_us":"","ingredient_groups":[{"title":"","items":[""]}],"make_your_own":null,"method":[{"title":"","steps":[""]}],${RECIPE_DETAIL_FIELDS},"prep_time_mins":0}`;
   const schemaKeys=Object.entries(cats).filter(([,names])=>names.length).map(([cat])=>`"${cat}":[${sc}]`).join(',');
 
   const catTargets=`STRICT MACRO TARGETS - portions MUST be scaled so macros land within 5% of these:
@@ -5144,7 +5142,7 @@ ingredients_uk: up to 130 words, every single ingredient with its own specific q
 ${regionFieldLimit()}
 method: in sections, in cooking order - each section a short heading (e.g. "Make the sauce", "Cook the pasta", "Bring it together", "To serve") and its steps; a simple dish can have one section. One action per step, as many steps as the dish genuinely needs - each step up to 60 words, written for a beginner: the pan or tray and its size, the heat level and time, what it should look, smell or feel like when it is ready (e.g. "until golden at the edges"), any resting time, and a quick fix where things often go wrong (e.g. "if it starts to stick, add a splash of water"). Explain any cooking term in brackets the first time it appears (e.g. "al dente (cooked through but still with a slight bite)"). No filler steps.
 ingredient_groups: what the person reads - the ingredients grouped under headings that match the method sections (e.g. "For the sauce", "For the pasta"), one ingredient with its quantity per item. Never put part labels such as "(curry)", "(rice)" or "(for the sauce)" inside a group - the heading already says it. An ingredient used in two parts appears in each group with that part's amount. Together the groups hold exactly what ingredients_uk holds (which is for the shopping list and may label a split ingredient "(for the curry)") - nothing missing, nothing extra. In the method, refer to a split ingredient naturally ("the garlic for the curry"), never "the curry garlic".
-swaps: up to 3 short swap ideas for a hard-to-find or optional ingredient (e.g. "No scotch bonnet? Use habanero sauce or dried scotch bonnet flakes"), each up to 20 words - never inside an ingredient line. Say only what to use instead, and every swap must follow this person's food rules. An empty list when none are needed.
+Substitutes: a substitute for a hard-to-find or optional ingredient goes in swaps.if_missing (e.g. "No scotch bonnet? Use habanero sauce or dried scotch bonnet flakes") - never inside an ingredient line. Say only what to use instead; every swap follows this person's food rules.
 make_your_own: only when the recipe uses a spice blend or paste that is hard to find or much better homemade (e.g. Jamaican curry powder, jerk seasoning, garam masala, ras el hanout, za'atar): {"name":"","items":["amount and spice"],"how":"one line, up to 25 words"}. Otherwise null. The recipe still lists the ready-made blend in its ingredients.
 micronutrients: up to 15 words.
 ${recipeDetailLimits()}
