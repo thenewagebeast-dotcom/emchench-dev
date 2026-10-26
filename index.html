@@ -1244,7 +1244,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
 const IS_LIVE=location.hostname==='thenewagebeast-dotcom.github.io'&&location.pathname.startsWith('/emchench/');
 const IS_DEV=!IS_LIVE;
 // Build stamp - set at each push. Shown in the DEV box so you can tell which version a tab is running.
-const APP_BUILD='26 Oct group 3 batch labels';
+const APP_BUILD='26 Oct make-ahead + progress';
 const API_URL=IS_LIVE
   ?'https://script.google.com/macros/s/AKfycbxAxLJTxPALmZE8U8NZ3y6jiL3dcQlqTUFEEh24izqmWieuSkZgUXQ0gtaPF7FXV__r/exec'
   :'https://script.google.com/macros/s/AKfycbzNgMdkZNTrJZrKUHbiOPHCVYGVGXfxBUoZWyD_b9h-Oi_qx4m7JymnHZHnzVebOIqT/exec';
@@ -3650,10 +3650,12 @@ function mealBatchRole(cat,meal,bp){
   return bp.prep?.[slot]==='ahead'?'ahead':'single';
 }
 // What a made-ahead meal has to be (Group 3 item 2)
+// A batch for more than 3 days is frozen (the proof plan, 26 Oct 2026: Dom - breakfast wraps are better frozen, especially batch cooked)
+const FREEZE_RULE='It lasts more than 3 days, so the portions past day 3 are frozen: choose and write it so it freezes and reheats well, and storage says how many days in the fridge, how to freeze each portion (wraps, burritos and egg muffins wrapped one by one) and how to reheat from frozen.';
 const AHEAD_RULE='It is made the night before or in the morning and keeps 1-2 days in the fridge: eaten cold or quickly reheated, nothing that goes soggy or grey (keep dressings and crunchy toppings separate), and the method says when to make it (e.g. "the night before") and how to store it.';
 // The line a recipe instruction gets for one role
 function batchRoleLine(role,bp){
-  return role==='batch'?'It must be a batch-cook recipe: bulk_cook true, batch_portions '+bp.portions+' and servings '+bp.portions+', with every ingredient quantity for the full batch of '+bp.portions+' portions.'
+  return role==='batch'?'It must be a batch-cook recipe: bulk_cook true, batch_portions '+bp.portions+' and servings '+bp.portions+', with every ingredient quantity for the full batch of '+bp.portions+' portions.'+(bp.portions>3?' '+FREEZE_RULE:'')
     :role==='single'?'It must be a single serving: bulk_cook false, batch_portions 1, servings 1.'
     :role==='ahead'?'It must be a single serving made ahead: bulk_cook false, batch_portions 1, servings 1. '+AHEAD_RULE:'';
 }
@@ -3664,6 +3666,28 @@ function batchRoleProblem(recipe,role,bp){
   if(role==='batch'){const n=recipe?.bulk_cook?(bpn||sv):sv;return n===bp.portions?'':'"'+recipe?.name+'" must make '+bp.portions+' portions (bulk_cook true, batch_portions '+bp.portions+', servings '+bp.portions+') - it makes '+n;}
   if(role==='single'||role==='ahead')return recipe?.bulk_cook||sv!==1?'"'+recipe?.name+'" must be a single serving (bulk_cook false, servings 1)':'';
   return'';
+}
+// What the written recipe must SAY for its role (proof plan 26 Oct 2026: a "made ahead" breakfast came back as poached eggs
+// on toast with nothing made ahead). '' when it is fine. A soft rule: the server asks again, then keeps the recipe - it never
+// swaps a meal or fails a plan for it.
+const AHEAD_WORDS=/night before|evening before|day before|the morning|make[- ]ahead|made ahead|prep[- ]ahead|ahead of time|in advance/i;
+function prepNoteProblem(recipe,role,bp){
+  const st=String(recipe?.storage||'').trim(),method=JSON.stringify(recipe?.method||'');
+  if(role==='ahead'&&(!st||!AHEAD_WORDS.test(method+' '+st)))return'"'+recipe?.name+'" is made ahead: the method must say when to make it (e.g. a "The night before" section) and storage must say how long it keeps in the fridge and how to eat it (cold, or how to reheat). If the dish cannot be made ahead, change how it is made so it can, keeping its name';
+  if(role==='batch'&&!st)return'"'+recipe?.name+'" is batch cooked: storage must say how many days it keeps in the fridge, how to freeze it and how to reheat it';
+  if(role==='batch'&&bp?.portions>3&&!/freez/i.test(st))return'"'+recipe?.name+'" makes '+bp.portions+' portions, more than keep safely in the fridge: storage must say how many days in the fridge, how to freeze the rest (each portion wrapped or boxed on its own) and how to reheat from frozen';
+  return'';
+}
+// The meal-name instruction: what a made-ahead or long batch meal can be
+const AHEAD_EXAMPLES={breakfast:'overnight oats, chia pots, egg muffins, breakfast burritos or wraps, protein pancakes to reheat',lunch:'salads in a jar, pasta or grain salads, wraps, cold noodle bowls',dinner:'traybakes or pies assembled the night before, marinated meat ready to cook',snack:'energy balls, protein pots, boiled eggs, flapjacks'};
+function mealPrepNamesLine(u){
+  const bp=batchPlan(u),out=[];
+  for(const r of PREP_ROWS){
+    const k=bp.prep[r.slot];
+    if(k==='ahead')out.push('- '+r.label+' is made ahead (the night before or in the morning, keeps 1-2 days): every '+r.label.toLowerCase()+' option must be something that can be made ahead and eaten cold or quickly reheated, e.g. '+AHEAD_EXAMPLES[r.slot]+'. Never something made just before eating (poached or fried eggs, toast, fresh pancakes).');
+    else if(k==='batch'&&bp.portions>3)out.push('- '+r.label+' is batch cooked for '+bp.portions+' days, so most portions are frozen: every '+r.label.toLowerCase()+' option must freeze and reheat well (stews, curries, chilli, bakes; for breakfast, burritos or wraps and egg muffins freeze well).');
+  }
+  return out.length?'\nMEAL PREP - the options must suit how each meal is made:\n'+out.join('\n'):'';
 }
 // The recipe set to its role's flags once it passes
 function setBatchFlags(recipe,role,bp){
@@ -5105,7 +5129,7 @@ ${monthNote}
 ${progressionContext?'\n'+progressionContext:''}${rapportContext}
 Dietary:${u.dietary_type}, Allergies:${u.allergies?.join(',')||'none'}
 Cuisines:${u.flavour_prefs?.join(',')||'varied'}, Spice level:${u.spice_level||'Medium'}
-Snack style:${snackStyle}, Meals/day:${mt.mpd} (${mt.snackCount} snack slot${mt.snackCount!==1?'s':''}), Meal prep:${batchPref}
+Snack style:${snackStyle}, Meals/day:${mt.mpd} (${mt.snackCount} snack slot${mt.snackCount!==1?'s':''}), Meal prep:${batchPref}${mealPrepNamesLine(u)}
 INGREDIENT DISLIKES - NEVER use these: ${u.ingredient_dislikes||'none'}
 FOOD LOVES - incorporate these where possible: ${u.food_loves||'varied'}${getHealthDietLine()}${foodRuleWordsText(currentFoodRules())}${favouritesRule(u)}
 ${MEAL_NAME_RULE}
@@ -5173,7 +5197,7 @@ function recipeDetailLimits(){
   return`prep_list: 2 to 8 items, each up to 12 words - what to chop, weigh and get out before cooking starts.
 equipment: up to 8 items - the pans, trays and tools needed, with a size where it matters (e.g. "28cm non-stick frying pan").
 tips: 1 to 3 items, each up to 25 words - why a key step matters or a common mistake to avoid, written for a beginner.
-storage: when bulk_cook is true or the recipe is a lunch - how many days in the fridge, how many months in the freezer (or "do not freeze") and how to reheat or carry it, up to 35 words. An empty string for every other recipe.
+storage: when bulk_cook is true, the recipe is a lunch, or it is made ahead - how many days in the fridge, how many months in the freezer (or "do not freeze") and how to reheat or carry it, up to 35 words. An empty string for every other recipe.
 swaps: cheaper, quicker and if_missing - each up to 20 words, and every swap must follow this person's diet, allergies, dislikes and health swaps.
 serving: up to 20 words - how to plate it or what to serve it with, without changing the macros given.
 shopping: every ingredient once, as bought - item (plain shop name, e.g. "red onion", "soya mince"), amount (a number, for the whole recipe as written), unit ("g", "ml", or "" for a count of whole items), aisle (one of: ${SHOPPING_AISLES.join(', ')}).`;
@@ -5241,7 +5265,7 @@ INGREDIENT QUANTITY RULE - required, not optional: every single ingredient, incl
 INGREDIENT STATE RULE - required: list every ingredient in its raw, as-purchased state (e.g. "raw chicken breast, diced" not "cooked chicken breast"), unless it is genuinely used without further cooking. The method must then actually cook or prepare every one of those ingredients - if rice or any other component appears in the ingredients list, the method must include the step that cooks it, not just "serve with rice" as an afterthought with no cooking step of its own.
 DISH NAME CONSISTENCY - required: if the dish name specifies a particular type or style of an ingredient (e.g. a dish called "... with Sticky Rice" or "... with Basmati"), the ingredients list must use that exact type, not a different or more generic one. Never name a dish after one specific ingredient and then list something else in the ingredients. When any ingredient genuinely has meaningfully different common varieties (rice, pasta, onion, chilli, etc.), name the specific variety being used rather than defaulting to the generic term.
 SERVINGS CONSISTENCY - required: the "servings" field and the ingredient quantities given must match each other exactly. If this is a batch-cook recipe, "servings" must equal "batch_portions", and every ingredient quantity must be the amount for the FULL BATCH - never write batch-sized quantities under a "servings":1 label.
-BATCH OR SINGLE SERVING - required for every meal below, exactly as listed (this user batch cooks on: ${BATCH_DAY_LABELS[bp.daysKey]}):${roleNames.batch.length?`\n- Batch cook - bulk_cook true, batch_portions ${bp.portions}, servings ${bp.portions}, every quantity for the full batch of ${bp.portions} portions: ${roleNames.batch.join(', ')}`:''}${roleNames.ahead.length?`\n- Made ahead, single serving - bulk_cook false, batch_portions 1, servings 1. ${AHEAD_RULE}: ${roleNames.ahead.join(', ')}`:''}${roleNames.single.length?`\n- Single serving - bulk_cook false, batch_portions 1, servings 1: ${roleNames.single.join(', ')}`:''}\n- Any other meal: a single serving unless it is naturally a tray bake or batch (then servings = the number of portions it makes).
+BATCH OR SINGLE SERVING - required for every meal below, exactly as listed (this user batch cooks on: ${BATCH_DAY_LABELS[bp.daysKey]}):${roleNames.batch.length?`\n- Batch cook - bulk_cook true, batch_portions ${bp.portions}, servings ${bp.portions}, every quantity for the full batch of ${bp.portions} portions${bp.portions>3?'. '+FREEZE_RULE:''}: ${roleNames.batch.join(', ')}`:''}${roleNames.ahead.length?`\n- Made ahead, single serving - bulk_cook false, batch_portions 1, servings 1. ${AHEAD_RULE}: ${roleNames.ahead.join(', ')}`:''}${roleNames.single.length?`\n- Single serving - bulk_cook false, batch_portions 1, servings 1: ${roleNames.single.join(', ')}`:''}\n- Any other meal: a single serving unless it is naturally a tray bake or batch (then servings = the number of portions it makes).
 METHOD SPECIFICITY - required, not optional: every cooking step involving heat must state an actual temperature and time (e.g. "200°C for 20 minutes", "medium heat for 6-8 minutes"), never vague terms like "cook until done" or "bake until golden" on their own - pair any visual/textural cue with a concrete time or temperature.
 ${recipeQualityRules()}
 
