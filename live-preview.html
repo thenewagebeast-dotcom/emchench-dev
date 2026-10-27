@@ -3126,7 +3126,7 @@ function renderDashboard(){
 
   // Alerts
   const aEl=document.getElementById('dash-alerts');
-  aEl.innerHTML=nudgeCardHtml();
+  aEl.innerHTML=nudgeCardHtml()+coachButtonHtml();
   if(!userMealPlan&&!userTrainingPlan)aEl.innerHTML+=`<div class="alert alert-info">👋 Welcome! Hit "Generate Plan" to get your personalised programme.</div>`;
   aEl.innerHTML+=genAlertHtml();
   aEl.innerHTML+=recompNudgeHtml();
@@ -9942,7 +9942,7 @@ const NUDGE_HYPE={
 const EATING_DISORDER_RE=/eating disorder|anorexi|bulimi|binge|arfid|orthorexi|disordered eating/i;
 function hypeGoalWords(u=CU){
   const gi=goalWeightInfo(u);
-  if((gi&&gi.belowHealthy)||EATING_DISORDER_RE.test(String(u?.health_conditions||'')))return'safe';
+  if((gi&&gi.belowHealthy)||u?.coach_care||EATING_DISORDER_RE.test(String(u?.health_conditions||'')))return'safe';
   const g=String(u?.goal||'');
   if(g==='cut')return'cut';
   if(['bulk','recomp','strength'].includes(g))return'gains';
@@ -10077,6 +10077,8 @@ function sessionEase(sidx){
 const EASE_NOTE='Last time felt too hard - start about 5-10% lighter than last time.';
 // Profile > Coach Nudges (filled in by the layer)
 function nudgeSettingsHtml(){return'';}
+// Ask your coach: the dashboard button (the layer has the chat - new backend only)
+function coachButtonHtml(){return'';}
 // ---- nudges end ----
 
 // This user's logs, loaded at login and added to as they log. loaded is false
@@ -10968,7 +10970,8 @@ FACTS
 
 SAFETY - these always win
 - Never diagnose and never give medical advice. Pain, illness, medicines and symptoms: be kind, keep it short, and point them to the right help.
-- Chest pain, fainting, severe breathlessness or sudden weakness: tell them to call 999 now. Nothing else first.
+- Chest pain or tightness, fainting, severe breathlessness or sudden weakness HAPPENING NOW (or with sweating, or pain spreading to the arm, jaw or back): tell them to call 999 now. Nothing else first.
+- The same but it has passed: NHS 111 today (111.nhs.uk), no training until they have been checked, and 999 if it comes back.
 - Feeling very unwell, a bad injury or a reaction to a medicine: NHS 111 (111.nhs.uk).
 - Thoughts of suicide or self-harm, or not coping: Samaritans, free on 116 123, any time; 999 if they might act on it. Stay warm, do not lecture.
 - Signs of an eating disorder (not eating, purging, fear of food, wanting to eat far less): Beat (beateatingdisorders.org.uk, 0808 801 0677). Never talk about calories, weight loss or cutting in that conversation.
@@ -10976,6 +10979,7 @@ SAFETY - these always win
 - Injuries: never suggest an exercise that loads an injured area (a bad shoulder means no pressing and no chest flies at all), never one on their avoid list.
 - Food: never suggest a food that breaks their diet or allergies. Never suggest eating below their calorie target's floor, skipping meals to lose faster, or fasting to make up for a meal.
 - Supplements: only what their Supplements tab would allow; anything else, their GP or pharmacist.
+- If the app shows them a HELP CARD (listed in the conversation), keep your reply short and kind, point to that help, and do not add other advice.
 
 WHAT YOU CAN OFFER (buttons the app shows under your reply - each opens one of the app's own features, which runs its own checks)
 - exercise_swap (target: the exact exercise name from their plan), meal_swap (target: the exact meal name from their plan), lighter_week, plan_event (calorie banking for a night out), pause (holiday, illness or injury), weigh_in, injury_guide, log_meals, open_session.
@@ -10994,8 +10998,9 @@ They: "Got a wedding Saturday." You: {"reply":"Nice! Let's plan for it so you ca
 They: "Are you a real person?" You: {"reply":"No - I'm an AI coach built into the app. I know your plan and your logs, but for anything medical a real professional is the right call.","actions":[]}`;
 // The banter setting until they pick one (C7): Hype, Your Mate and Humour start on a bit of banter, the rest straight
 function coachBanterDefault(u=CU){return motStylesOf(u?.mot_style).some(x=>['Hype','Your Mate','Humour'].includes(x))?'A bit of banter':'Keep it straight';}
+const COACH_BANTER={straight:'Keep it straight',some:'A bit of banter',full:'Full gym banter'};
 // Everything the coach may know about this person, as plain lines (cached for the whole chat)
-function coachContextBlock(rapportText=''){
+function coachContextBlock(rapportText='',notes=''){
   const u=CU||{},t=userMealPlan?.meals?.daily_targets||{},today=dayKey(new Date());
   const wk=weekStart(today),days14=addDays(today,-13);
   const logs=(activityLogs.workouts||[]).filter(w=>w.day&&!w.cardio&&!w.extra);
@@ -11009,7 +11014,8 @@ function coachContextBlock(rapportText=''){
   const lines=[
     'ABOUT THIS PERSON (from the app - the only facts you may use)',
     `Name: ${u.username||''}. Voice: ${getStyleVoice(styleLabel())}`,
-    `Banter setting: ${u.coach_banter||coachBanterDefault(u)}.`,
+    `Banter setting: ${COACH_BANTER[u.coach_banter]||coachBanterDefault(u)}.`,
+    u.coach_care?'COACH CARE IS ON: never talk about calories, weight loss, cutting or their weight. Food talk is about enjoying meals and having energy.':'',
     `Goal: ${u.goal||'not set'}${goalPromptLine(u,'progress')}. Experience: ${u.experience||''}. Training ${u.training_days||'?'} days a week, ${u.training_style==='block'?'progressive block':'same sessions each week'}. Equipment: ${(u.equipment||[]).join(', ')||'not set'}.`,
     `Diet: ${u.dietary_type||'not set'}. Allergies and intolerances: ${(u.allergies||[]).join(', ')||'none'}. Dislikes: ${u.ingredient_dislikes||'none'}.`,
     `Injuries: ${u.injuries||'none'}. Exercises to avoid: ${u.avoided_exercises||'none'}.`,
@@ -11020,19 +11026,24 @@ function coachContextBlock(rapportText=''){
     `Last 14 days: ${recent.length} sessions logged${rated.length?', average rating '+(rated.reduce((n,w)=>n+w.rating,0)/rated.length).toFixed(1)+' of 5':''}${recent.some(w=>w.stop)?', stopped early: '+recent.filter(w=>w.stop).map(w=>w.stop).join(', '):''}; meals logged on ${meals14} of 14 days.`,
     `Streaks: ${userPoints.current_streak||0} weeks of sessions, ${userPoints.meal_streak||0} days of meals, ${userPoints.water_streak||0} days of water.`,
     pause?`Paused (${pause.reason}) until ${pause.end}.`:'Not paused.',
-    rapportText?'What they told us about themselves:\n'+rapportText:''
+    rapportText?'What they told us about themselves:\n'+rapportText:'',
+    notes?'Your notes from earlier chats:\n'+notes:''
   ];
   return lines.filter(Boolean).join('\n');
 }
 // One coach reply. history = [{role:'user'|'assistant', content:'...'}], the last one theirs.
-function coachRequestBody(history,effort='low',rapportText=''){
-  return{model:AI_MODEL_TRAINING,max_tokens:4000,fallbacks:'default',output_config:{effort},
-    system:[{type:'text',text:COACH_SYS},{type:'text',text:coachContextBlock(rapportText),cache_control:{type:'ephemeral'}}],
+// signposts: the help cards the app is showing with this reply (coachSignposts), told to the coach after the cached part
+function coachRequestBody(history,effort='low',rapportText='',notes='',signposts=[]){
+  const system=[{type:'text',text:COACH_SYS},{type:'text',text:coachContextBlock(rapportText,notes),cache_control:{type:'ephemeral'}}];
+  if(signposts.length)system.push({type:'text',text:'HELP CARD shown to them with your reply: '+signposts.map(k=>COACH_SIGNPOSTS[k].text).join(' | ')});
+  return{model:AI_MODEL_TRAINING,max_tokens:4000,fallbacks:'default',output_config:{effort},system,
     messages:history.map(m=>({role:m.role,content:String(m.content)}))};
 }
+// Medium effort for the bigger questions (reworking the plan, pain or injury, long messages), low otherwise
+function coachEffort(text){return/rework|change my (week|plan)|pain|hurt|injur|ache|sore|swollen|week/i.test(String(text))||String(text).length>300?'medium':'low';}
 // After a chat: the short notes the coach keeps about them (a cheaper model)
 function coachNotesRequest(history,oldNotes=''){
-  return callAIBody(`Update the coach's notes about this person from the chat below. Keep what is still true from the old notes, add what is worth remembering (preferences, routines, what helps them, wins, what is coming up). At most 800 characters, short plain sentences. Never a diagnosis, never anything about health conditions or medicines, never a weight or calorie number.
+  return callAIBody(`Update the coach's notes about this person from the chat below. Keep what is still true from the old notes, and add only what THEY said or chose that is worth remembering: preferences, routines, what helps them, what gets in the way, wins, what is coming up. The coach's own suggestions are not facts - never write that something was swapped, changed or done unless they said they did it. Never anything about health, symptoms, pain, injuries, illness, medicines or mood (those are kept elsewhere, by them). Never a weight or calorie number, and never their name. At most 800 characters, short plain sentences.
 
 OLD NOTES:
 ${oldNotes||'(none yet)'}
@@ -11043,16 +11054,58 @@ ${history.map(m=>(m.role==='user'?'They: ':'Coach: ')+m.content).join('\n')}
 Answer with the new notes only.`,'You keep short, kind, factual notes for a fitness coach.',1500,AI_MODEL,'low');
 }
 // The second safety check on a risky reply (a cheaper model): pass, or the problem
-function coachSafetyRequest(question,reply){
-  return callAIBody(`A fitness app's AI coach is about to send this reply. Check it against the rules. Fail it if it: gives medical advice or a diagnosis; misses a needed signpost (999 for chest pain, fainting or severe breathlessness; Samaritans 116 123 for suicide or self-harm; Beat for eating-disorder signs; a pharmacist or GP for medicines); suggests eating very little, skipping meals or fasting to lose weight; comments on their body or weight; or pushes through pain.
+// recent = the last few messages [{role, content}] before the reply
+function coachSafetyRequest(recent,reply){
+  return callAIBody(`A fitness app's AI coach is about to send this reply. Check it against the rules, reading the whole conversation (earlier messages count). Fail it if it: gives medical advice or a diagnosis; misses a needed signpost (999 for chest pain or tightness, fainting or severe breathlessness happening now - NHS 111 if it has passed; Samaritans 116 123 for suicide or self-harm; Beat for eating-disorder signs; a pharmacist or GP for medicines); suggests eating very little, skipping meals or fasting to lose weight; comments on their body or weight; or tells them to push through pain.
 
-THEIR MESSAGE:
-${question}
+THE CONVERSATION:
+${(Array.isArray(recent)?recent:[{role:'user',content:String(recent)}]).map(m=>(m.role==='user'?'They: ':'Coach: ')+m.content).join('\n')}
 
 THE REPLY:
 ${reply}
 
 Answer JSON only: {"ok":true} or {"ok":false,"problem":"..."}`,'You check replies for safety. Be strict.',1500,AI_MODEL,'low');
+}
+// Layer 1 (spec section 7): fixed help cards, found by words in THEIR message, shown above the coach's reply every time
+const COACH_SIGNPOSTS={
+  emergency:{re:/chest (pain|tight|pressure)|tight(ness)? (in|across) (my )?chest|faint(ed|ing)?\b|passed out|blacked out|can'?t (catch my )?breathe?|struggling to breathe|severe(ly)? breathless|numb(ness)? (in|down) (my )?(arm|face)|face (is )?drooping/i,
+    text:'Chest pain or tightness, fainting or struggling to breathe: if it is happening now, call 999. If it has passed, call NHS 111 today (111.nhs.uk) and don\'t train until you have been checked.'},
+  crisis:{re:/suicid|kill myself|end (it all|my life)|self[- ]?harm|hurt(ing)? myself|cut(ting)? myself|don'?t want to (be here|live|wake up)|no point (in )?(living|going on)|can'?t cope|can'?t go on/i,
+    text:'You\'re not alone. Samaritans are there any time, free, on 116 123 (or jo@samaritans.org). If you might act on these thoughts, call 999.'},
+  eating:{re:/purg|mak(e|ing) myself (sick|throw up|vomit)|(throw(ing)?|threw) up after|starv(e|ing) myself|stop eating|not eat(ing)? (at all|for days)|\bbinge|afraid (of|to) eat|scared (of|to) eat|hate my body|laxative/i,
+    text:'Beat can help with eating worries: beateatingdisorders.org.uk, helpline 0808 801 0677.'},
+  urgent:{re:/allergic reaction|swollen (lips|tongue|face|throat)|anaphyla|broken? (bone|wrist|ankle|leg|arm)|can'?t (put weight|move my)|severe pain/i,
+    text:'Feeling very unwell or badly hurt: call NHS 111 or go to 111.nhs.uk. Call 999 in an emergency.'},
+  medicines:{re:/\b(tablets?|medication|medicines?|meds|pills?|prescri\w*|dose|inhaler|insulin|metformin|statins?|warfarin|antidepressants?|blood thinners?)\b/i,
+    text:'For anything about medicines, a pharmacist or your GP is the right person to ask.'}
+};
+function coachSignposts(text){return Object.keys(COACH_SIGNPOSTS).filter(k=>COACH_SIGNPOSTS[k].re.test(String(text||'')));}
+// The coach's answer, read and checked: the reply text and at most 2 buttons that really fit this person's plan
+function coachReadAnswer(raw,u=CU){
+  let o=null;const t=String(raw||'').replace(/[—–]/g,'-');
+  try{const j=extractJsonText(t);o=j?JSON.parse(j):null;}catch(e){o=null;}
+  const reply=String(o&&typeof o.reply==='string'?o.reply:t.replace(/^\s*\{[\s\S]*$/,'')).trim().slice(0,3000);
+  const exNames=new Set((userTrainingPlan?.sessions||[]).concat(userTrainingPlan?.ab_sessions||[]).flatMap(s=>(s.exercises||[]).map(e=>String(e.name||'').trim())));
+  const mealNames=new Set(Object.values(userMealPlan?.meals?.meals||{}).flat().map(m=>String(m?.name||'').trim()));
+  const seen=new Set(),actions=[];
+  for(const a of Array.isArray(o?.actions)?o.actions:[]){
+    const type=String(a?.type||''),target=String(a?.target||'').trim().slice(0,150);
+    if(!COACH_ACTIONS.includes(type)||seen.has(type+target))continue;
+    if(type==='exercise_swap'&&!exNames.has(target))continue;
+    if(type==='meal_swap'&&!mealNames.has(target))continue;
+    seen.add(type+target);actions.push(target&&(type==='exercise_swap'||type==='meal_swap')?{type,target}:{type});
+    if(actions.length===2)break;
+  }
+  return{reply,actions};
+}
+// Layer 3 (C8): the second check only for risky ones - a help card was shown, or the reply touches pain, medicines,
+// calories, skipping or fasting, weight or mood
+function coachRisky(question,reply,signposts=[]){
+  return signposts.length>0||/\b(pain\w*|hurts?|hurting|injur\w*|aches?|achy|sore|medic\w*|tablets?|pills?|dose|calori\w*|kcal|skip\w*|fast|fasting|weight|starv\w*|mood|depress\w*|anxi\w*|cope|coping)\b|feeling low/i.test(String(question)+' '+String(reply));
+}
+// What goes out instead when the second check fails
+function coachFallbackReply(signposts=[]){
+  return'I\'d rather not guess on this one.'+(signposts.length?' '+signposts.map(k=>COACH_SIGNPOSTS[k].text).join(' '):' For anything about your health, your GP or a pharmacist is the right person - and I\'m here for the training and food side.');
 }
 // ---- coach chat end ----
 
@@ -11555,6 +11608,8 @@ function profileToCU(p,user){
     goal_weight_keep:!!p.goal_weight_keep,cheat_day_opt:!!p.cheat_day_opt,
     // What the coach calls them, and the nudge settings (045)
     coach_call:p.coach_call||'',coach_call_word:p.coach_call_word||'',coach_call_name:!!p.coach_call_name,coach_call_at:p.coach_call_at||'',
+    // Ask your coach (051): switched on by the admin, the banter setting, coach care
+    coach_chat:!!p.coach_chat,coach_banter:p.coach_banter||'',coach_care:!!p.coach_care,
     nudges_freq:p.nudges_freq&&typeof p.nudges_freq==='object'?p.nudges_freq:{}
   };
 }
@@ -12047,6 +12102,226 @@ const TRAINING_STYLE_TEXT={
 function goalsOn(){return true;}
 // ---- Coach nudges and what the coach calls you (NUDGES-SPEC-2026-10-27.md, supabase/045) ----
 function nudgesOn(){return true;}
+// ---- Ask your coach - the chat screen (COACH-CHAT-SPEC-2026-10-27.md; supabase/051) ----
+function coachOn(){return!!(CU&&(CU.coach_chat||CU.is_admin));}
+function coachButtonHtml(){
+  if(!coachOn())return'';
+  return`<button class="btn" style="width:100%;margin:4px 0 10px" onclick="openCoach()">💬 Ask your coach</button>`;
+}
+let coachState={chatId:null,messages:[],sending:false,dirty:new Set()};
+function coachScreenEl(){
+  let el=document.getElementById('coach-screen');
+  if(el)return el;
+  el=document.createElement('div');el.id='coach-screen';
+  el.style.cssText='position:fixed;inset:0;z-index:900;background:var(--bg);display:none;flex-direction:column';
+  el.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--b1)">
+      <button class="btn btn-ghost btn-xs" onclick="closeCoach()">← Back</button>
+      <div style="flex:1;font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:900">Your Coach</div>
+      <button class="btn btn-ghost btn-xs" onclick="coachShowChats()">Chats</button>
+      <button class="btn btn-ghost btn-xs" onclick="coachNewChat()">New chat</button>
+    </div>
+    <div style="font-size:11px;color:var(--tx3);padding:6px 16px;border-bottom:1px solid var(--b1)">Your AI coach - not a person, and not medical advice. Anything urgent? <a href="#" onclick="coachHelp();return false" style="color:var(--ac3)">Help</a></div>
+    <div id="coach-msgs" style="flex:1;overflow-y:auto;padding:14px 16px"></div>
+    <div id="coach-left" style="font-size:11px;color:var(--tx3);padding:0 16px"></div>
+    <div style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid var(--b1)">
+      <textarea id="coach-input" class="ftarea" maxlength="1000" rows="2" style="flex:1;min-height:44px" placeholder="Ask anything - training, food, a busy week..."></textarea>
+      <button class="btn" id="coach-send" onclick="coachSend()">Send</button>
+    </div>`;
+  document.body.appendChild(el);
+  return el;
+}
+async function openCoach(){
+  if(!coachOn())return;
+  coachScreenEl().style.display='flex';
+  if(!coachState.chatId){
+    // Carry on the latest chat from today, otherwise start fresh
+    const {data}=await sb.from('coach_chats').select('id,updated_at').eq('user_id',CU.user_id).order('updated_at',{ascending:false}).limit(1);
+    const last=(data||[])[0];
+    if(last&&dayKey(last.updated_at)===dayKey(new Date()))await coachLoadChat(last.id);
+  }
+  coachRender();coachLeft();
+  setTimeout(()=>document.getElementById('coach-input')?.focus(),100);
+}
+function closeCoach(){
+  const el=document.getElementById('coach-screen');if(el)el.style.display='none';
+  coachUpdateNotes();
+}
+// The notes are brought up to date when a chat is left (spec section 5); only chats with new messages
+function coachUpdateNotes(){
+  for(const id of coachState.dirty)aiRequest('coach_notes',{chat_id:id},60000).catch(e=>console.error('Coach notes:',e));
+  coachState.dirty=new Set();
+}
+async function coachLoadChat(id){
+  const {data,error}=await sb.from('coach_messages').select('id,role,text,actions,signposts,rating').eq('chat_id',id).order('created_at',{ascending:true});
+  if(error){alert('Could not load that chat: '+friendlyDbError(error));return;}
+  coachState.chatId=id;coachState.messages=data||[];
+}
+function coachNewChat(){coachUpdateNotes();coachState.chatId=null;coachState.messages=[];coachRender();}
+const COACH_ACTION_LABELS={exercise_swap:t=>'Swap '+t,meal_swap:t=>'Swap '+t,lighter_week:()=>'Take a lighter week',plan_event:()=>'Plan a night out',
+  pause:()=>'Pause my plan',weigh_in:()=>'Weigh in',injury_guide:()=>String(CU?.injuries||'').trim()?'Injury guide':'Add an injury',log_meals:()=>'Log today\'s meals',open_session:()=>'Open today\'s session'};
+function coachRender(){
+  const box=document.getElementById('coach-msgs');if(!box)return;
+  if(!coachState.messages.length){
+    box.innerHTML=`<div style="font-size:14px;color:var(--tx2);line-height:1.6;margin-top:20px">${escapeHtml(fillCall('Hi {c} - what can I help with? Training, food, a busy week, anything.'))}<br><br><span style="font-size:12px;color:var(--tx3)">I know your plan and your logs. I can't change your plan myself, but I can point you to the right button.</span></div>`;
+    return;
+  }
+  const signpostCard=keys=>(keys||[]).map(k=>COACH_SIGNPOSTS[k]?`<div class="alert alert-warn" style="font-size:13px;margin:8px 0">🆘 ${escapeHtml(COACH_SIGNPOSTS[k].text)}</div>`:'').join('');
+  box.innerHTML=coachState.messages.map(m=>{
+    if(m.role==='user')return`<div style="display:flex;justify-content:flex-end;margin:8px 0"><div style="max-width:80%;background:var(--s3);border-radius:12px 12px 2px 12px;padding:9px 12px;font-size:14px;white-space:pre-wrap">${escapeHtml(m.text)}</div></div>`;
+    const acts=(m.actions||[]).map(a=>`<button class="btn btn-ghost btn-sm" data-type="${escapeHtml(a.type)}" data-target="${escapeHtml(a.target||'')}" onclick="coachAction(this)">${escapeHtml((COACH_ACTION_LABELS[a.type]||(()=>a.type))(a.target||''))}</button>`).join('');
+    return`${signpostCard(m.signposts)}<div style="margin:8px 0"><div style="max-width:88%;background:var(--s2);border:1px solid var(--b1);border-radius:12px 12px 12px 2px;padding:9px 12px;font-size:14px;line-height:1.5;white-space:pre-wrap">${escapeHtml(m.text)}</div>
+      ${acts?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${acts}</div>`:''}
+      ${m.id?`<div style="margin-top:4px;font-size:12px"><button class="btn btn-ghost btn-xs" style="${m.rating===1?'color:var(--ok)':''}" data-id="${m.id}" onclick="coachRate(this,1)">👍</button> <button class="btn btn-ghost btn-xs" style="${m.rating===-1?'color:var(--danger)':''}" data-id="${m.id}" onclick="coachRate(this,-1)">👎</button></div>`:''}</div>`;
+  }).join('')+(coachState.sending?`<div style="font-size:13px;color:var(--tx3);margin:8px 0">Your coach is typing...</div>`:'');
+  box.scrollTop=box.scrollHeight;
+}
+// "N messages left today" once they are close to the limit (C3: 20 a day)
+async function coachLeft(){
+  const el=document.getElementById('coach-left');if(!el||CU.is_admin){if(el)el.textContent='';return;}
+  const start=new Date();start.setHours(0,0,0,0);
+  const {count}=await sb.from('ai_usage').select('id',{count:'exact',head:true}).eq('user_id',CU.user_id).eq('call_type','coach_chat').eq('status','ok').gte('at',start.toISOString());
+  const left=20-(count||0);
+  el.textContent=left<=5?(left>0?left+' message'+(left===1?'':'s')+' left today':'That\'s today\'s chat - back tomorrow. Anything urgent? See Help.'):'';
+}
+async function coachSend(){
+  const inp=document.getElementById('coach-input');const text=(inp?.value||'').trim();
+  if(!text||coachState.sending)return;
+  coachState.sending=true;inp.value='';
+  coachState.messages.push({role:'user',text});coachRender();
+  const me=CU.user_id;
+  let res;
+  try{res=await aiRequest('coach_chat',{chat_id:coachState.chatId,message:text},90000);}
+  catch(e){res={error:{message:'Your coach took too long to answer. Please try again.'}};}
+  if(CU?.user_id!==me)return;
+  coachState.sending=false;
+  if(res.error){
+    coachState.messages.pop();inp.value=text;coachRender();
+    alert(res.error.message||'Your coach could not answer just now.');return;
+  }
+  coachState.chatId=res.chat_id;coachState.dirty.add(res.chat_id);
+  const keys=(res.signposts||[]).map(s=>s.key);
+  coachState.messages[coachState.messages.length-1].signposts=keys;
+  coachState.messages.push({id:res.coach.id,role:'coach',text:res.coach.text,actions:res.coach.actions||[],signposts:keys});
+  if(res.care)CU.coach_care=true;
+  coachRender();coachLeft();
+}
+async function coachRate(btn,v){
+  const id=btn.dataset.id,m=coachState.messages.find(x=>x.id===id);if(!m)return;
+  let patch={rating:m.rating===v?null:v};
+  if(v===-1&&m.rating!==-1){
+    const note=prompt('What was wrong with it? (optional)');
+    if(note===null)return;
+    patch.rating_note=note.trim().slice(0,500)||null;
+    patch.shared=confirm('Share this chat with Dom to help improve the coach? Only this chat is shared.');
+  }
+  const {error}=await sb.from('coach_messages').update(patch).eq('id',id);
+  if(error){alert('Could not save that: '+friendlyDbError(error));return;}
+  m.rating=patch.rating;coachRender();
+}
+// The buttons only ever open the app's own features, which run their own checks (spec section 6)
+function coachAction(btn){
+  const type=btn.dataset.type,target=btn.dataset.target||'';
+  closeCoach();
+  if(type==='exercise_swap'){
+    const sessions=userTrainingPlan?.sessions||[];
+    for(let si=0;si<sessions.length;si++){const ei=(sessions[si].exercises||[]).findIndex(e=>String(e.name||'').trim()===target);if(ei>=0){goTab('training');openSwapModal(String(si),ei,target);return;}}
+    goTab('training');return;
+  }
+  if(type==='meal_swap'){goTab('meals');showInfo('Swap a meal',`<p>Find <strong>${escapeHtml(target)}</strong> on your Meal Plan and tap <strong>Swap Meal</strong> - we'll write you a different one.</p>`);return;}
+  if(type==='lighter_week')return nudgeLighterWeek();
+  if(type==='plan_event')return openModal('event-modal');
+  if(type==='pause'){goTab('body');setTimeout(()=>document.getElementById('pause-form')?.scrollIntoView({behavior:'smooth'}),200);return;}
+  if(type==='weigh_in')return openWeighIn();
+  if(type==='injury_guide')return String(CU?.injuries||'').trim()?renderInjuryModal():infoGoProfile();
+  if(type==='log_meals')return goTab('meallog');
+  if(type==='open_session')return goTab('training');
+}
+function coachHelp(){
+  showInfo('Help',Object.values(COACH_SIGNPOSTS).map(s=>`<p style="margin-bottom:10px">${escapeHtml(s.text)}</p>`).join('')+'<p style="font-size:12px;color:var(--tx3)">Your coach is an AI. It can help with your training and food, but it cannot examine you or give medical advice.</p>');
+}
+// Past chats: open, keep past 90 days, delete one, delete all (spec section 3)
+async function coachShowChats(){
+  const {data,error}=await sb.from('coach_chats').select('id,title,updated_at,keep').eq('user_id',CU.user_id).order('updated_at',{ascending:false}).limit(50);
+  if(error){alert('Could not load your chats: '+friendlyDbError(error));return;}
+  const rows=(data||[]).map(c=>`<div style="display:flex;align-items:center;gap:6px;padding:8px 0;border-bottom:1px solid var(--b1)">
+      <div style="flex:1;cursor:pointer" data-id="${c.id}" onclick="coachPickChat(this.dataset.id)"><div style="font-size:13px">${escapeHtml(c.title||'Chat')}</div><div style="font-size:11px;color:var(--tx3)">${fmtTime(c.updated_at)}${c.keep?' - kept':''}</div></div>
+      <button class="btn btn-ghost btn-xs" data-id="${c.id}" data-keep="${c.keep?'0':'1'}" onclick="coachKeepChat(this)">${c.keep?'Unkeep':'Keep'}</button>
+      <button class="btn btn-ghost btn-xs" style="color:var(--danger)" data-id="${c.id}" onclick="coachDeleteChat(this.dataset.id)">Delete</button></div>`).join('');
+  showInfo('Your chats',(rows||'<p>No chats yet.</p>')+`<p style="font-size:12px;color:var(--tx3);margin:10px 0">Chats are deleted after 90 days unless you keep them.</p>${rows?'<button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="coachDeleteAll()">Delete all my chats</button>':''}`);
+}
+async function coachPickChat(id){closeModal('info-modal');coachUpdateNotes();await coachLoadChat(id);coachRender();}
+async function coachKeepChat(btn){
+  const {error}=await sb.from('coach_chats').update({keep:btn.dataset.keep==='1'}).eq('id',btn.dataset.id);
+  if(error){alert('Could not save that: '+friendlyDbError(error));return;}
+  coachShowChats();
+}
+async function coachDeleteChat(id){
+  if(!confirm('Delete this chat for good?'))return;
+  const {error}=await sb.from('coach_chats').delete().eq('id',id);
+  if(error){alert('Could not delete it: '+friendlyDbError(error));return;}
+  coachState.dirty.delete(id);
+  if(coachState.chatId===id){coachState.chatId=null;coachState.messages=[];coachRender();}
+  coachShowChats();
+}
+async function coachDeleteAll(){
+  if(!confirm('Delete ALL your chats with the coach for good?'))return;
+  const {error}=await sb.from('coach_chats').delete().eq('user_id',CU.user_id);
+  if(error){alert('Could not delete them: '+friendlyDbError(error));return;}
+  coachState={chatId:null,messages:[],sending:false,dirty:new Set()};coachRender();closeModal('info-modal');
+}
+// Profile > Your Coach: the banter setting, what the coach remembers, and coach care (C6, C7, C9)
+function coachProfileHtml(){
+  if(!coachOn())return'';
+  setTimeout(coachLoadNotes,0);
+  const b=CU.coach_banter||'';
+  return`<div style="font-size:13px;font-weight:600;margin:16px 0 6px">Coach chat</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;margin-bottom:8px"><span>Banter</span>
+      <select class="fsel" style="width:auto" onchange="saveCoachBanter(this.value)"><option value="" ${!b?'selected':''}>From my style (${escapeHtml(coachBanterDefault(CU))})</option>${Object.entries(COACH_BANTER).map(([k,l])=>`<option value="${k}" ${b===k?'selected':''}>${l}</option>`).join('')}</select></div>
+    ${CU.coach_care?`<div class="alert alert-info" style="font-size:12px">Your coach is keeping food talk away from calories and weight loss. <button class="btn btn-ghost btn-xs" onclick="saveCoachCare(false)">Turn this off</button></div>`:''}
+    <div style="font-size:12px;color:var(--tx2);margin:6px 0 4px">What your coach remembers about you:</div>
+    <textarea class="ftarea" id="coach-notes-box" maxlength="800" style="min-height:70px" placeholder="Nothing yet - it fills in after your chats.">Loading...</textarea>
+    <div style="display:flex;gap:8px;margin-top:6px"><button class="btn btn-ghost btn-sm" onclick="saveCoachNotes()">Save notes</button><button class="btn btn-ghost btn-sm" onclick="saveCoachNotes(true)">Clear</button></div>`;
+}
+async function coachLoadNotes(){
+  const el=document.getElementById('coach-notes-box');if(!el)return;
+  const {data}=await sb.from('coach_notes').select('notes').eq('user_id',CU.user_id).maybeSingle();
+  el.value=data?.notes||'';
+}
+async function saveCoachNotes(clear){
+  const el=document.getElementById('coach-notes-box');if(!el)return;
+  if(clear&&!confirm('Clear everything your coach remembers about you?'))return;
+  const notes=clear?'':el.value.trim().slice(0,800);
+  const {error}=await sb.from('coach_notes').upsert({user_id:CU.user_id,notes,updated_at:new Date().toISOString()},{onConflict:'user_id'});
+  if(error){alert('Could not save that: '+friendlyDbError(error));return;}
+  el.value=notes;showInfo('Saved',clear?'<p>Your coach\'s notes are cleared.</p>':'<p>Your coach\'s notes are saved.</p>');
+}
+async function saveCoachBanter(v){
+  const {error}=await sb.from('profiles').update({coach_banter:v||null}).eq('id',CU.user_id);
+  if(error){alert('Could not save that: '+friendlyDbError(error));renderProfile();return;}
+  CU.coach_banter=v||'';
+}
+async function saveCoachCare(on){
+  const {error}=await sb.from('profiles').update({coach_care:!!on}).eq('id',CU.user_id);
+  if(error){alert('Could not save that: '+friendlyDbError(error));return;}
+  CU.coach_care=!!on;renderProfile();renderDashboard();
+}
+// The admin: who has the coach chat, and the chats people shared from a thumbs down
+async function coachAdmin(){
+  const [{data:people},{data:shared}]=await Promise.all([
+    sb.from('profiles').select('id,username,coach_chat').not('username','is',null).order('username'),
+    sb.from('coach_messages').select('chat_id,role,text,rating_note,shared,created_at').order('created_at',{ascending:true}).limit(300)]);
+  const chats=new Map();for(const m of shared||[]){if(!chats.has(m.chat_id))chats.set(m.chat_id,[]);chats.get(m.chat_id).push(m);}
+  for(const [id,list] of chats)if(!list.some(m=>m.shared))chats.delete(id);   // the admin's own chats are not 'shared'
+  showInfo('Coach chat (admin)',`<div style="font-size:13px;font-weight:600;margin-bottom:6px">Who has it</div>${(people||[]).map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0"><span>${escapeHtml(p.username)}</span><button class="btn btn-ghost btn-xs" data-id="${p.id}" data-on="${p.coach_chat?'0':'1'}" onclick="coachAdminSwitch(this)">${p.coach_chat?'On - switch off':'Off - switch on'}</button></div>`).join('')}
+    <div style="font-size:13px;font-weight:600;margin:14px 0 6px">Shared from a thumbs down</div>${chats.size?[...chats.values()].map(list=>`<div style="border:1px solid var(--b1);border-radius:8px;padding:8px;margin-bottom:8px;font-size:12px">${list.map(m=>`<div style="margin:3px 0"><b>${m.role==='user'?'They':'Coach'}:</b> ${escapeHtml(m.text)}${m.rating_note?` <span style="color:var(--warn)">(👎 ${escapeHtml(m.rating_note)})</span>`:''}</div>`).join('')}</div>`).join(''):'<p style="font-size:12px">None shared yet.</p>'}`);
+}
+async function coachAdminSwitch(btn){
+  const {error}=await sb.rpc('admin_set_coach_chat',{p_user:btn.dataset.id,p_on:btn.dataset.on==='1'});
+  if(error){alert('Could not change it: '+friendlyDbError(error));return;}
+  if(btn.dataset.id===CU.user_id)CU.coach_chat=btn.dataset.on==='1';
+  coachAdmin();
+}
+
 async function loadNudges(){
   nudgeData={history:[],freq:CU.nudges_freq||{},lastWeighIn:'',loaded:false};
   const since=addDays(dayKey(new Date()),-90);
@@ -12118,6 +12393,7 @@ function nudgeSettingsHtml(){
     <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:8px"><input type="checkbox" ${all?'checked':''} onchange="saveNudgeFreq('_all',this.checked?'on':'off')"> Coach nudges on</label>
     <div style="${all?'':'opacity:.5;pointer-events:none'}">${Object.entries(NUDGE_KINDS).map(([k,l])=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;font-size:13px"><span>${escapeHtml(l)}</span>
       <select class="fsel" style="width:auto" data-kind="${k}" onchange="saveNudgeFreq(this.dataset.kind,this.value)">${[['on','On'],['weekly','Less often'],['off','Off']].map(([v,t])=>`<option value="${v}" ${(f[k]||'on')===v?'selected':''}>${t}</option>`).join('')}</select></div>`).join('')}</div>
+    ${coachProfileHtml()}
   </div>`;
 }
 async function saveNudgeFreq(kind,value){
@@ -12759,6 +13035,7 @@ function signOut(){
   sheetsSignOut();
   for(const id of ['user-sel','ob-resume-banner']){const el=document.getElementById(id);if(el)el.style.display='none';}
   stopGenPoll();genRun=null;
+  coachState={chatId:null,messages:[],sending:false,dirty:new Set()};document.getElementById('coach-screen')?.remove();
   allUsers=[];lastSeasonWinners=[];wallReportCounts={};myShopRatings={};compMembers=[];compResults=[];
   document.querySelectorAll('#login-screen input').forEach(i=>i.value='');
   showAuthScreen();showAuthView('v-login');
@@ -12995,6 +13272,7 @@ function aiAdminCardHtml(){
   setTimeout(()=>loadAiAdminCard().catch(e=>{const el=document.getElementById('ai-admin-body');if(el)el.textContent='Could not load: '+e.message;}),0);
   return`<div class="card" id="ai-admin-card">
       <div class="card-lbl">AI Spending (admin)</div>
+      <button class="btn btn-ghost btn-sm" style="margin-bottom:8px" onclick="coachAdmin()">Coach chat: who has it, shared feedback</button>
       <div id="ai-admin-body" style="font-size:13px;color:var(--tx2)">Loading...</div>
     </div>`;
 }

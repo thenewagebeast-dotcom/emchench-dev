@@ -3029,7 +3029,7 @@ function renderDashboard(){
 
   // Alerts
   const aEl=document.getElementById('dash-alerts');
-  aEl.innerHTML=nudgeCardHtml();
+  aEl.innerHTML=nudgeCardHtml()+coachButtonHtml();
   if(!userMealPlan&&!userTrainingPlan)aEl.innerHTML+=`<div class="alert alert-info">👋 Welcome! Hit "Generate Plan" to get your personalised programme.</div>`;
   aEl.innerHTML+=genAlertHtml();
   aEl.innerHTML+=recompNudgeHtml();
@@ -9837,7 +9837,7 @@ const NUDGE_HYPE={
 const EATING_DISORDER_RE=/eating disorder|anorexi|bulimi|binge|arfid|orthorexi|disordered eating/i;
 function hypeGoalWords(u=CU){
   const gi=goalWeightInfo(u);
-  if((gi&&gi.belowHealthy)||EATING_DISORDER_RE.test(String(u?.health_conditions||'')))return'safe';
+  if((gi&&gi.belowHealthy)||u?.coach_care||EATING_DISORDER_RE.test(String(u?.health_conditions||'')))return'safe';
   const g=String(u?.goal||'');
   if(g==='cut')return'cut';
   if(['bulk','recomp','strength'].includes(g))return'gains';
@@ -9972,6 +9972,8 @@ function sessionEase(sidx){
 const EASE_NOTE='Last time felt too hard - start about 5-10% lighter than last time.';
 // Profile > Coach Nudges (filled in by the layer)
 function nudgeSettingsHtml(){return'';}
+// Ask your coach: the dashboard button (the layer has the chat - new backend only)
+function coachButtonHtml(){return'';}
 // ---- nudges end ----
 
 // This user's logs, loaded at login and added to as they log. loaded is false
@@ -10869,7 +10871,8 @@ FACTS
 
 SAFETY - these always win
 - Never diagnose and never give medical advice. Pain, illness, medicines and symptoms: be kind, keep it short, and point them to the right help.
-- Chest pain, fainting, severe breathlessness or sudden weakness: tell them to call 999 now. Nothing else first.
+- Chest pain or tightness, fainting, severe breathlessness or sudden weakness HAPPENING NOW (or with sweating, or pain spreading to the arm, jaw or back): tell them to call 999 now. Nothing else first.
+- The same but it has passed: NHS 111 today (111.nhs.uk), no training until they have been checked, and 999 if it comes back.
 - Feeling very unwell, a bad injury or a reaction to a medicine: NHS 111 (111.nhs.uk).
 - Thoughts of suicide or self-harm, or not coping: Samaritans, free on 116 123, any time; 999 if they might act on it. Stay warm, do not lecture.
 - Signs of an eating disorder (not eating, purging, fear of food, wanting to eat far less): Beat (beateatingdisorders.org.uk, 0808 801 0677). Never talk about calories, weight loss or cutting in that conversation.
@@ -10877,6 +10880,7 @@ SAFETY - these always win
 - Injuries: never suggest an exercise that loads an injured area (a bad shoulder means no pressing and no chest flies at all), never one on their avoid list.
 - Food: never suggest a food that breaks their diet or allergies. Never suggest eating below their calorie target's floor, skipping meals to lose faster, or fasting to make up for a meal.
 - Supplements: only what their Supplements tab would allow; anything else, their GP or pharmacist.
+- If the app shows them a HELP CARD (listed in the conversation), keep your reply short and kind, point to that help, and do not add other advice.
 
 WHAT YOU CAN OFFER (buttons the app shows under your reply - each opens one of the app's own features, which runs its own checks)
 - exercise_swap (target: the exact exercise name from their plan), meal_swap (target: the exact meal name from their plan), lighter_week, plan_event (calorie banking for a night out), pause (holiday, illness or injury), weigh_in, injury_guide, log_meals, open_session.
@@ -10895,8 +10899,9 @@ They: "Got a wedding Saturday." You: {"reply":"Nice! Let's plan for it so you ca
 They: "Are you a real person?" You: {"reply":"No - I'm an AI coach built into the app. I know your plan and your logs, but for anything medical a real professional is the right call.","actions":[]}`;
 // The banter setting until they pick one (C7): Hype, Your Mate and Humour start on a bit of banter, the rest straight
 function coachBanterDefault(u=CU){return motStylesOf(u?.mot_style).some(x=>['Hype','Your Mate','Humour'].includes(x))?'A bit of banter':'Keep it straight';}
+const COACH_BANTER={straight:'Keep it straight',some:'A bit of banter',full:'Full gym banter'};
 // Everything the coach may know about this person, as plain lines (cached for the whole chat)
-function coachContextBlock(rapportText=''){
+function coachContextBlock(rapportText='',notes=''){
   const u=CU||{},t=userMealPlan?.meals?.daily_targets||{},today=dayKey(new Date());
   const wk=weekStart(today),days14=addDays(today,-13);
   const logs=(activityLogs.workouts||[]).filter(w=>w.day&&!w.cardio&&!w.extra);
@@ -10910,7 +10915,8 @@ function coachContextBlock(rapportText=''){
   const lines=[
     'ABOUT THIS PERSON (from the app - the only facts you may use)',
     `Name: ${u.username||''}. Voice: ${getStyleVoice(styleLabel())}`,
-    `Banter setting: ${u.coach_banter||coachBanterDefault(u)}.`,
+    `Banter setting: ${COACH_BANTER[u.coach_banter]||coachBanterDefault(u)}.`,
+    u.coach_care?'COACH CARE IS ON: never talk about calories, weight loss, cutting or their weight. Food talk is about enjoying meals and having energy.':'',
     `Goal: ${u.goal||'not set'}${goalPromptLine(u,'progress')}. Experience: ${u.experience||''}. Training ${u.training_days||'?'} days a week, ${u.training_style==='block'?'progressive block':'same sessions each week'}. Equipment: ${(u.equipment||[]).join(', ')||'not set'}.`,
     `Diet: ${u.dietary_type||'not set'}. Allergies and intolerances: ${(u.allergies||[]).join(', ')||'none'}. Dislikes: ${u.ingredient_dislikes||'none'}.`,
     `Injuries: ${u.injuries||'none'}. Exercises to avoid: ${u.avoided_exercises||'none'}.`,
@@ -10921,19 +10927,24 @@ function coachContextBlock(rapportText=''){
     `Last 14 days: ${recent.length} sessions logged${rated.length?', average rating '+(rated.reduce((n,w)=>n+w.rating,0)/rated.length).toFixed(1)+' of 5':''}${recent.some(w=>w.stop)?', stopped early: '+recent.filter(w=>w.stop).map(w=>w.stop).join(', '):''}; meals logged on ${meals14} of 14 days.`,
     `Streaks: ${userPoints.current_streak||0} weeks of sessions, ${userPoints.meal_streak||0} days of meals, ${userPoints.water_streak||0} days of water.`,
     pause?`Paused (${pause.reason}) until ${pause.end}.`:'Not paused.',
-    rapportText?'What they told us about themselves:\n'+rapportText:''
+    rapportText?'What they told us about themselves:\n'+rapportText:'',
+    notes?'Your notes from earlier chats:\n'+notes:''
   ];
   return lines.filter(Boolean).join('\n');
 }
 // One coach reply. history = [{role:'user'|'assistant', content:'...'}], the last one theirs.
-function coachRequestBody(history,effort='low',rapportText=''){
-  return{model:AI_MODEL_TRAINING,max_tokens:4000,fallbacks:'default',output_config:{effort},
-    system:[{type:'text',text:COACH_SYS},{type:'text',text:coachContextBlock(rapportText),cache_control:{type:'ephemeral'}}],
+// signposts: the help cards the app is showing with this reply (coachSignposts), told to the coach after the cached part
+function coachRequestBody(history,effort='low',rapportText='',notes='',signposts=[]){
+  const system=[{type:'text',text:COACH_SYS},{type:'text',text:coachContextBlock(rapportText,notes),cache_control:{type:'ephemeral'}}];
+  if(signposts.length)system.push({type:'text',text:'HELP CARD shown to them with your reply: '+signposts.map(k=>COACH_SIGNPOSTS[k].text).join(' | ')});
+  return{model:AI_MODEL_TRAINING,max_tokens:4000,fallbacks:'default',output_config:{effort},system,
     messages:history.map(m=>({role:m.role,content:String(m.content)}))};
 }
+// Medium effort for the bigger questions (reworking the plan, pain or injury, long messages), low otherwise
+function coachEffort(text){return/rework|change my (week|plan)|pain|hurt|injur|ache|sore|swollen|week/i.test(String(text))||String(text).length>300?'medium':'low';}
 // After a chat: the short notes the coach keeps about them (a cheaper model)
 function coachNotesRequest(history,oldNotes=''){
-  return callAIBody(`Update the coach's notes about this person from the chat below. Keep what is still true from the old notes, add what is worth remembering (preferences, routines, what helps them, wins, what is coming up). At most 800 characters, short plain sentences. Never a diagnosis, never anything about health conditions or medicines, never a weight or calorie number.
+  return callAIBody(`Update the coach's notes about this person from the chat below. Keep what is still true from the old notes, and add only what THEY said or chose that is worth remembering: preferences, routines, what helps them, what gets in the way, wins, what is coming up. The coach's own suggestions are not facts - never write that something was swapped, changed or done unless they said they did it. Never anything about health, symptoms, pain, injuries, illness, medicines or mood (those are kept elsewhere, by them). Never a weight or calorie number, and never their name. At most 800 characters, short plain sentences.
 
 OLD NOTES:
 ${oldNotes||'(none yet)'}
@@ -10944,16 +10955,58 @@ ${history.map(m=>(m.role==='user'?'They: ':'Coach: ')+m.content).join('\n')}
 Answer with the new notes only.`,'You keep short, kind, factual notes for a fitness coach.',1500,AI_MODEL,'low');
 }
 // The second safety check on a risky reply (a cheaper model): pass, or the problem
-function coachSafetyRequest(question,reply){
-  return callAIBody(`A fitness app's AI coach is about to send this reply. Check it against the rules. Fail it if it: gives medical advice or a diagnosis; misses a needed signpost (999 for chest pain, fainting or severe breathlessness; Samaritans 116 123 for suicide or self-harm; Beat for eating-disorder signs; a pharmacist or GP for medicines); suggests eating very little, skipping meals or fasting to lose weight; comments on their body or weight; or pushes through pain.
+// recent = the last few messages [{role, content}] before the reply
+function coachSafetyRequest(recent,reply){
+  return callAIBody(`A fitness app's AI coach is about to send this reply. Check it against the rules, reading the whole conversation (earlier messages count). Fail it if it: gives medical advice or a diagnosis; misses a needed signpost (999 for chest pain or tightness, fainting or severe breathlessness happening now - NHS 111 if it has passed; Samaritans 116 123 for suicide or self-harm; Beat for eating-disorder signs; a pharmacist or GP for medicines); suggests eating very little, skipping meals or fasting to lose weight; comments on their body or weight; or tells them to push through pain.
 
-THEIR MESSAGE:
-${question}
+THE CONVERSATION:
+${(Array.isArray(recent)?recent:[{role:'user',content:String(recent)}]).map(m=>(m.role==='user'?'They: ':'Coach: ')+m.content).join('\n')}
 
 THE REPLY:
 ${reply}
 
 Answer JSON only: {"ok":true} or {"ok":false,"problem":"..."}`,'You check replies for safety. Be strict.',1500,AI_MODEL,'low');
+}
+// Layer 1 (spec section 7): fixed help cards, found by words in THEIR message, shown above the coach's reply every time
+const COACH_SIGNPOSTS={
+  emergency:{re:/chest (pain|tight|pressure)|tight(ness)? (in|across) (my )?chest|faint(ed|ing)?\b|passed out|blacked out|can'?t (catch my )?breathe?|struggling to breathe|severe(ly)? breathless|numb(ness)? (in|down) (my )?(arm|face)|face (is )?drooping/i,
+    text:'Chest pain or tightness, fainting or struggling to breathe: if it is happening now, call 999. If it has passed, call NHS 111 today (111.nhs.uk) and don\'t train until you have been checked.'},
+  crisis:{re:/suicid|kill myself|end (it all|my life)|self[- ]?harm|hurt(ing)? myself|cut(ting)? myself|don'?t want to (be here|live|wake up)|no point (in )?(living|going on)|can'?t cope|can'?t go on/i,
+    text:'You\'re not alone. Samaritans are there any time, free, on 116 123 (or jo@samaritans.org). If you might act on these thoughts, call 999.'},
+  eating:{re:/purg|mak(e|ing) myself (sick|throw up|vomit)|(throw(ing)?|threw) up after|starv(e|ing) myself|stop eating|not eat(ing)? (at all|for days)|\bbinge|afraid (of|to) eat|scared (of|to) eat|hate my body|laxative/i,
+    text:'Beat can help with eating worries: beateatingdisorders.org.uk, helpline 0808 801 0677.'},
+  urgent:{re:/allergic reaction|swollen (lips|tongue|face|throat)|anaphyla|broken? (bone|wrist|ankle|leg|arm)|can'?t (put weight|move my)|severe pain/i,
+    text:'Feeling very unwell or badly hurt: call NHS 111 or go to 111.nhs.uk. Call 999 in an emergency.'},
+  medicines:{re:/\b(tablets?|medication|medicines?|meds|pills?|prescri\w*|dose|inhaler|insulin|metformin|statins?|warfarin|antidepressants?|blood thinners?)\b/i,
+    text:'For anything about medicines, a pharmacist or your GP is the right person to ask.'}
+};
+function coachSignposts(text){return Object.keys(COACH_SIGNPOSTS).filter(k=>COACH_SIGNPOSTS[k].re.test(String(text||'')));}
+// The coach's answer, read and checked: the reply text and at most 2 buttons that really fit this person's plan
+function coachReadAnswer(raw,u=CU){
+  let o=null;const t=String(raw||'').replace(/[—–]/g,'-');
+  try{const j=extractJsonText(t);o=j?JSON.parse(j):null;}catch(e){o=null;}
+  const reply=String(o&&typeof o.reply==='string'?o.reply:t.replace(/^\s*\{[\s\S]*$/,'')).trim().slice(0,3000);
+  const exNames=new Set((userTrainingPlan?.sessions||[]).concat(userTrainingPlan?.ab_sessions||[]).flatMap(s=>(s.exercises||[]).map(e=>String(e.name||'').trim())));
+  const mealNames=new Set(Object.values(userMealPlan?.meals?.meals||{}).flat().map(m=>String(m?.name||'').trim()));
+  const seen=new Set(),actions=[];
+  for(const a of Array.isArray(o?.actions)?o.actions:[]){
+    const type=String(a?.type||''),target=String(a?.target||'').trim().slice(0,150);
+    if(!COACH_ACTIONS.includes(type)||seen.has(type+target))continue;
+    if(type==='exercise_swap'&&!exNames.has(target))continue;
+    if(type==='meal_swap'&&!mealNames.has(target))continue;
+    seen.add(type+target);actions.push(target&&(type==='exercise_swap'||type==='meal_swap')?{type,target}:{type});
+    if(actions.length===2)break;
+  }
+  return{reply,actions};
+}
+// Layer 3 (C8): the second check only for risky ones - a help card was shown, or the reply touches pain, medicines,
+// calories, skipping or fasting, weight or mood
+function coachRisky(question,reply,signposts=[]){
+  return signposts.length>0||/\b(pain\w*|hurts?|hurting|injur\w*|aches?|achy|sore|medic\w*|tablets?|pills?|dose|calori\w*|kcal|skip\w*|fast|fasting|weight|starv\w*|mood|depress\w*|anxi\w*|cope|coping)\b|feeling low/i.test(String(question)+' '+String(reply));
+}
+// What goes out instead when the second check fails
+function coachFallbackReply(signposts=[]){
+  return'I\'d rather not guess on this one.'+(signposts.length?' '+signposts.map(k=>COACH_SIGNPOSTS[k].text).join(' '):' For anything about your health, your GP or a pharmacist is the right person - and I\'m here for the training and food side.');
 }
 // ---- coach chat end ----
 
