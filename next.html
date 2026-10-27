@@ -13277,10 +13277,11 @@ const AI_FEATURE_LABELS={meal_swap_names:'Meal swap - choices',meal_swap_recipe:
   weigh_in_review:'Weigh-in review',event_bank:'Calorie banking',plan_generation:'Plan generation',exercise_guide:'Exercise guide'};
 function aiAdminCardHtml(){
   if(!CU?.is_admin)return'';
+  // Ask your coach: its own card, so it is easy to find
+  const coachCard=`<div class="card"><div class="card-lbl">Coach chat (admin)</div><div style="font-size:13px;color:var(--tx2);line-height:1.5;margin-bottom:10px">Switch the AI coach chat on or off for each person, and read the chats people shared from a thumbs down.</div><button class="btn btn-sm" onclick="coachAdmin()">Who has it, and shared feedback</button></div>`;
   setTimeout(()=>loadAiAdminCard().catch(e=>{const el=document.getElementById('ai-admin-body');if(el)el.textContent='Could not load: '+e.message;}),0);
-  return`<div class="card" id="ai-admin-card">
+  return coachCard+`<div class="card" id="ai-admin-card">
       <div class="card-lbl">AI Spending (admin)</div>
-      <button class="btn btn-ghost btn-sm" style="margin-bottom:8px" onclick="coachAdmin()">Coach chat: who has it, shared feedback</button>
       <div id="ai-admin-body" style="font-size:13px;color:var(--tx2)">Loading...</div>
     </div>`;
 }
