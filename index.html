@@ -10874,7 +10874,8 @@ SAFETY - these always win
 - Chest pain or tightness, fainting, severe breathlessness or sudden weakness HAPPENING NOW (or with sweating, or pain spreading to the arm, jaw or back): tell them to call 999 now. Nothing else first.
 - The same but it has passed: NHS 111 today (111.nhs.uk), no training until they have been checked, and 999 if it comes back.
 - Feeling very unwell, a bad injury or a reaction to a medicine: NHS 111 (111.nhs.uk).
-- Thoughts of suicide or self-harm, or not coping: Samaritans, free on 116 123, any time; 999 if they might act on it. Stay warm, do not lecture.
+- Thoughts of suicide or self-harm: Samaritans, free on 116 123, any time; 999 if they might act on it. Stay warm, do not lecture.
+- Read the context. A hard session or a busy week ("I can't cope with 4 sessions", "this week is killing me") is normal chat - help with the plan. Low or hopeless things they say about THEMSELVES ("I can't cope any more", "I'm worthless", "what's the point of me") are different: ask gently how they are, and if it sounds serious show the Samaritans card (help: crisis).
 - Signs of an eating disorder (not eating, purging, fear of food, wanting to eat far less): Beat (beateatingdisorders.org.uk, 0808 801 0677). Never talk about calories, weight loss or cutting in that conversation.
 - Medicines and supplements with medicines: a pharmacist or their GP.
 - Injuries: never suggest an exercise that loads an injured area (a bad shoulder means no pressing and no chest flies at all), never one on their avoid list.
@@ -10887,8 +10888,9 @@ WHAT YOU CAN OFFER (buttons the app shows under your reply - each opens one of t
 - At most 2, only when they help. "Rework my week" = explain what you would change, then offer the matching buttons; a whole new plan is their Generate Plan button.
 
 ANSWER FORMAT - JSON only, nothing before or after:
-{"reply":"what you say to them","actions":[{"type":"exercise_swap","target":"Barbell Bench Press"}]}
+{"reply":"what you say to them","actions":[{"type":"exercise_swap","target":"Barbell Bench Press"}],"help":[]}
 Use "actions":[] when there is nothing to offer.
+"help" shows the app's help cards with your reply - only when the conversation shows they need one: "crisis" (Samaritans), "emergency" (999 / NHS 111 for chest pain, fainting, breathing), "eating" (Beat), "urgent" (NHS 111), "medicines" (a pharmacist or GP). Usually [].
 
 EXAMPLES (the voice changes with their style; the rules never do)
 They: "Coffee before training?" You: {"reply":"Yes, if it suits you - a coffee 30 to 60 minutes before can help you feel sharper. Not too late in the day if you train in the evening, so it doesn't wreck your sleep.","actions":[]}
@@ -10957,7 +10959,7 @@ Answer with the new notes only.`,'You keep short, kind, factual notes for a fitn
 // The second safety check on a risky reply (a cheaper model): pass, or the problem
 // recent = the last few messages [{role, content}] before the reply
 function coachSafetyRequest(recent,reply){
-  return callAIBody(`A fitness app's AI coach is about to send this reply. Check it against the rules, reading the whole conversation (earlier messages count). Fail it if it: gives medical advice or a diagnosis; misses a needed signpost (999 for chest pain or tightness, fainting or severe breathlessness happening now - NHS 111 if it has passed; Samaritans 116 123 for suicide or self-harm; Beat for eating-disorder signs; a pharmacist or GP for medicines); suggests eating very little, skipping meals or fasting to lose weight; comments on their body or weight; or tells them to push through pain.
+  return callAIBody(`A fitness app's AI coach is about to send this reply. Check it against the rules, reading the whole conversation (earlier messages count). Fail it if it: gives medical advice or a diagnosis; misses a needed signpost (999 for chest pain or tightness, fainting or severe breathlessness happening now - NHS 111 if it has passed; Samaritans 116 123 for suicide, self-harm, or serious low or hopeless things they say about themselves - but a hard session or a busy week is normal chat and needs no signpost; Beat for eating-disorder signs; a pharmacist or GP for medicines); suggests eating very little, skipping meals or fasting to lose weight; comments on their body or weight; or tells them to push through pain.
 
 THE CONVERSATION:
 ${(Array.isArray(recent)?recent:[{role:'user',content:String(recent)}]).map(m=>(m.role==='user'?'They: ':'Coach: ')+m.content).join('\n')}
@@ -10971,7 +10973,7 @@ Answer JSON only: {"ok":true} or {"ok":false,"problem":"..."}`,'You check replie
 const COACH_SIGNPOSTS={
   emergency:{re:/chest (pain|tight|pressure)|tight(ness)? (in|across) (my )?chest|faint(ed|ing)?\b|passed out|blacked out|can'?t (catch my )?breathe?|struggling to breathe|severe(ly)? breathless|numb(ness)? (in|down) (my )?(arm|face)|face (is )?drooping/i,
     text:'Chest pain or tightness, fainting or struggling to breathe: if it is happening now, call 999. If it has passed, call NHS 111 today (111.nhs.uk) and don\'t train until you have been checked.'},
-  crisis:{re:/suicid|kill myself|end (it all|my life)|self[- ]?harm|hurt(ing)? myself|cut(ting)? myself|don'?t want to (be here|live|wake up)|no point (in )?(living|going on)|can'?t cope|can'?t go on/i,
+  crisis:{re:/suicid|kill myself|end (it all|my life)|self[- ]?harm|hurt(ing)? myself|cut(ting)? myself|don'?t want to (be here|live|wake up)|no point (in )?(living|being alive)/i,
     text:'You\'re not alone. Samaritans are there any time, free, on 116 123 (or jo@samaritans.org). If you might act on these thoughts, call 999.'},
   eating:{re:/purg|mak(e|ing) myself (sick|throw up|vomit)|(throw(ing)?|threw) up after|starv(e|ing) myself|stop eating|not eat(ing)? (at all|for days)|\bbinge|afraid (of|to) eat|scared (of|to) eat|hate my body|laxative/i,
     text:'Beat can help with eating worries: beateatingdisorders.org.uk, helpline 0808 801 0677.'},
@@ -10997,12 +10999,16 @@ function coachReadAnswer(raw,u=CU){
     seen.add(type+target);actions.push(target&&(type==='exercise_swap'||type==='meal_swap')?{type,target}:{type});
     if(actions.length===2)break;
   }
-  return{reply,actions};
+  // Help cards the coach asked for from the context (Dom, 27 Oct 2026) - only the app's own cards
+  const help=[...new Set((Array.isArray(o?.help)?o.help:[]).map(String).filter(k=>COACH_SIGNPOSTS[k]))];
+  return{reply,actions,help};
 }
+// Low or hopeless words that need the context read (not a card by themselves): the reply gets the second check
+const COACH_MOOD_RE=/can'?t cope|can'?t go on|cannot cope|hopeless|worthless|hate myself|i'?m (useless|a failure|a burden)|what'?s the point|no one cares|nobody cares|give up on (myself|everything|life)|so (low|down)|depressed|depression|keep crying|falling apart/i;
 // Layer 3 (C8): the second check only for risky ones - a help card was shown, or the reply touches pain, medicines,
 // calories, skipping or fasting, weight or mood
 function coachRisky(question,reply,signposts=[]){
-  return signposts.length>0||/\b(pain\w*|hurts?|hurting|injur\w*|aches?|achy|sore|medic\w*|tablets?|pills?|dose|calori\w*|kcal|skip\w*|fast|fasting|weight|starv\w*|mood|depress\w*|anxi\w*|cope|coping)\b|feeling low/i.test(String(question)+' '+String(reply));
+  return signposts.length>0||COACH_MOOD_RE.test(String(question))||/\b(pain\w*|hurts?|hurting|injur\w*|aches?|achy|sore|medic\w*|tablets?|pills?|dose|calori\w*|kcal|skip\w*|fast|fasting|weight|starv\w*|mood|depress\w*|anxi\w*|cope|coping)\b|feeling low/i.test(String(question)+' '+String(reply));
 }
 // What goes out instead when the second check fails
 function coachFallbackReply(signposts=[]){
