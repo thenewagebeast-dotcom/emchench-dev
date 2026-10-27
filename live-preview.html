@@ -8849,11 +8849,13 @@ async function postWall(){
 // Which automatic posts a person shares (training, wins, plan, body, life). Here everything is
 // posted as before; the new backend's layer replaces this with the person's own choices.
 function wallShareAllows(group){return true;}
+// Returns true if it was posted
 async function postAutoWall(msg,group){
-  if(group&&!wallShareAllows(group))return;
+  if(group&&!wallShareAllows(group))return false;
   const p={post_id:'wp_'+Date.now(),user_id:'system',username:'E=MC-HENCH',posted_at:new Date().toISOString(),message:msg,post_type:'auto'};
   wallPosts.push(p);
   await dbAppend('wall_posts',[p.post_id,p.user_id,p.username,p.posted_at,p.message,p.post_type,'']);
+  return true;
 }
 
 function fmtTime(ts){try{const d=new Date(ts);return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});}catch(e){return ts;}}
@@ -9843,7 +9845,7 @@ const NUDGE_TRIGGERS={
   missed:c=>{
     if(!c.logsLoaded||!c.planStart||!c.trainingDays)return null;
     const last=c.workouts.filter(w=>w.day&&!w.cardio&&!w.extra).map(w=>w.day).sort().pop()||'';
-    const pauseEnd=c.pauses.map(p=>p.end).filter(e=>e&&e<c.today).sort().pop()||'';
+    const pauseEnd=c.pauses.filter(p=>p.status!=='cancelled').map(p=>p.end).filter(e=>e&&e<c.today).sort().pop()||'';
     const from=[last,c.planStart,pauseEnd].sort().pop();
     if(!from||from>=c.today)return null;
     const pref=c.preferredDays&&c.preferredDays.length===c.trainingDays?c.preferredDays:null;
@@ -9885,7 +9887,8 @@ const NUDGE_TRIGGERS={
 // How long before each kind can come back (days); the others go by their own ref (the day, week, session or milestone)
 const NUDGE_WAIT={missed:7,meals:7};
 function pickNudge(c){
-  if(!c.hasPlan||c.paused||c.eventDay||nudgeFreq(c.freq,'')==='off')return null;
+  // Without the logs a pause cannot be seen, so no nudge at all (audit B11)
+  if(!c.logsLoaded||!c.hasPlan||c.paused||c.eventDay||nudgeFreq(c.freq,'')==='off')return null;
   const today=c.history.filter(h=>h.shown_on===c.today);
   const due=kind=>{const t=NUDGE_TRIGGERS[kind](c);return t?{kind,...t}:null;};
   // One a day: today's card stays until it is answered; weigh-in "Later" comes back once after 6pm
@@ -9933,7 +9936,7 @@ const NUDGE_LINES={
 };
 // Hype's goal words (Dom, 27 Oct 2026), held back where they could hurt (section 6 safeguard)
 const NUDGE_HYPE={
-  meals:{cut:'Bro, the food log\'s gone quiet! Shredded is made in the kitchen, {c} 🍗',gains:'{c}, the food log\'s gone quiet! Gains are made in the kitchen too 🍗',safe:'{c}, the food log\'s gone quiet! How\'s the food going? 🍗'},
+  meals:{cut:'{c}, the food log\'s gone quiet! Shredded is made in the kitchen 🍗',gains:'{c}, the food log\'s gone quiet! Gains are made in the kitchen too 🍗',safe:'{c}, the food log\'s gone quiet! How\'s the food going? 🍗'},
   celebrate:{cut:['{what} {c2}. Built different. Shredded season is LOCKED IN 🔥','{what} {c}. Beach body loading... no days off 🔥'],gains:['{what} {c} - those gains are getting SICK. Light work 💪'],safe:['{what}. Absolute unit of an effort. LET\'S GOOO 🔥']}
 };
 const EATING_DISORDER_RE=/eating disorder|anorexi|bulimi|binge|arfid|orthorexi|disordered eating/i;
@@ -10006,7 +10009,7 @@ async function answerNudge(a){
   const n=currentNudge;if(!n)return;
   const today=dayKey(new Date());
   const row=[...nudgeData.history].reverse().find(h=>h.shown_on===today&&h.kind===n.kind&&h.ref===n.ref);
-  const answer=n.kind==='weighin'&&a==='later'&&row?.answer==='later'?'later2':a;
+  const answer=n.kind==='weighin'&&a==='later'&&(row?.answer==='later'||new Date().getHours()>=18)?'later2':a;
   if(row){row.answer=answer;nudgeSave(row);}
   renderDashboard();
   if(n.kind==='ask'){
@@ -10029,7 +10032,7 @@ async function answerNudge(a){
     case'log':goTab('meallog');break;
     case'struggling':goTab('meals');info('Not getting on with a meal?','<p>Tap Swap Meal on it and we\'ll write you a different one.</p>');break;
     case'event':openModal('event-modal');break;
-    case'share':postAutoWall('🏆 '+CU.username+': '+NUDGE_STREAK_WHAT[n.type](n.n)+'!');info('Shared','<p>Posted to the Wall.</p>');break;
+    case'share':if(await postAutoWall('🏆 '+CU.username+': '+NUDGE_STREAK_WHAT[n.type](n.n)+'!'))info('Shared','<p>Posted to the Wall.</p>');else info('Not shared','<p>That could not be posted just now - try again later from the Wall.</p>');break;
   }
 }
 // "Ill or away" / "Holiday": the Pause form, with the reason picked
@@ -11563,7 +11566,12 @@ async function loginUser(u){
     if(guide)renderHowToGuideText(guide);
     hideLoad();
     if(pendingDeepLink){const t=pendingDeepLink;pendingDeepLink='';goTab(t);}else goTab('dashboard');
-  }catch(e){hideLoad();console.error('Login:',e);alert('Could not load your account: '+e.message);}
+  }catch(e){
+    hideLoad();console.error('Login:',e);
+    alert('Could not load your account: '+e.message+'\n\nCheck your connection and refresh the page. You can log out from Profile.');
+    // Profile has Log out, so the person is never stuck on a blank screen (audit B18)
+    try{renderProfile();goTab('profile');}catch(_){}
+  }
 }
 
 // ============================================================
@@ -11869,13 +11877,15 @@ async function postWall(){
 // A post with a group goes out only if the person shares that group (Profile > The Wall);
 // one without a group (a shop added to the list) is a notice for everyone.
 function wallShareAllows(group){return !!CU?.wall_share?.[group];}
+// Returns true if it was posted
 async function postAutoWall(msg,group){
-  if(group&&!wallShareAllows(group))return;
+  if(group&&!wallShareAllows(group))return false;
   try{
     const {data,error}=await sb.from('wall_posts').insert({message:msg,post_type:'auto'}).select(WALL_COLS).single();
     if(error)throw error;
     wallPosts.push(wallRowToPost(data));
-  }catch(e){console.error('Auto wall post:',e);}
+    return true;
+  }catch(e){console.error('Auto wall post:',e);return false;}
 }
 // Profile > The Wall (WALL-CHOICES-SPEC-2026-10-24.md). Each switch saves straight away.
 const WALL_GROUPS=[
@@ -11948,8 +11958,7 @@ function nudgeShown(n){
     .then(({error})=>{if(error)console.error('Nudge:',error.message);});
 }
 async function nudgeSave(row){
-  const {error}=await sb.from('nudges').update({answer:row.answer,answered_at:new Date().toISOString()})
-    .eq('user_id',CU.user_id).eq('kind',row.kind).eq('ref',row.ref).eq('shown_on',row.shown_on);
+  const {error}=await sb.from('nudges').upsert({kind:row.kind,ref:row.ref,shown_on:row.shown_on,answer:row.answer,answered_at:new Date().toISOString()},{onConflict:'user_id,kind,ref,shown_on'});
   if(error)console.error('Nudge answer:',error.message);
 }
 async function nudgeFreqSave(freq){
@@ -12343,7 +12352,8 @@ function compResultHtml(c,r,mine){
   if(!r)return`<div style="font-size:12px;color:var(--tx3);margin-top:6px">${mine?'You have':escapeHtml(nameOf(c._other))+' has'} not entered a result yet</div>`;
   const who=mine?'You':escapeHtml(nameOf(r.user_id));
   const d=r.detail||{};
-  const lift=d.weight_kg?` (${d.weight_kg} kg x ${d.reps})`:'';
+  // Typed by the other person - escaped, and only shown where a lift belongs (audit A5)
+  const lift=['p4p','rep_test','improved'].includes(c.challenge_type)&&d.weight_kg?` (${escapeHtml(String(d.weight_kg))} kg x ${escapeHtml(String(d.reps||''))})`:'';
   let status='';
   if(c.type==='h2h')status=r.disputed_by?` · <span style="color:var(--warn)">disputed${r.dispute_note?': '+escapeHtml(r.dispute_note):''}</span>`:r.confirmed_by?' · <span style="color:var(--ok)">confirmed ✓</span>':' · waiting to be confirmed';
   const video=!r.video_path?' · <span style="color:var(--warn)">no video yet</span>'
@@ -12658,7 +12668,7 @@ async function doForgot(){
     const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
     if(error&&/rate|too many|fetch|network/i.test(String(error.message))){authMsg('fp-msg',authFriendly(error,''));return;}
     // Always the same answer, whether or not the email has an account
-    authMsg('fp-msg','If that email has an account, a link is on its way. Check your inbox and junk folder.','ok');
+    authMsg('fp-msg','If that email has an account, a link is on its way - check your inbox and junk folder. Nothing after 10 minutes? Ask Dom to reset your password for you.','ok');
   }finally{authBusy('fp-btn',false);}
 }
 async function doReset(){
