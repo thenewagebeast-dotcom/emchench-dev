@@ -12270,7 +12270,7 @@ function coachMealSwap(name){
   let cat='',r=null;
   for(const [c,list] of Object.entries(userMealPlan?.meals?.meals||{})){const hit=(list||[]).find(x=>x?.name===name);if(hit){cat=c;r=hit;break;}}
   if(!r){goTab('meals');return;}
-  showInfo('Swap '+name,`<div class="meal-det"><p style="font-size:13px;color:var(--tx2);margin-bottom:10px">Two options that fit the same calories and your food rules - choose one and it replaces ${escapeHtml(name)} everywhere in your plan.</p>
+  showInfo('Swap '+name,`<div class="meal-det" style="display:block;background:none;border:none;padding:0;margin:0"><p style="font-size:13px;color:var(--tx2);margin-bottom:10px">Two options that fit the same calories and your food rules - choose one and it replaces ${escapeHtml(name)} everywhere in your plan.</p>
     <div class="meal-swap-result" style="display:block"></div>
     <button id="coach-swap-go" style="display:none" data-meal-name="${escapeHtml(name)}" data-meal-cat="${escapeHtml(cat)}" data-meal-cals="${parseInt(r.calories)||0}" data-meal-protein="${parseInt(r.protein)||0}"></button></div>`);
   openMealSwap(document.getElementById('coach-swap-go'));
