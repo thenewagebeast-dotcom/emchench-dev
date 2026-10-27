@@ -12341,9 +12341,14 @@ async function loadCompetitions(){
   if(err)throw new Error(friendlyDbError(err));
   if(CU?.user_id!==myId)return;
   compMembers=m.data||[];compResults=r.data||[];
-  // Yours, plus (for the admin) any disputed challenge waiting for a decision
-  competitions=(c.data||[]).filter(x=>x.created_by===myId||compMembers.some(mm=>mm.competition_id===x.id&&mm.user_id===myId)||(CU.is_admin&&x.status==='disputed'));
+  // Yours, plus (for the admin) any disputed challenge, and solo custom / strength ones with a result to check (047)
+  competitions=(c.data||[]).filter(x=>x.created_by===myId||compMembers.some(mm=>mm.competition_id===x.id&&mm.user_id===myId)||(CU.is_admin&&(x.status==='disputed'||soloAwaitingAdmin(x))));
   cleanOldVideos();
+}
+// A solo custom or strength challenge whose time is up and has a video - only the admin can pay it (047, audit A4)
+function soloAwaitingAdmin(c){
+  return c.type==='solo'&&c.status==='active'&&!LOG_CHALLENGES.includes(c.challenge_type)&&new Date(c.ends_at)<=new Date()
+    &&compResults.some(r=>r.competition_id===c.id&&r.video_path);
 }
 function compScoreText(c,score){
   const n=Number(score);
@@ -12418,6 +12423,12 @@ function compCardHtml(c){
       if(ended)actions+=btn('Finish and see who won','settleComp');
     }
     if(c.created_by===me&&!compResults.some(r=>r.competition_id===c.id))actions+=btn(neverAccepted?'Close it':'Cancel challenge','cancelComp');
+    // The admin checks the video of a solo custom or strength challenge, then pays it or not
+    if(CU.is_admin&&soloAwaitingAdmin(c)){
+      if(c.created_by!==me){const r=res(c.created_by);if(r)lines.push(compResultHtml(c,r,false));}
+      lines.push(`<div style="font-size:12px;color:var(--warn);margin-top:6px">Solo challenge - watch the video, then decide.</div>`);
+      actions+=btn('Approve - pay the points','adminSettleComp',`data-winner="${c.created_by}"`)+btn('Not approved','adminSettleComp','data-winner=""');
+    }
   }else if(c.status==='disputed'){
     lines.push(`<div style="font-size:12px;color:var(--warn);margin-top:6px">Disputed - waiting for the admin to decide.</div>`);
     for(const m of mem){const r=res(m.user_id);if(r)lines.push(compResultHtml(c,r,m.user_id===me));}
@@ -12555,7 +12566,7 @@ async function reviewCompResult(btn,ok){
 }
 const SETTLE_MESSAGES={not_finished:'Not finished yet - try again when the time is up.',not_accepted:'The other person has not accepted yet.',
   waiting_for_results:'Waiting for both results.',waiting_for_video:'Waiting for the video proof.',waiting_for_confirmation:'Waiting for each result to be confirmed by the other person.',
-  disputed:'This one is disputed - the admin will decide.',already_settled:'Already finished.',not_active:'This challenge is closed.'};
+  disputed:'This one is disputed - the admin will decide.',waiting_for_admin:'Sent to Dom to check your video - your points come once it is approved.',already_settled:'Already finished.',not_active:'This challenge is closed.'};
 async function settleComp(btn){
   const c=compById(btn.dataset.compId);if(!c)return;
   showLoad('Checking','Working out who won...');
