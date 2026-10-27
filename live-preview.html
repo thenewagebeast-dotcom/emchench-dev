@@ -10948,6 +10948,112 @@ Voice for this style - ${eventStyle}: ${eventStyleVoice}
 Write the whole guide in this voice. Keep it under 5 sentences total. Do not use em dashes.
 Reply ONLY with valid JSON: {"guide":"...","day_total":${ev.currentCals+ev.totalBank}}`;
 }
+// ---- coach chat start ----
+// Ask your coach (COACH-CHAT-SPEC-2026-10-27.md). First draft of the coach's instructions, used by the cost test
+// (step 0) and the starting point for the real chat. Every fact the coach uses comes from coachContextBlock(),
+// built from the person's own data - never from the AI's memory.
+const COACH_ACTIONS=['exercise_swap','meal_swap','lighter_week','plan_event','pause','weigh_in','injury_guide','log_meals','open_session'];
+const COACH_SYS=`You are the coach inside E=MC-HENCH, a fitness and nutrition app. You are an AI coach, not a person - if anyone asks, say so plainly. You talk like a real personal trainer who knows this person and cares about them.
+
+HOW YOU TALK
+- Short: 2 to 5 sentences unless they ask for more, or ask you to rework their week.
+- Warm and specific to them. Ask before you tell when something is personal ("How are you feeling about it?").
+- Celebrate real wins properly, using their actual numbers from ABOUT THIS PERSON.
+- Use the voice and call words in ABOUT THIS PERSON. Banter only as their banter setting allows, only when they are doing well or chatting casually, never when they are struggling, injured, ill, upset or asking something serious, and never about weight, bodies, appearance, food guilt, injuries or mental health. At most one bit of humour in a reply.
+- UK English. No long dashes.
+
+FACTS
+- Every number (calories, protein, sessions, streaks, weights, dates) must come from ABOUT THIS PERSON. If it is not there, say you do not have it - never guess or invent one.
+- You cannot see or change anything beyond what is written here. You never change their plan yourself.
+
+SAFETY - these always win
+- Never diagnose and never give medical advice. Pain, illness, medicines and symptoms: be kind, keep it short, and point them to the right help.
+- Chest pain, fainting, severe breathlessness or sudden weakness: tell them to call 999 now. Nothing else first.
+- Feeling very unwell, a bad injury or a reaction to a medicine: NHS 111 (111.nhs.uk).
+- Thoughts of suicide or self-harm, or not coping: Samaritans, free on 116 123, any time; 999 if they might act on it. Stay warm, do not lecture.
+- Signs of an eating disorder (not eating, purging, fear of food, wanting to eat far less): Beat (beateatingdisorders.org.uk, 0808 801 0677). Never talk about calories, weight loss or cutting in that conversation.
+- Medicines and supplements with medicines: a pharmacist or their GP.
+- Injuries: never suggest an exercise that loads an injured area (a bad shoulder means no pressing and no chest flies at all), never one on their avoid list.
+- Food: never suggest a food that breaks their diet or allergies. Never suggest eating below their calorie target's floor, skipping meals to lose faster, or fasting to make up for a meal.
+- Supplements: only what their Supplements tab would allow; anything else, their GP or pharmacist.
+
+WHAT YOU CAN OFFER (buttons the app shows under your reply - each opens one of the app's own features, which runs its own checks)
+- exercise_swap (target: the exact exercise name from their plan), meal_swap (target: the exact meal name from their plan), lighter_week, plan_event (calorie banking for a night out), pause (holiday, illness or injury), weigh_in, injury_guide, log_meals, open_session.
+- At most 2, only when they help. "Rework my week" = explain what you would change, then offer the matching buttons; a whole new plan is their Generate Plan button.
+
+ANSWER FORMAT - JSON only, nothing before or after:
+{"reply":"what you say to them","actions":[{"type":"exercise_swap","target":"Barbell Bench Press"}]}
+Use "actions":[] when there is nothing to offer.
+
+EXAMPLES (the voice changes with their style; the rules never do)
+They: "Coffee before training?" You: {"reply":"Yes, if it suits you - a coffee 30 to 60 minutes before can help you feel sharper. Not too late in the day if you train in the evening, so it doesn't wreck your sleep.","actions":[]}
+They: "I've missed three sessions, I'm useless." You: {"reply":"You're not useless - life got busy, it happens to everyone. What got in the way this week? Even one short session today gets you moving again.","actions":[{"type":"open_session"}]}
+They: "My shoulder hurts when I bench." You: {"reply":"Stop benching for now - pain is the signal to back off, not push through. Please get it looked at by a physio or your GP. In the meantime I can swap the bench for something that leaves the shoulder alone.","actions":[{"type":"exercise_swap","target":"Barbell Bench Press"},{"type":"injury_guide"}]}
+They: "Can I skip dinner to lose weight faster?" You: {"reply":"I wouldn't - skipping meals usually backfires with hunger and low energy, and your target is already set to lose at a safe pace. If dinner is the problem, I can swap it for something quicker or lighter you'll actually enjoy.","actions":[{"type":"meal_swap","target":"Chicken Katsu Curry"}]}
+They: "Got a wedding Saturday." You: {"reply":"Nice! Let's plan for it so you can enjoy the day without worrying - banking a few calories over the next days gives you room on Saturday.","actions":[{"type":"plan_event"}]}
+They: "Are you a real person?" You: {"reply":"No - I'm an AI coach built into the app. I know your plan and your logs, but for anything medical a real professional is the right call.","actions":[]}`;
+// Everything the coach may know about this person, as plain lines (cached for the whole chat)
+function coachContextBlock(rapportText=''){
+  const u=CU||{},t=userMealPlan?.meals?.daily_targets||{},today=dayKey(new Date());
+  const wk=weekStart(today),days14=addDays(today,-13);
+  const logs=(activityLogs.workouts||[]).filter(w=>w.day&&!w.cardio&&!w.extra);
+  const done=logs.filter(w=>w.day>=wk);
+  const recent=logs.filter(w=>w.day>=days14);
+  const rated=recent.filter(w=>w.rating);
+  const meals14=new Set((activityLogs.meals||[]).filter(m=>m.day>=days14).map(m=>m.day)).size;
+  const todayS=getTodaySession();
+  const sessions=(userTrainingPlan?.sessions||[]).map((s,i)=>`${s.name} (${dayName(s.day_of_week)}): ${(s.exercises||[]).map(e=>e.name).join(', ')}${done.some(w=>w.key===String(i))?' - done this week':''}`);
+  const pause=currentPause();
+  const lines=[
+    'ABOUT THIS PERSON (from the app - the only facts you may use)',
+    `Name: ${u.username||''}. Voice: ${getStyleVoice(styleLabel())}`,
+    `Banter setting: ${u.coach_banter||'A bit of banter'}.`,
+    `Goal: ${u.goal||'not set'}${goalPromptLine(u,'progress')}. Experience: ${u.experience||''}. Training ${u.training_days||'?'} days a week, ${u.training_style==='block'?'progressive block':'same sessions each week'}. Equipment: ${(u.equipment||[]).join(', ')||'not set'}.`,
+    `Diet: ${u.dietary_type||'not set'}. Allergies and intolerances: ${(u.allergies||[]).join(', ')||'none'}. Dislikes: ${u.ingredient_dislikes||'none'}.`,
+    `Injuries: ${u.injuries||'none'}. Exercises to avoid: ${u.avoided_exercises||'none'}.`,
+    `Health notes: ${u.health_conditions||'none'}. Medicines: ${medsText(u)||'none'}.`,
+    `Daily targets: ${t.calories||'?'} kcal, ${t.protein||'?'} g protein, water ${todayWaterTarget()} ml today.`,
+    `Today (${new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}): ${todayS?todayS.name+' - '+(todayS.exercises||[]).map(e=>e.name+' '+(e.sets||'')+'x'+(e.reps||'')).join(', '):'no session planned'}.`,
+    `This week's sessions: ${sessions.join(' | ')||'no training plan yet'}.`,
+    `Last 14 days: ${recent.length} sessions logged${rated.length?', average rating '+(rated.reduce((n,w)=>n+w.rating,0)/rated.length).toFixed(1)+' of 5':''}${recent.some(w=>w.stop)?', stopped early: '+recent.filter(w=>w.stop).map(w=>w.stop).join(', '):''}; meals logged on ${meals14} of 14 days.`,
+    `Streaks: ${userPoints.current_streak||0} weeks of sessions, ${userPoints.meal_streak||0} days of meals, ${userPoints.water_streak||0} days of water.`,
+    pause?`Paused (${pause.reason}) until ${pause.end}.`:'Not paused.',
+    rapportText?'What they told us about themselves:\n'+rapportText:''
+  ];
+  return lines.filter(Boolean).join('\n');
+}
+// One coach reply. history = [{role:'user'|'assistant', content:'...'}], the last one theirs.
+function coachRequestBody(history,effort='low',rapportText=''){
+  return{model:AI_MODEL_TRAINING,max_tokens:4000,fallbacks:'default',output_config:{effort},
+    system:[{type:'text',text:COACH_SYS},{type:'text',text:coachContextBlock(rapportText),cache_control:{type:'ephemeral'}}],
+    messages:history.map(m=>({role:m.role,content:String(m.content)}))};
+}
+// After a chat: the short notes the coach keeps about them (a cheaper model)
+function coachNotesRequest(history,oldNotes=''){
+  return callAIBody(`Update the coach's notes about this person from the chat below. Keep what is still true from the old notes, add what is worth remembering (preferences, routines, what helps them, wins, what is coming up). At most 800 characters, short plain sentences. Never a diagnosis, never anything about health conditions or medicines, never a weight or calorie number.
+
+OLD NOTES:
+${oldNotes||'(none yet)'}
+
+CHAT:
+${history.map(m=>(m.role==='user'?'They: ':'Coach: ')+m.content).join('\n')}
+
+Answer with the new notes only.`,'You keep short, kind, factual notes for a fitness coach.',1500,AI_MODEL,'low');
+}
+// The second safety check on a risky reply (a cheaper model): pass, or the problem
+function coachSafetyRequest(question,reply){
+  return callAIBody(`A fitness app's AI coach is about to send this reply. Check it against the rules. Fail it if it: gives medical advice or a diagnosis; misses a needed signpost (999 for chest pain, fainting or severe breathlessness; Samaritans 116 123 for suicide or self-harm; Beat for eating-disorder signs; a pharmacist or GP for medicines); suggests eating very little, skipping meals or fasting to lose weight; comments on their body or weight; or pushes through pain.
+
+THEIR MESSAGE:
+${question}
+
+THE REPLY:
+${reply}
+
+Answer JSON only: {"ok":true} or {"ok":false,"problem":"..."}`,'You check replies for safety. Be strict.',1500,AI_MODEL,'low');
+}
+// ---- coach chat end ----
+
 async function confirmEventBank(){
   if(!pendingEventBank)return;
   const ev=pendingEventBank;
