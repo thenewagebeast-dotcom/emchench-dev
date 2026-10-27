@@ -1030,7 +1030,7 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
         <div class="pills" id="ob-call-pick"><div class="pill" data-call="bro" onclick="coachCallPick(this,'ob')">Bro</div><div class="pill" data-call="sis" onclick="coachCallPick(this,'ob')">Sis</div><div class="pill" data-call="mate" onclick="coachCallPick(this,'ob')">Mate</div><div class="pill" data-call="name" onclick="coachCallPick(this,'ob')">Just my name</div><div class="pill" data-call="other" onclick="coachCallPick(this,'ob')">Other</div></div>
         <input class="finput" id="ob-call-word" maxlength="20" placeholder="Your word - e.g. champ, boss, Big Dave" style="margin-top:8px;display:none">
         <label id="ob-call-name-row" style="display:flex;gap:8px;align-items:center;font-size:13px;margin-top:8px;color:var(--tx2)"><input type="checkbox" id="ob-call-name"> Use my name sometimes too</label>
-        <div style="font-size:12px;color:var(--tx2);margin-top:6px;line-height:1.5">Leave it and we go with Bro or Sis from your answers. You can change it once a month in Profile.</div>
+        <div style="font-size:12px;color:var(--tx2);margin-top:6px;line-height:1.5">Leave it and the coach uses your name. You can change it once a month in Profile.</div>
       </div>
       <div class="frow">
         <label class="flbl">Strength Baseline</label>
@@ -1822,15 +1822,15 @@ function pickStyle(key=''){
   const a=motStylesOf(CU?.mot_style);
   return a[(dayNumber()+textSeed(key)+textSeed(CU?.user_id))%a.length];
 }
-// What the coach calls them: Bro / Sis / Mate / their name / their own word (new backend: profiles.coach_call;
-// on Sheets the default from the Sex answer). Slots: {c} {c2} {cbig} {cold}.
+// What the coach calls them: Bro / Sis / Mate / their name / their own word (new backend: profiles.coach_call).
+// No choice = their name (Dom, 27 Oct 2026, audit B16). Slots: {c} {c2} {cbig} {cold}.
 const COACH_CALLS={bro:['bro','bruh','king','lad'],sis:['sis','girl','queen','lass'],mate:['mate','pal','legend','pal']};
 const COACH_CALL_WORD_RE=/^[A-Za-z][A-Za-z '-]{0,19}$/;
 function coachCallOf(u=CU){
   const c=u?.coach_call;
   if(c==='name'||c==='mate'||c==='bro'||c==='sis')return c;
   if(c==='other'&&COACH_CALL_WORD_RE.test(String(u?.coach_call_word||'').trim()))return'other';
-  return String(u?.sex||'').toLowerCase()==='female'?'sis':'bro';
+  return'name';
 }
 function callWords(u=CU,d=new Date()){
   const c=coachCallOf(u),name=String(u?.username||'').trim()||'mate';
@@ -11967,9 +11967,10 @@ async function nudgeFreqSave(freq){
   CU.nudges_freq=freq;nudgeData.freq=freq;
   return true;
 }
-// The call answer from a form ('ob' = sign-up, 'prof' = Profile). Nothing picked = the default from the Sex answer.
+// The call answer from a form ('ob' = sign-up, 'prof' = Profile).
 function coachCallFromForm(p){
-  const call=document.querySelector(`#${p}-call-pick .pill.on`)?.dataset.call||null;
+  // Nothing picked at sign-up = their name (audit B16); in Profile a pick is needed to save
+  const call=document.querySelector(`#${p}-call-pick .pill.on`)?.dataset.call||(p==='ob'?'name':null);
   const word=(document.getElementById(p+'-call-word')?.value||'').trim().replace(/\s+/g,' ');
   const coach_call_name=!!document.getElementById(p+'-call-name')?.checked&&call!=='name';
   if(call==='other'&&!COACH_CALL_WORD_RE.test(word))return{error:'Your word for the coach: letters, spaces, hyphens and apostrophes only, up to 20 characters.'};
@@ -12021,7 +12022,7 @@ async function saveCoachCall(){
   if(c.error){alert(c.error);return;}
   if(!c.coach_call){alert('Pick one first.');return;}
   if(c.coach_call===(CU.coach_call||'')&&(c.coach_call_word||'')===(CU.coach_call==='other'?CU.coach_call_word:'')){alert('That is already what the coach calls you.');return;}
-  if(CU.coach_call&&!confirm('Save this? You can change it again in 30 days.'))return;
+  if(!confirm('Save this? You can change it again in 30 days.'))return;
   const {data,error}=await sb.from('profiles').update({coach_call:c.coach_call,coach_call_word:c.coach_call_word}).eq('id',CU.user_id).select('coach_call,coach_call_word,coach_call_at').maybeSingle();
   if(error){alert(friendlyDbError(error));return;}
   if(!data){alert('Your profile could not be found. Please log out and back in.');return;}
@@ -13098,7 +13099,7 @@ async function createUser(){
     const gw=parseFloat(document.getElementById('ob-goal-weight')?.value)||null;
     const goal_weight_kg=gw&&gw>=30&&gw<=300?gw:null,goal_weight_from=goal_weight_kg?(parseFloat(document.getElementById('ob-weight')?.value)||null):null;
     const cheat_day_opt=document.querySelector('#ob-cheat-pick .pill.on')?.dataset.cheat==='yes';
-    // What the coach calls them (045) - nothing picked = the default from the Sex answer
+    // What the coach calls them (045) - nothing picked = their name
     const call=coachCallFromForm('ob');
     if(call.error){hideLoad();alert(call.error);return;}
     const {data:p,error}=await sb.from('profiles').update({...sheetPatchToProfile(fields),wall_share,medicines,training_style,hard_cheeses,goal_weight_kg,goal_weight_from,cheat_day_opt,coach_call:call.coach_call,coach_call_word:call.coach_call_word,coach_call_name:call.coach_call_name}).eq('id',sbUser.id).select().maybeSingle();
