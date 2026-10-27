@@ -1016,13 +1016,23 @@ hr{border:none;border-top:1px solid var(--b1);margin:16px 0;}
     <div class="ob-step" id="ob5">
       <div class="frow">
         <label class="flbl">How Do You Want to Be Motivated?</label>
+        <div style="font-size:12px;color:var(--tx3);margin:-2px 0 8px">Pick one or two - two gives you a mix of both.</div>
         <div class="pills" id="ob-mot-style">
-          <div class="pill" onclick="selSingle(this,'ob-mot-style')">Tough Love</div>
-          <div class="pill" onclick="selSingle(this,'ob-mot-style')">Gentle Encouragement</div>
-          <div class="pill" onclick="selSingle(this,'ob-mot-style')">Humour</div>
-          <div class="pill" onclick="selSingle(this,'ob-mot-style')">Science Facts</div>
-          <div class="pill" onclick="selSingle(this,'ob-mot-style')">Mix of Everything</div>
+          <div class="pill" onclick="pickUpTo(this,'ob-mot-style',2)">Tough Love</div>
+          <div class="pill" onclick="pickUpTo(this,'ob-mot-style',2)">Gentle Encouragement</div>
+          <div class="pill" onclick="pickUpTo(this,'ob-mot-style',2)">Humour</div>
+          <div class="pill" onclick="pickUpTo(this,'ob-mot-style',2)">Science Facts</div>
+          <div class="pill" onclick="pickUpTo(this,'ob-mot-style',2)">Hype</div>
+          <div class="pill" onclick="pickUpTo(this,'ob-mot-style',2)">Your Mate</div>
+          <div class="pill" onclick="pickUpTo(this,'ob-mot-style',2)">Old-School Gym</div>
         </div>
+        <div style="font-size:12px;color:var(--tx2);line-height:1.6;margin-top:8px"><b>Tough Love</b> - No excuses, straight to the point.<br><b>Gentle Encouragement</b> - Warm, patient, celebrates every step.<br><b>Humour</b> - Keeps it light and makes you laugh.<br><b>Science Facts</b> - The why behind everything.<br><b>Hype</b> - Full gym-bro energy. LET'S GOOO.<br><b>Your Mate</b> - Your best mate who trains with you - banter included.<br><b>Old-School Gym</b> - The classic coach. Respect the graft.</div>
+      </div>
+      <div class="frow"><label class="flbl">What should the coach call you?</label>
+        <div class="pills" id="ob-call-pick"><div class="pill" data-call="bro" onclick="coachCallPick(this,'ob')">Bro</div><div class="pill" data-call="sis" onclick="coachCallPick(this,'ob')">Sis</div><div class="pill" data-call="mate" onclick="coachCallPick(this,'ob')">Mate</div><div class="pill" data-call="name" onclick="coachCallPick(this,'ob')">Just my name</div><div class="pill" data-call="other" onclick="coachCallPick(this,'ob')">Other</div></div>
+        <input class="finput" id="ob-call-word" maxlength="20" placeholder="Your word - e.g. champ, boss, Big Dave" style="margin-top:8px;display:none">
+        <label id="ob-call-name-row" style="display:flex;gap:8px;align-items:center;font-size:13px;margin-top:8px;color:var(--tx2)"><input type="checkbox" id="ob-call-name"> Use my name sometimes too</label>
+        <div style="font-size:12px;color:var(--tx2);margin-top:6px;line-height:1.5">Leave it and we go with Bro or Sis from your answers. You can change it once a month in Profile.</div>
       </div>
       <div class="frow">
         <label class="flbl">Strength Baseline</label>
@@ -1788,12 +1798,64 @@ async function patchUserRow(userId,patchFields,inMemUser){
 // ============================================================
 // MOTIVATIONAL MESSAGES
 // ============================================================
+// ---- motivational styles (NUDGES-SPEC-2026-10-27.md, STYLE-WORDING-2026-10-27.md) ----
+// A person picks 1 or 2 styles, saved as "Hype + Humour" (users[29] / profiles.mot_style). Mix of Everything was
+// removed (27 Oct 2026); a blank or old answer reads as MOT_DEFAULT. Ready-written messages use one of the two,
+// picked by the day; AI writing blends both (getStyleVoice).
+const MOT_STYLES={
+  'Tough Love':'No excuses, straight to the point.',
+  'Gentle Encouragement':'Warm, patient, celebrates every step.',
+  'Humour':'Keeps it light and makes you laugh.',
+  'Science Facts':'The why behind everything.',
+  'Hype':'Full gym-bro energy. LET\'S GOOO.',
+  'Your Mate':'Your best mate who trains with you - banter included.',
+  'Old-School Gym':'The classic coach. Respect the graft.'
+};
+const MOT_DEFAULT=['Gentle Encouragement','Humour'];
+function motStylesOf(v){
+  const a=[...new Set(String(v||'').split(/[+,]/).map(x=>x.trim()).filter(x=>MOT_STYLES[x]))];
+  return a.length?a.slice(0,2):MOT_DEFAULT.slice();
+}
+function styleLabel(u=CU){return motStylesOf(u?.mot_style).join(' + ');}
+function dayNumber(d=new Date()){return Math.floor(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())/86400000);}
+function textSeed(t){return String(t||'').split('').reduce((a,c)=>(a*31+c.charCodeAt(0))%100000,7);}
+// One of the person's styles for this message today - steady through the day, both used over a week
+function pickStyle(key=''){
+  const a=motStylesOf(CU?.mot_style);
+  return a[(dayNumber()+textSeed(key)+textSeed(CU?.user_id))%a.length];
+}
+// What the coach calls them: Bro / Sis / Mate / their name / their own word (new backend: profiles.coach_call;
+// on Sheets the default from the Sex answer). Slots: {c} {c2} {cbig} {cold}.
+const COACH_CALLS={bro:['bro','bruh','king','lad'],sis:['sis','girl','queen','lass'],mate:['mate','pal','legend','pal']};
+const COACH_CALL_WORD_RE=/^[A-Za-z][A-Za-z '-]{0,19}$/;
+function coachCallOf(u=CU){
+  const c=u?.coach_call;
+  if(c==='name'||c==='mate'||c==='bro'||c==='sis')return c;
+  if(c==='other'&&COACH_CALL_WORD_RE.test(String(u?.coach_call_word||'').trim()))return'other';
+  return String(u?.sex||'').toLowerCase()==='female'?'sis':'bro';
+}
+function callWords(u=CU,d=new Date()){
+  const c=coachCallOf(u),name=String(u?.username||'').trim()||'mate';
+  if(c==='name')return[name,name,name,name];
+  if(c==='other'){const w=String(u.coach_call_word).trim();return[w,w,w,w];}
+  // "Use my name sometimes too": their name on alternate days
+  if(u?.coach_call_name&&dayNumber(d)%2===0)return[name,name,name,name];
+  return COACH_CALLS[c];
+}
+function fillCall(text,u=CU){
+  const w=callWords(u);
+  return String(text||'').replace(/\{(c|c2|cbig|cold)\}/g,(m,k)=>w[{c:0,c2:1,cbig:2,cold:3}[k]]);
+}
+// ---- motivational styles end ----
+
 const motMessages={
-  'Tough Love':['No one is coming to save you. That is the best news you will ever hear.','Discipline is just doing it when you do not feel like it. That is the whole game.','Your future self is either thanking you or cursing you right now.','Stop waiting to feel motivated. Act first. Feel it after.','Comfort is the enemy of progress. You already know this.','Hard choices, easy life. Easy choices, hard life. Pick one.','Nobody remembers the person who almost did it.','You do not rise to the level of your goals. You fall to the level of your habits. Build better habits.','Pain is temporary. Giving up lasts forever.','The version of you that makes excuses and the version that does not - only one of them gets results.'],
-  'Gentle Encouragement':['Every single rep counts. Every meal matters. You are doing brilliantly.','Progress is not always visible but it is always happening. Keep going.','Rest days are not failures. They are part of the plan. You earned this.','You showed up. That is already more than most people do today.','Be kind to yourself on hard days. You are doing something genuinely difficult.','Small steps every day still get you to the finish line.','You are not behind. You are exactly where you need to be right now.','Celebrate every win, no matter how small. They all count.','Your consistency is quietly doing incredible things.','Even on your worst day you are still moving forward. That matters.'],
-  'Humour':['Your muscles are just confused right now. That is called growth apparently.','Somewhere a version of you who skipped this is very jealous right now.','The only bad workout is the one that did not happen. Yours happened. Legend.','Your body is 60% water so technically you are a very determined puddle.','Sore today, stronger tomorrow, confused about stairs indefinitely.','Your future abs are currently in witness protection. Training reveals them.','You did not come this far to only come this far. Also the fridge is not a valid rest day activity.','Technically every time you lift something and put it back down you are also tidying. Very efficient.','Your body keeps score. Today it is giving you full marks.','Rest day? More like evidence gathering for how hard you trained yesterday.'],
-  'Science Facts':['Muscle protein synthesis peaks 24-48hrs post workout. Your rest is doing the work.','Progressive overload is the single most evidence-backed driver of muscle growth. You are doing it.','Cortisol drops after exercise. Stress literally leaves your body when you train.','Your mitochondria are multiplying with every cardio session. More engines. More energy.','Studies show that consistent exercise increases BDNF - a protein that literally grows your brain.','Sleep is when 70% of daily growth hormone is released. Recovery is not optional.','Research confirms habit stacking - attaching training to existing routines doubles adherence rates.','Protein consumed within 2 hours post-workout has a measurably higher anabolic effect.','VO2 max is one of the strongest predictors of longevity. Cardio is an investment in years.','The endocannabinoid system - not endorphins - is responsible for the runners high. Your brain rewards movement.'],
-  'Mix of Everything':['Science says you are getting stronger. Your body is just dramatic about it.','Discipline over motivation - every expert agrees. Motivation is a liar. Show up anyway.','Every session is a deposit in your health account. Future you has great interest rates.','Rest days, training days, all of it counts. You are playing a long game and winning.','Somewhere between who you were and who you are becoming, you are training. Keep going.','The data is clear - consistency beats intensity every single time.','You are not just building muscle. You are building the version of yourself you actually want to be.','Hard days build the foundation. Easy days prove it works. Both matter.','Your future self has no idea how grateful they are going to be for what you are doing right now.','Progress is not a straight line but it is always a line. You are on it.']
+  'Tough Love':['No one is coming to save you. That is the best news you will ever hear.','Discipline is just doing it when you do not feel like it. That is the whole game.','Your future self is either thanking you or cursing you right now.','Stop waiting to feel motivated, {c}. Act first. Feel it after.','Comfort is the enemy of progress. You already know this, {c}.','Hard choices, easy life. Easy choices, hard life. Pick one.','Nobody remembers the person who almost did it.','You do not rise to the level of your goals. You fall to the level of your habits. Build better habits.','Pain is temporary. Giving up lasts forever.','The version of you that makes excuses and the version that does not - only one of them gets results.'],
+  'Gentle Encouragement':['Every single rep counts. Every meal matters. You are doing brilliantly, {c}.','Progress is not always visible but it is always happening. Keep going.','Rest days are not failures. They are part of the plan. You earned this.','You showed up, {c}. That is already more than most people do today.','Be kind to yourself on hard days. You are doing something genuinely difficult.','Small steps every day still get you to the finish line.','You are not behind. You are exactly where you need to be right now.','Celebrate every win, no matter how small. They all count.','Your consistency is quietly doing incredible things, {c}.','Even on your worst day you are still moving forward. That matters.'],
+  'Humour':['Your muscles are just confused right now. That is called growth apparently.','Somewhere a version of you who skipped this is very jealous right now.','The only bad workout is the one that did not happen. Yours happened. Legend, {c}.','Your body is 60% water so technically you are a very determined puddle.','Sore today, stronger tomorrow, confused about stairs indefinitely.','Your future abs are currently in witness protection. Training reveals them.','You did not come this far to only come this far. Also the fridge is not a valid rest day activity.','Technically every time you lift something and put it back down you are also tidying. Very efficient.','Your body keeps score. Today it is giving you full marks, {c}.','Rest day? More like evidence gathering for how hard you trained yesterday.'],
+  'Science Facts':['Muscle protein synthesis peaks 24-48hrs post workout. Your rest is doing the work, {c}.','Progressive overload is the single most evidence-backed driver of muscle growth. You are doing it, {c}.','Cortisol drops after exercise. Stress literally leaves your body when you train.','Your mitochondria are multiplying with every cardio session. More engines. More energy.','Studies show that consistent exercise increases BDNF - a protein that literally grows your brain.','Sleep is when 70% of daily growth hormone is released. Recovery is not optional.','Research confirms habit stacking - attaching training to existing routines doubles adherence rates.','Protein consumed within 2 hours post-workout has a measurably higher anabolic effect.','VO2 max is one of the strongest predictors of longevity. Cardio is an investment in years.','The endocannabinoid system - not endorphins - is responsible for the runners high. Your brain rewards movement.'],
+  'Hype':['New day, new reps {c}. LET\'S GOOO 🔥','No days off from the mindset {c2}. Rest days count, quitting doesn\'t.','Every set you log is a brick in the empire, {cbig} 👑','Built different? Nah - built consistent. That\'s the secret {c}.','The pump is temporary. The habit is forever 💪','Beast mode isn\'t a mood {c2}, it\'s a schedule.','Somebody out there is skipping today. Not you {c}.','Locked in, fuelled up, ready to send it 🚀','Small wins stacking up = absolute unit of a result. Keep stacking {c}.','We\'re so back. Actually, we never left 🔥'],
+  'Your Mate':['Morning {c}! Kettle on, then let\'s crack on.','Come on {c}, you didn\'t sign up to sit on the sofa. Let\'s have it.','Turning up\'s half the battle. The other half\'s reps. Get in there.','Proper smashing it lately {c}. Don\'t let it go to your head though.','Bad day? Happens to all of us. Tomorrow we go again.','Water, {c}. Not lager. Water. 💧','Nobody\'s perfect mate, just keep turning up. That\'s the whole trick.','Bit better than last week - that\'s all we\'re after. Sorted.','Rest day? Fair enough {c}, you\'ve earned it. Back at it tomorrow though.','Honestly {c}, you\'re doing great. Don\'t tell anyone I said that.'],
+  'Old-School Gym':['Show up. Do the work. Go home. Repeat, {cold}.','Nobody hands you strength {cold}. You earn it, one rep at a time.','Motivation comes and goes. Habit stays.','Leave the ego at the door, {cold}. Bring the effort.','The bar doesn\'t care about excuses. Neither do results.','Good form first. Heavy weights second.','Earn your rest day {cold}. Then take it properly.','Consistency beats talent when talent doesn\'t turn up.','The work you do when nobody\'s watching is the work that counts.','Keep your head down and your standards up, {cold}.']
 };
 
 const INJURY_LIBRARY={
@@ -2080,30 +2142,32 @@ function getHealthDietLineMeds(){
 }
 
 function getMotMessage(){
-  const style=CU?.mot_style||'Mix of Everything';
-  const msgs=motMessages[style]||motMessages['Mix of Everything'];
+  const style=pickStyle('daily');
+  const msgs=motMessages[style]||motMessages['Gentle Encouragement'];
   // Use date as seed so message changes daily but stays consistent within a day per user
   const today=new Date();
   const seed=today.getFullYear()*10000+(today.getMonth()+1)*100+today.getDate();
   const userSeed=(CU?.user_id||'').split('').reduce((a,c)=>a+c.charCodeAt(0),0);
-  return msgs[(seed+userSeed)%msgs.length];
+  return fillCall(msgs[(seed+userSeed)%msgs.length]);
 }
 
 // ============================================================
 // CELEBRATION POPUPS
 // ============================================================
 const celebrations={
-  'Tough Love':{workout:['Session logged. No congratulations needed. This is just what you do now. 💪','Done. Now recover. Now go again.'],meal:['Meals logged. Your body is running on premium fuel now.'],pb:['NEW PB. Expected it. You put the work in. 🏆'],water:['Water target hit. Basic but essential. Well done.']},
-  'Gentle Encouragement':{workout:['Session complete! You showed up and that is everything. So proud of you! 💪','Another one done! You are building something incredible, one session at a time. 🌟'],meal:['Meals logged! Every nutritious choice is an act of self-love. Brilliant! 🥗'],pb:['NEW PERSONAL BEST! You just proved what you are capable of! 🏆✨'],water:['Water target hit! Your body is loving you right now! 💧']},
-  'Humour':{workout:['Session logged. Your muscles are confused and sore. That is called adaptation. 💪','Workout complete! Somewhere your sofa is very disappointed in you.'],meal:['Meals logged! Your intestines just sent a very professional thank you note. 🥗'],pb:['NEW PB! Your old record has been evicted. It left crying. 🏆'],water:['Water target hit! You are now approximately 63% water. Very efficient human. 💧']},
-  'Science Facts':{workout:['Session logged. Muscle protein synthesis just peaked. Your body is literally rebuilding. 💪','Training complete. Cortisol dropping. Growth hormone rising. Science is doing its thing.'],meal:['Meals logged. Leucine threshold hit. Muscle protein synthesis is active. 🥗'],pb:['NEW PB! Neural pathway efficiency just increased. Your brain rewired for strength. 🏆'],water:['Water target hit. Cellular hydration optimised. Every metabolic process is thanking you. 💧']},
-  'Mix of Everything':{workout:['Session logged! Science says you are getting stronger. Your body just does not know it yet. 💪','Workout done! Discipline beats motivation every single time. You just proved it.'],meal:['Meals logged! Fuel in, results out. Simple equation, brilliant execution. 🥗'],pb:['NEW PB! Your old record has been scientifically demolished. Outstanding work. 🏆'],water:['Water target hit! Hydration optimised. Your kidneys are throwing a small party. 💧']}
+  'Tough Love':{workout:['Session logged {c}. No congratulations needed. This is just what you do now. 💪','Done. Now recover. Now go again.'],meal:['Meals logged. Your body is running on premium fuel now.'],pb:['NEW PB {c}. Expected it. You put the work in. 🏆'],water:['Water target hit. Basic but essential. Well done.']},
+  'Gentle Encouragement':{workout:['Session complete! You showed up and that is everything. So proud of you, {c}! 💪','Another one done! You are building something incredible, one session at a time. 🌟'],meal:['Meals logged! Every nutritious choice is an act of self-love. Brilliant! 🥗'],pb:['NEW PERSONAL BEST! You just proved what you are capable of! 🏆✨'],water:['Water target hit! Your body is loving you right now! 💧']},
+  'Humour':{workout:['Session logged. Your muscles are confused and sore. That is called adaptation. 💪','Workout complete! Somewhere your sofa is very disappointed in you, {c}.'],meal:['Meals logged! Your intestines just sent a very professional thank you note. 🥗'],pb:['NEW PB! Your old record has been evicted. It left crying, {c}. 🏆'],water:['Water target hit! You are now approximately 63% water. Very efficient human. 💧']},
+  'Science Facts':{workout:['Session logged. Muscle protein synthesis just peaked. Your body is literally rebuilding. 💪','Training complete. Cortisol dropping. Growth hormone rising. Science is doing its thing.'],meal:['Meals logged. Leucine threshold hit. Muscle protein synthesis is active. 🥗'],pb:['NEW PB! Neural pathway efficiency just increased. Your brain rewired for strength, {c}. 🏆'],water:['Water target hit. Cellular hydration optimised. Every metabolic process is thanking you. 💧']},
+  'Hype':{workout:['Session DONE {c}! Absolute scenes 💪','Another one in the bank {c2}. Built different 🔥'],meal:['Meals logged {c}! Fuel\'s in, let\'s GO 🥗'],pb:['NEW PB {cbig}!!! LIGHT WORK 🏆🔥'],water:['Water target SMASHED {c2} 💧']},
+  'Your Mate':{workout:['Session done {c}! Get in 💪','Another one banked mate. Sound.'],meal:['Meals logged - nice one {c} 🥗'],pb:['NEW PB! GET IN {c}! 🏆'],water:['Water target hit - nice one {c} 💧']},
+  'Old-School Gym':{workout:['Session done, {cold}. That\'s a good day\'s work. 💪','Another one done. Rest up, go again.'],meal:['Meals logged. You can\'t out-train a bad diet. Good work. 🥗'],pb:['New PB, {cold}. Earned the hard way. 🏆'],water:['Water target hit. Basics done right. 💧']}
 };
 
 function celebrate(type,icon='🏆'){
-  const style=CU?.mot_style||'Mix of Everything';
+  const style=pickStyle(type);
   const msgs=celebrations[style]?.[type]||['Well done!'];
-  const msg=msgs[Math.floor(Math.random()*msgs.length)];
+  const msg=fillCall(msgs[Math.floor(Math.random()*msgs.length)]);
   const titles={workout:'Session Complete!',meal:'Meals Logged!',pb:'New PB!',water:'Hydrated!',measurement:'Measured Up!',streak:'Streak!',milestone:'Milestone!'};
   showCelebration(icon,titles[type]||'Achievement!',msg);
 }
@@ -2115,282 +2179,369 @@ function celebrate(type,icon='🏆'){
 // ============================================================
 const msgTemplates={
   weighInDone:{
-    'Tough Love':'Data logged. No excuses now - the plan knows exactly where you stand.',
-    'Gentle Encouragement':'Weigh-in logged! Thank you for checking in with yourself. Your plan is being looked after.',
-    'Humour':'Weigh-in logged. The scale has spoken. We shall not argue with it.',
-    'Science Facts':'Weigh-in recorded. This data point feeds directly into your next adjustment calculation.',
-    'Mix of Everything':'Data logged. Your plan is being monitored. Keep going!'
+    'Tough Love':'Data logged {c}. No excuses now - the plan knows exactly where you stand.',
+    'Gentle Encouragement':'Weigh-in logged {c}! Thank you for checking in with yourself. Your plan is being looked after.',
+    'Humour':'Weigh-in logged. The scale has spoken. We shall not argue with it, {c}.',
+    'Science Facts':'Weigh-in recorded, {c}. This data point feeds directly into your next adjustment calculation.',
+    'Hype':'Weigh-in logged {c}! Data\'s in, plan\'s locked 🔒',
+    'Your Mate':'Weigh-in done - nice one {c}.',
+    'Old-School Gym':'Weigh-in logged, {cold}. Now we know where we stand.'
   },
   caloriesAdjusted:{
-    'Tough Love':'Target updated to {cals} kcal. Locked in. Hit it.',
+    'Tough Love':'Target updated to {cals} kcal. Locked in. Hit it, {c}.',
     'Gentle Encouragement':'Your target is now {cals} kcal - a thoughtful adjustment based on how you have been doing. Well done for checking in!',
     'Humour':'Target updated to {cals} kcal. Your calories have been recalculated by science, not vibes.',
     'Science Facts':'Target updated to {cals} kcal, based on your logged trend data. Confirmed and applied.',
-    'Mix of Everything':'Target updated to {cals} kcal. Confirmed and locked in.'
+    'Hype':'New target {cals} kcal {c}. Locked in, let\'s send it 🔥',
+    'Your Mate':'Target\'s {cals} kcal now mate. Small tweak - crack on.',
+    'Old-School Gym':'Target set to {cals} kcal. Stick to it.'
   },
   planReadyAssessment:{
     'Tough Love':'This is your test week. Be honest on every set. Once every test session is logged, generate Month 1 - it is built from what you actually lift.',
-    'Gentle Encouragement':'Your plan is ready! This is your test week - just be honest with yourself. Once every test session is logged, generate Month 1 and it will be built around your real results.',
-    'Humour':'Plan ready! This is test week - resist the urge to be a hero. Log every test session, then generate Month 1, built from your actual numbers, not your ego.',
+    'Gentle Encouragement':'Your plan is ready {c}! This is your test week - just be honest with yourself. Once every test session is logged, generate Month 1 and it will be built around your real results.',
+    'Humour':'Plan ready! This is test week - resist the urge to be a hero, {c}. Log every test session, then generate Month 1, built from your actual numbers, not your ego.',
     'Science Facts':'Plan ready. The test week establishes your baseline. Once every test session is logged, Month 1 is generated from your recorded results.',
-    'Mix of Everything':'This is your test week. Go through the sessions honestly. Once every test session is logged, generate Month 1 - it will be built from your real results.'
+    'Hype':'Test week, {c}! Go all in, be honest on every set - log every test session, then generate Month 1 built off YOUR numbers 🔥',
+    'Your Mate':'Test week first {c} - honest on every set, no ego lifting. Log them all, then generate Month 1 and it\'s built on what you actually lift.',
+    'Old-School Gym':'Test week. Honest effort on every set. Log every session, then generate Month 1 - built on what you actually lift.'
   },
   nutritionUpdated:{
     'Tough Love':'Target adjusted to {cals} kcal based on 3 weeks of real data. No guessing - just what actually happened.',
     'Gentle Encouragement':'Your target is now {cals} kcal, based on your last 3 weeks. Your plan is truly listening to you now.',
     'Humour':'Target adjusted to {cals} kcal. Your body sent 3 weeks of evidence and the jury has reached a verdict.',
     'Science Facts':'Target adjusted to {cals} kcal following trend analysis of your last 3 weigh-ins. Your plan is now calibrated to your actual response.',
-    'Mix of Everything':'Target adjusted to {cals} kcal based on your 3-week trend. Your plan is now dialled in to your actual response.'
+    'Hype':'Target\'s now {cals} kcal off 3 weeks of real data {c}. Science AND gains 📈',
+    'Your Mate':'Target\'s {cals} kcal now, off your last 3 weeks. It\'s got your number {c}.',
+    'Old-School Gym':'{cals} kcal, from 3 weeks of real data. No guessing.'
   },
   reviewComplete:{
     'Tough Love':'Noted. Target stays the same. Keep logging - we review again in 3 weeks.',
     'Gentle Encouragement':'All noted! Your target stays the same for now. Keep doing what you are doing - we will check in again in 3 weeks.',
     'Humour':'Data noted. Your calories remain exactly as they were. Riveting stuff. See you in 3 weeks.',
     'Science Facts':'Data logged. Current trend does not yet warrant adjustment. Next review in 3 weeks per protocol.',
-    'Mix of Everything':'Data noted. Your calorie target stays the same for now. Keep logging and we will review again in 3 weeks.'
+    'Hype':'Target stays the same {c} - keep logging, we check back in 3 weeks 💪',
+    'Your Mate':'Target stays as it is {c}. Keep logging - we\'ll check again in 3 weeks.',
+    'Old-School Gym':'Target stays. Keep logging. Review again in 3 weeks.'
   },
   mealDisliked:{
     'Tough Love':'"{name}" is out. Moving on.',
     'Gentle Encouragement':'"{name}" has been noted as not for you - no worries at all! It will not appear again, and you can bring it back anytime from Profile.',
     'Humour':'"{name}" has been sent to meal jail. It will not appear in your next plan. You can grant it parole anytime from Profile.',
     'Science Facts':'"{name}" flagged as disliked and excluded from future generation. Reversible anytime from Profile.',
-    'Mix of Everything':'"{name}" marked as disliked. It will not appear in your next plan. Restore it anytime from Profile.'
+    'Hype':'"{name}" is OUT {c}. Next!',
+    'Your Mate':'"{name}" - binned. Wasn\'t having it either mate. Bring it back from Profile any time.',
+    'Old-School Gym':'"{name}" is gone. Move on.'
   },
   mealRestored:{
-    'Tough Love':'"{name}" is back. Get on with it.',
-    'Gentle Encouragement':'"{name}" is back in your plan! Glad you brought it back.',
+    'Tough Love':'"{name}" is back. Get on with it, {c}.',
+    'Gentle Encouragement':'"{name}" is back in your plan! Glad you brought it back, {c}.',
     'Humour':'"{name}" has been released from meal jail and reinstated with full honours.',
     'Science Facts':'"{name}" removed from the exclusion list and reinstated for future generation.',
-    'Mix of Everything':'"{name}" is back in your plan.'
+    'Hype':'"{name}" is BACK {c2} 🔥',
+    'Your Mate':'"{name}" is back in. Changed your mind? Fair enough {c}.',
+    'Old-School Gym':'"{name}" is back in.'
   },
   mealSwapped:{
     'Tough Love':'"{name}" is in. No sentimentality about the old one.',
     'Gentle Encouragement':'"{name}" is now part of your rotation - lovely choice! Recipe saved and ready.',
-    'Humour':'"{name}" has entered the chat. The old meal has been quietly retired.',
+    'Humour':'"{name}" has entered the chat, {c}. The old meal has been quietly retired.',
     'Science Facts':'"{name}" swapped in - same macro targets, different flavour profile. Recipe saved.',
-    'Mix of Everything':'"{name}" is now in your rotation. Recipe saved and plan updated.'
+    'Hype':'"{name}" is in, {c}! Upgrade secured 🔥',
+    'Your Mate':'"{name}" is in - good shout {c}.',
+    'Old-School Gym':'"{name}" is in. Recipe saved.'
   },
   listCopied:{
-    'Tough Love':'List copied. Go shopping.',
+    'Tough Love':'List copied. Go shopping, {c}.',
     'Gentle Encouragement':'Shopping list copied! You are all set for your next shop.',
     'Humour':'Shopping list copied. Your trolley does not know what is coming.',
     'Science Facts':'Shopping list copied to clipboard with quantities intact.',
-    'Mix of Everything':'Shopping list copied to clipboard with quantities.'
+    'Hype':'List copied {c} - go get that fuel 🛒',
+    'Your Mate':'List copied. Don\'t forget the bags mate.',
+    'Old-School Gym':'List copied. Go shopping.'
   },
   exerciseSwapped:{
-    'Tough Love':'Swap made. Plan updated permanently. Get on with the session.',
-    'Gentle Encouragement':'Exercise swapped! Your plan has been permanently updated - great job adapting on the fly.',
-    'Humour':'Exercise swapped. Your plan has been permanently updated. Good adapting - very MacGyver of you.',
+    'Tough Love':'Swap made. Plan updated permanently. Get on with the session, {c}.',
+    'Gentle Encouragement':'Exercise swapped! Your plan has been permanently updated - great job adapting on the fly, {c}.',
+    'Humour':'Exercise swapped. Your plan has been permanently updated. Good adapting - very MacGyver of you, {c}.',
     'Science Facts':'Exercise substituted with equivalent stimulus. Change is permanent in your plan.',
-    'Mix of Everything':'Your plan has been permanently updated. Good adapting!'
+    'Hype':'Swap locked in {c}. Back to work 💪',
+    'Your Mate':'Swapped it - plan\'s updated {c}. Crack on.',
+    'Old-School Gym':'Swap made. Plan updated. Back to it, {cold}.'
   },
   assessmentComplete:{
     'Tough Love':'Baseline lifts recorded. Month 1 gets built from real numbers now, not guesses. Generate when ready.',
-    'Gentle Encouragement':'All your baseline lifts are recorded! Well done getting through your test week. Your Month 1 programme will be built around your real results.',
+    'Gentle Encouragement':'All your baseline lifts are recorded! Well done getting through your test week, {c}. Your Month 1 programme will be built around your real results.',
     'Humour':'Test week complete. Your baseline lifts are locked in - no more excuses about what you "could probably lift". Generate Month 1 when ready.',
     'Science Facts':'Baseline data captured across all tested movement patterns. Month 1 programming will derive working weights from these figures.',
-    'Mix of Everything':'All your baseline lifts are recorded. Your Month 1 programme will be built from these numbers. Generate it when ready.'
+    'Hype':'ALL test lifts logged {cbig}! Month 1\'s getting built off your real numbers - generate when ready 🔥',
+    'Your Mate':'All your test lifts are in - get in {c}! Generate Month 1 when you\'re ready.',
+    'Old-School Gym':'Test lifts recorded. Month 1 gets built on real numbers. Generate when ready.'
   },
   deloadCheck:{
     'Tough Love':'Several solid weeks in. A lighter week means half the sets and a bit less weight, so your body catches up with the work. Feeling strong? Not yet. Beaten up? Take it. Be honest.',
     'Gentle Encouragement':'Weeks of steady training - brilliant consistency! A lighter week (half the sets, a little less weight) lets your body catch up with everything you have built. Feeling great? Keep going. Feeling worn down? Rest is progress too.',
     'Humour':'Several weeks done. A lighter week halves your sets so your body can quietly repair itself without you getting in the way. Feeling like a superhero? Not yet. Feeling like a crumpled receipt? Take it.',
     'Science Facts':'Several training weeks completed. A lighter week - half the sets, about 10-15% less load, easy effort - lets fatigue clear so the strength you have built can show. Performance still climbing? Continue. Stalling or feeling flat? Take it.',
-    'Mix of Everything':'Several weeks of training done. A lighter week - half the sets and a little less weight - lets your body catch up so you come back stronger. Sessions still feeling great? Not yet. Feeling beaten up or stalling? Take it. Your call.'
+    'Hype':'Weeks of grinding {c}! A lighter week = half the sets, a bit less weight, so your body catches up. Feeling strong? Keep sending. Beat up? Take it. Your call 💪',
+    'Your Mate':'Few solid weeks in {c}. A lighter week is half the sets and a bit less weight so your body catches up. Feeling strong? Crack on. Feeling battered? Take it, no shame.',
+    'Old-School Gym':'Several solid weeks. A lighter week is half the sets and a bit less weight so the body catches up. Strong? Carry on. Battered? Take it.'
   },
   lighterEarly:{
     'Tough Love':'Your last two sessions were rough. Push through a third, or take a lighter week now and come back swinging. Your call.',
     'Gentle Encouragement':'Your last two sessions felt hard - that happens to everyone. A lighter week now could help you bounce back feeling fresh.',
     'Humour':'Two rough sessions in a row. Your body may be sending a polite memo. A lighter week now could be the reply.',
     'Science Facts':'Two consecutive low session ratings can mean fatigue is building faster than you recover. A lighter week now usually restores performance.',
-    'Mix of Everything':'Your last two sessions felt rough. A lighter week now - half the sets, a bit less weight - can help you bounce back.'
+    'Hype':'Last two sessions were rough {c2}. No shame in a lighter week to come back stronger - your call 💪',
+    'Your Mate':'Last couple of sessions looked rough mate. A lighter week now might do you good - your call.',
+    'Old-School Gym':'Last two sessions were hard. A lighter week now, or push on. Your call.'
   },
   firstSession:{
-    'Tough Love':'First session logged. This is the only one that matters right now - you started.',
-    'Gentle Encouragement':'This is where it all begins! You just started something incredible, and we are so proud of you for taking that first step.',
+    'Tough Love':'First session logged. This is the only one that matters right now - you started, {c}.',
+    'Gentle Encouragement':'This is where it all begins! You just started something incredible, and we are so proud of you for taking that first step, {c}.',
     'Humour':'This is where it all begins. You just started something incredible. Your sofa has noted your absence.',
-    'Science Facts':'First session logged. Adaptation begins now - this is session one of a long, evidence-backed process.',
-    'Mix of Everything':'This is where it all begins. You just started something incredible.'
+    'Science Facts':'First session logged, {c}. Adaptation begins now - this is session one of a long, evidence-backed process.',
+    'Hype':'FIRST SESSION DONE {c}! The journey starts NOW 🔥',
+    'Your Mate':'First one done {c}! Hardest one out the way. Get in.',
+    'Old-School Gym':'First session logged. The hardest one is done.'
   },
   tenSessions:{
-    'Tough Love':'10 sessions in. Double figures. Beginner phase is over - act like it.',
-    'Gentle Encouragement':'Double figures! 10 sessions logged - you are not a beginner anymore, and that is something to be really proud of.',
-    'Humour':'10 sessions! Double figures. You are officially past the "is this for me" phase.',
-    'Science Facts':'10 sessions logged. Neuromuscular adaptation is well underway - you are no longer a true beginner.',
-    'Mix of Everything':'Double figures. You are not a beginner anymore.'
+    'Tough Love':'10 sessions in. Double figures. Beginner phase is over {c} - act like it.',
+    'Gentle Encouragement':'Double figures {c}! 10 sessions logged - you are not a beginner anymore, and that is something to be really proud of.',
+    'Humour':'10 sessions {c}! Double figures. You are officially past the "is this for me" phase.',
+    'Science Facts':'10 sessions logged. Neuromuscular adaptation is well underway - you are no longer a true beginner, {c}.',
+    'Hype':'10 SESSIONS {c}! Double figures, we\'re so locked in 🔥',
+    'Your Mate':'10 sessions {c}! You\'re properly hooked now.',
+    'Old-School Gym':'10 sessions, {cold}. You\'re not new any more.'
   },
   twentyFiveSessions:{
     'Tough Love':'25 sessions. Quarter century. This is no longer a phase - this is who you are now.',
     'Gentle Encouragement':'Quarter century of sessions! You are building something real here, and it shows in how far you have come.',
     'Humour':'25 sessions. Quarter century club. Your gym membership has officially been justified.',
     'Science Facts':'25 sessions logged. Consistent training load at this volume is producing measurable structural adaptation.',
-    'Mix of Everything':'Quarter century of sessions. You are building something real here.'
+    'Hype':'25 SESSIONS {cbig}! This isn\'t a phase, this is the lifestyle 👑',
+    'Your Mate':'25 sessions mate! That\'s not a phase any more, that\'s just you.',
+    'Old-School Gym':'25 sessions. This is who you are now.'
   },
   fiftySessions:{
-    'Tough Love':'50 sessions. Elite consistency. Most people never get here. You did.',
-    'Gentle Encouragement':'50 sessions logged! That is elite consistency, and you should feel incredibly proud of what you have built.',
-    'Humour':'50 sessions. That is elite consistency. Absolute legend - your dedication is now a permanent character trait.',
-    'Science Facts':'50 sessions logged. This training volume places you well ahead of typical adherence statistics for this population.',
-    'Mix of Everything':'50 sessions logged. That is elite consistency. Absolute legend.'
+    'Tough Love':'50 sessions. Elite consistency. Most people never get here. You did, {c}.',
+    'Gentle Encouragement':'50 sessions logged {c}! That is elite consistency, and you should feel incredibly proud of what you have built.',
+    'Humour':'50 sessions. That is elite consistency. Absolute legend, {c} - your dedication is now a permanent character trait.',
+    'Science Facts':'50 sessions logged, {c}. This training volume places you well ahead of typical adherence statistics for this population.',
+    'Hype':'FIFTY SESSIONS {cbig}!!! Absolute unit of consistency 🏆🔥',
+    'Your Mate':'50 sessions {c}! Absolute legend. I\'d buy you a pint but it\'d wreck your macros.',
+    'Old-School Gym':'50 sessions. Most people never get here. You did, {cold}.'
   },
   sleepLogged:{
     'Tough Love':'Sleep logged. Recovery is not optional - it is the other half of the work.',
     'Gentle Encouragement':'Recovery data saved! Thank you for looking after your sleep - it truly is where so much of the magic happens.',
     'Humour':'Sleep logged. Recovery data saved. Somewhere, your muscles just said thank you.',
     'Science Facts':'Sleep data recorded. Recovery quality is a primary driver of training adaptation and hormonal regulation.',
-    'Mix of Everything':'Recovery data saved. Sleep is where the gains are made.'
+    'Hype':'Sleep logged {c} - recovery is where the gains get made 😴',
+    'Your Mate':'Sleep logged {c}. Rest is half the job.',
+    'Old-School Gym':'Sleep logged. Recovery is half the work.'
   },
   sorenessLogged:{
     'Tough Love':'Soreness logged. Data noted. The plan will adjust - no drama needed.',
     'Gentle Encouragement':'Recovery data saved! Thank you for checking in with your body - your plan will adapt accordingly.',
     'Humour':'Soreness logged. Recovery data saved. Your plan has been informed of your suffering.',
     'Science Facts':'Soreness data recorded across muscle groups. This feeds into recovery-adjusted programming.',
-    'Mix of Everything':'Recovery data saved. Your plan will adapt accordingly.'
+    'Hype':'Soreness logged {c2}. Plan\'s on it 💪',
+    'Your Mate':'Noted mate - the plan\'ll go easy where it needs to.',
+    'Old-School Gym':'Soreness noted. The plan will adjust.'
   },
   holidaySet:{
-    'Tough Love':'Streak frozen from {start} to {end}. Enjoy it, then get back to work.',
-    'Gentle Encouragement':'Your workout streak is frozen from {start} to {end} - enjoy every bit of your break, you have absolutely earned it!',
+    'Tough Love':'Streak frozen from {start} to {end}. Enjoy it {c}, then get back to work.',
+    'Gentle Encouragement':'Your workout streak is frozen from {start} to {end} - enjoy every bit of your break, you have absolutely earned it, {c}!',
     'Humour':'Streak frozen from {start} to {end}. Your muscles have been granted official leave to do nothing.',
     'Science Facts':'Workout streak frozen from {start} to {end}. No streak decay will occur during this period.',
-    'Mix of Everything':'Your workout streak is frozen from {start} to {end}. Enjoy your break - you have earned it!'
+    'Hype':'Streak frozen {start} to {end} {c}. Enjoy it, come back swinging 🏖️',
+    'Your Mate':'Streak\'s frozen {start} to {end}. Have a cracking break {c}.',
+    'Old-School Gym':'Streak frozen {start} to {end}. Rest up, {cold}, then back to work.'
   },
   challengeComplete:{
-    'Tough Love':'+{pts} points. Earned, not given. Next.',
+    'Tough Love':'+{pts} points. Earned, not given, {c}. Next.',
     'Gentle Encouragement':'+{pts} points earned! You worked hard for that and it shows - congratulations!',
-    'Humour':'+{pts} points earned. Absolutely earned it. Someone tell the leaderboard.',
-    'Science Facts':'+{pts} points recorded. Challenge objective met per defined parameters.',
-    'Mix of Everything':'+{pts} points earned. Absolutely earned it.'
+    'Humour':'+{pts} points earned. Absolutely earned it. Someone tell the leaderboard, {c}.',
+    'Science Facts':'+{pts} points recorded, {c}. Challenge objective met per defined parameters.',
+    'Hype':'+{pts} POINTS {c}! Who\'s next?! 🏆',
+    'Your Mate':'+{pts} points - get in {c}!',
+    'Old-School Gym':'+{pts} points. Earned, {cold}.'
   },
   spiceUpdated:{
     'Tough Love':'Spice level set. Your next plan will reflect it. Moving on.',
     'Gentle Encouragement':'Spice level updated! Your next plan will be cooked just the way you like it.',
     'Humour':'Spice level updated. Your next plan will reflect this preference - your taste buds have been consulted.',
     'Science Facts':'Spice level preference recorded and will be applied to the next generation cycle.',
-    'Mix of Everything':'Your next plan will reflect this preference.'
+    'Hype':'Spice level set {c} - next plan\'s bringing the heat (or not) 🌶️',
+    'Your Mate':'Spice level sorted {c}.',
+    'Old-School Gym':'Spice level set.'
   },
   foodPrefsSaved:{
     'Tough Love':'Preferences saved. Your next plan will use them. No further discussion needed.',
     'Gentle Encouragement':'Food preferences saved! Your next plan will be built around exactly what you like.',
     'Humour':'Food preferences saved. Your next plan will use these - the algorithm has been briefed.',
     'Science Facts':'Dietary preferences recorded and will be applied to the next meal generation cycle.',
-    'Mix of Everything':'Your next plan will use these preferences.'
+    'Hype':'Food prefs saved {c}! Next plan\'s built for YOU 🔥',
+    'Your Mate':'Food stuff saved mate - next plan\'s got it.',
+    'Old-School Gym':'Preferences saved. Next plan uses them.'
   },
   weighInDayUpdated:{
     'Tough Love':'Check-in day set to {day}. Be there.',
     'Gentle Encouragement':'Your check-in will now prompt every {day} - whatever works best for your week!',
-    'Humour':'Check-in day updated. Your weigh-in will now ambush you every {day}.',
+    'Humour':'Check-in day updated. Your weigh-in will now ambush you every {day}, {c}.',
     'Science Facts':'Weigh-in prompt schedule updated. Check-in will trigger every {day}.',
-    'Mix of Everything':'Your check-in will now prompt every {day}.'
+    'Hype':'Check-in day\'s now {day} {c}. Lock it in 🔒',
+    'Your Mate':'Check-in\'s on {day}s now {c}. Don\'t forget.',
+    'Old-School Gym':'Check-in day set to {day}. Be there.'
   },
   batchStyleUpdated:{
     'Tough Love':'Meal prep style set. Your next plan will follow it. Done.',
     'Gentle Encouragement':'Meal prep style updated! Your next plan will fit around how you like to cook.',
     'Humour':'Meal prep style updated. Your next plan will reflect this - your kitchen has been briefed.',
     'Science Facts':'Meal preparation preference recorded and will inform the next generation cycle.',
-    'Mix of Everything':'Your next plan will reflect this preference.'
+    'Hype':'Meal prep style locked in {c} 🔥',
+    'Your Mate':'Meal prep sorted {c} - next plan fits round it.',
+    'Old-School Gym':'Meal prep set. Next plan follows it.'
   },
   batchDaysUpdated:{
     'Tough Love':'Batch days set. Your plan will schedule around them. Next.',
     'Gentle Encouragement':'Batch days updated! Your next plan will schedule your meals to fit your routine perfectly.',
     'Humour':'Batch days updated. Your next plan will schedule meals accordingly - meal prep Sunday has been notified.',
     'Science Facts':'Batch cooking schedule recorded and will be applied to the next meal rotation.',
-    'Mix of Everything':'Your next plan will schedule meals accordingly.'
+    'Hype':'Batch days set {c2}. Prep game strong 💪',
+    'Your Mate':'Batch days sorted mate.',
+    'Old-School Gym':'Batch days set.'
   },
   apiKeySaved:{
     'Tough Love':'Key stored. Plans will generate from now on. Get to work.',
     'Gentle Encouragement':'Your key is safely stored! Plans will generate for you from now on.',
     'Humour':'API key stored. Plans will generate from now on - the robot is now officially employed.',
     'Science Facts':'API key stored securely. Generation capability is now active.',
-    'Mix of Everything':'Your key is stored. Plans will generate from now on.'
+    'Hype':'Key saved {c} - plans are GO 🚀',
+    'Your Mate':'Key saved {c}, you\'re good to go.',
+    'Old-School Gym':'Key saved. Plans will generate from now on.'
   },
   goalUpdated:{
     'Tough Love':'Goal updated. Generate a new plan and get moving in that direction.',
-    'Gentle Encouragement':'Your goal has been updated! Generate a new plan whenever you are ready to head in this new direction.',
+    'Gentle Encouragement':'Your goal has been updated, {c}! Generate a new plan whenever you are ready to head in this new direction.',
     'Humour':'Goal updated. Generate a new plan to reflect your new direction - your old goal has been quietly filed away.',
     'Science Facts':'Goal parameter updated. Regenerate your plan to recalibrate targets accordingly.',
-    'Mix of Everything':'Generate a new plan to reflect your new direction.'
+    'Hype':'New goal {c}! Generate a new plan and let\'s GO 🔥',
+    'Your Mate':'New goal - nice one {c}. Generate a new plan when you\'re ready.',
+    'Old-School Gym':'Goal updated. Generate a new plan and get after it, {cold}.'
   },
   motStyleUpdated:{
     'Tough Love':'{style} mode: active. No more soft language from here. Guide is updating in the background.',
     'Gentle Encouragement':'Your {style} experience is now active! Everything from here on will feel just right for you. Your how-to guide is updating in the background.',
     'Humour':'{style} mode: engaged. Brace yourself accordingly. Your how-to guide is updating in the background.',
     'Science Facts':'Motivational style parameter set to {style}. All future messaging will be generated accordingly. How-to guide regenerating in the background.',
-    'Mix of Everything':'Your {style} experience is now active. Regenerating your how-to guide in the background...'
+    'Hype':'{style} mode ACTIVATED {c} 🔥 Guide\'s updating in the background.',
+    'Your Mate':'{style} it is {c}. Guide\'s updating in the background.',
+    'Old-School Gym':'{style} it is. Guide is updating in the background.'
   },
   pinUpdated:{
     'Tough Love':'PIN changed. Active immediately. Do not forget it.',
     'Gentle Encouragement':'Your new PIN is active immediately! Nice and secure now.',
-    'Humour':'PIN updated. New PIN is active immediately - try to actually remember this one.',
+    'Humour':'PIN updated. New PIN is active immediately - try to actually remember this one, {c}.',
     'Science Facts':'PIN updated and active immediately across all future login attempts.',
-    'Mix of Everything':'New PIN is active immediately.'
+    'Hype':'PIN changed {c}. Locked down 🔒',
+    'Your Mate':'PIN changed {c} - don\'t forget this one.',
+    'Old-School Gym':'PIN changed. Don\'t forget it.'
   },
   statsUpdated:{
     'Tough Love':'Stats updated. If anything major changed, regenerate your plan. Otherwise, get on with it.',
     'Gentle Encouragement':'Your profile has been updated! If anything significant has changed, regenerating your plan will help it catch up with you.',
     'Humour':'Stats updated. Your profile has been updated - regenerate your plan if you have made significant changes, minor ones can stay our little secret.',
     'Science Facts':'Profile parameters updated. Regenerate your plan if inputs have changed meaningfully to recalibrate targets.',
-    'Mix of Everything':'Your profile has been updated. Regenerate your plan if you have made significant changes.'
+    'Hype':'Stats updated {c}! Big changes? Regenerate your plan 💪',
+    'Your Mate':'Stats updated mate. Changed a lot? Do a new plan so it keeps up with you.',
+    'Old-School Gym':'Stats updated. If much has changed, regenerate.'
   },
   trainingSetupUpdated:{
     'Tough Love':'Training setup saved. Your next plan will schedule cardio around it. Move on.',
     'Gentle Encouragement':'Training setup updated! Your next plan generation will take this into account for your cardio scheduling.',
     'Humour':'Training setup saved. Your next plan will use this for cardio scheduling - the algorithm has taken note of your lifestyle.',
     'Science Facts':'Occupation and training time updated. This will inform cardio prescription in the next generation cycle.',
-    'Mix of Everything':'Your next plan generation will use this for cardio scheduling.'
+    'Hype':'Training setup saved {c} - next plan\'s got you 💪',
+    'Your Mate':'Training setup saved {c}. Sorted.',
+    'Old-School Gym':'Training setup saved.'
   },
   seasonWin:{
-    'Tough Love':'1500 points. Season win. You earned every one of them. Now do it again.',
-    'Gentle Encouragement':'You hit 1500 points! You are a true champion - your name goes in the Hall of Fame. We are so proud of you!',
-    'Humour':'1500 points. You are a champion. Your name goes in the Hall of Fame, right next to the legends and slightly above your own expectations.',
-    'Science Facts':'1500 point threshold reached. Season win recorded. Statistically, this places you among the most consistent users.',
-    'Mix of Everything':'You hit 1500 points. You are a champion. Your name goes in the Hall of Fame.'
+    'Tough Love':'1500 points. Season win. You earned every one of them. Now do it again, {c}.',
+    'Gentle Encouragement':'You hit 1500 points! You are a true champion - your name goes in the Hall of Fame. We are so proud of you, {c}!',
+    'Humour':'1500 points {c}. You are a champion. Your name goes in the Hall of Fame, right next to the legends and slightly above your own expectations.',
+    'Science Facts':'1500 point threshold reached. Season win recorded, {c}. Statistically, this places you among the most consistent users.',
+    'Hype':'1500 POINTS {cbig}!!! SEASON WIN, HALL OF FAME 🏆👑',
+    'Your Mate':'1500 points {c}! Season win - you\'re in the Hall of Fame. GET IN!',
+    'Old-School Gym':'1500 points. Season win. Earned every one, {cold}.'
   },
   eventPlanned:{
     'Tough Love':'Banking {reduction} kcal per day for {days} days. {bank} kcal saved up for {name}. Earned, not free.',
     'Gentle Encouragement':'Banking {reduction} kcal per day for {days} days - you will have {bank} extra calories saved up for {name}. Enjoy every bit of it, you have planned this so well!',
     'Humour':'Banking {reduction} kcal per day for {days} days. {bank} kcal saved up for {name}. Future you says thank you, present you says "worth it".',
     'Science Facts':'Daily reduction of {reduction} kcal over {days} days yields a {bank} kcal surplus available for {name}, without disrupting your overall energy balance.',
-    'Mix of Everything':'Banking {reduction} kcal per day for {days} days. You will have {bank} extra calories banked for {name}. Enjoy every bite.'
+    'Hype':'Banking {reduction} kcal a day for {days} days {c} = {bank} kcal saved for {name}. Big brain move 🧠',
+    'Your Mate':'Banking {reduction} kcal a day for {days} days - {bank} kcal saved for {name}. Proper planning that {c}. Enjoy it!',
+    'Old-School Gym':'Banking {reduction} kcal a day for {days} days. {bank} kcal saved for {name}. Planned properly.'
   },
   syncRequested:{
     'Tough Love':'{username} will see your request next login. Wait for it. Generate a new plan once they accept.',
     'Gentle Encouragement':'{username} will see your request next time they log in - fingers crossed! Generate a new plan together once they accept.',
     'Humour':'{username} will see your request next time they log in. The ball is now dramatically in their court. Generate a new plan after they accept.',
     'Science Facts':'Sync request queued. {username} will be notified on next login. Regenerate plans after acceptance to apply shared meal names.',
-    'Mix of Everything':'{username} will see your request next time they log in. Generate a new plan after they accept.'
+    'Hype':'Request sent to {username} {c}! They\'ll see it next login 🤝',
+    'Your Mate':'Sent to {username} mate - they\'ll see it next time they log in.',
+    'Old-School Gym':'Request sent to {username}. Generate once they accept.'
   },
   mealSyncActive:{
     'Tough Love':'Synced with {username}. Their next plan uses your meal names, their own numbers. Done.',
     'Gentle Encouragement':'You are now synced with {username}! Their next plan generation will use your meal names alongside their own calorie targets - teamwork at its best.',
     'Humour':'You are now synced with {username}. Their next plan will use your meal names with their own calorie targets. Same dinner, different maths.',
     'Science Facts':'Sync established with {username}. Their next generation cycle will inherit your meal names while retaining their own macro targets.',
-    'Mix of Everything':'You are now synced with {username}. {username} - next plan generation will use your meal names with their own calorie targets.'
+    'Hype':'Synced with {username} {c}! Team gains 🤝🔥',
+    'Your Mate':'You\'re synced with {username} {c} - same meals, your own numbers. Teamwork.',
+    'Old-School Gym':'Synced with {username}. Their meal names, your numbers.'
   },
   syncDeclined:{
     'Tough Love':'Request declined. Moving on.',
     'Gentle Encouragement':'The sync request has been declined - no worries at all, everyone keeps their own independent plan.',
     'Humour':'The sync request has been declined. It has been let down gently.',
     'Science Facts':'Sync request declined. Both users continue independent meal generation.',
-    'Mix of Everything':'The sync request has been declined.'
+    'Hype':'Request declined {c}. All good, solo mode 💪',
+    'Your Mate':'Request declined. Their loss mate.',
+    'Old-School Gym':'Request declined. Moving on.'
   },
   syncCancelled:{
     'Tough Love':'Sync removed. Generate a new plan and go your own way.',
     'Gentle Encouragement':'Meal sync removed - generate a new plan whenever you are ready for your own independent meals again.',
     'Humour':'Meal sync removed. You are both single again, meal-plan-wise. Generate a new plan to get your own independent meals.',
     'Science Facts':'Sync connection terminated. Regenerate plans to resume independent meal generation for both users.',
-    'Mix of Everything':'Meal sync removed. Generate a new plan to get your own independent meals.'
+    'Hype':'Sync removed {c} - solo mode activated 💪',
+    'Your Mate':'Sync\'s off {c}. Generate a new plan when you\'re ready.',
+    'Old-School Gym':'Sync removed. Generate a new plan.'
+  },
+  cheatDayPicked:{
+    'Tough Love':'Cheat day booked. Enjoy it, then straight back to the plan.',
+    'Gentle Encouragement':'Your cheat day is booked - enjoy every bite, you have earned it, {c}!',
+    'Humour':'Cheat day booked. Your taste buds have been notified and are very excited.',
+    'Science Facts':'Cheat day recorded. One planned day in a month of consistent work is easy to absorb.',
+    'Hype':'CHEAT DAY BOOKED {c}! Earned it. Enjoy it 🍕🔥',
+    'Your Mate':'Cheat day booked {c} - enjoy it, you\'ve earned it.',
+    'Old-School Gym':'Cheat day booked. Earned, not given. Back to it after, {cold}.'
   },
   howToGuideRegenerated:{
     'Tough Love':'Guide rewritten in {style} style. Go read it.',
     'Gentle Encouragement':'Your guide has been rewritten in {style} style - hope it feels just right for you now!',
     'Humour':'Guide rewritten in {style} style. Fresh out of the oven.',
     'Science Facts':'Guide regenerated in {style} style. Content recalibrated to match your preference.',
-    'Mix of Everything':'Your guide has been rewritten in {style} style.'
+    'Hype':'Guide rewritten in {style} style {c} - go check it 🔥',
+    'Your Mate':'Guide\'s been rewritten in {style} style {c}. Have a look.',
+    'Old-School Gym':'Guide rewritten in {style} style. Read it.'
   }
 };
 function celebrateMsg(key,icon,title,vars={}){
-  const style=CU?.mot_style||'Mix of Everything';
-  let msg=msgTemplates[key]?.[style]||msgTemplates[key]?.['Mix of Everything']||'';
+  const style=pickStyle(key);
+  let msg=fillCall(msgTemplates[key]?.[style]||msgTemplates[key]?.['Gentle Encouragement']||'');
   for(const k in vars)msg=msg.replaceAll('{'+k+'}',vars[k]);
   showCelebration(icon,title,msg);
 }
@@ -2448,7 +2599,7 @@ function userFromRow(r){
     avatar:r[23]||'💪',water_target_ml:parseInt(r[24])||2000,
     goal_updated:(r[25]===''||r[25]==null)?'':(String(r[25]).toLowerCase()==='true'?'true':''),kitchen:r[26]||'',
     meals_per_day:r[27]||'5',snack_style:r[28]||'Both',
-    mot_style:r[29]||'Mix of Everything',
+    mot_style:r[29]||'',
     baseline_type:r[30]||'Assessment Week (Recommended)',
     known_numbers:r[31]||'',is_new_user:(r[32]===''||r[32]==null)?'true':(String(r[32]).toLowerCase()==='true'?'true':'false'),
     weigh_in_day:r[33]||'Sunday',batch_cooking:r[34]||'Mix - I decide per meal',
@@ -2647,15 +2798,17 @@ async function loginUser(u){
 }
 
 function showFirstTimeWelcome(){
-  const style=CU.mot_style||'Mix of Everything';
+  const style=pickStyle('welcome');
   const msgs={
     'Tough Love':`Welcome, ${CU.username}. No fluff. Read the How To guide, then generate your plan. Everything you need is here - use it.`,
     'Gentle Encouragement':`Welcome, ${CU.username}! We are so glad you are here. Take a moment to read your personalised How To guide below - it will make everything click. You have got this.`,
     'Humour':`Welcome, ${CU.username}! You made it. The hard part was signing up - everything else is just showing up. Your How To guide is ready below. Read it. Or do not. We will judge you either way.`,
     'Science Facts':`Welcome, ${CU.username}. Research shows that understanding your programme improves adherence by up to 40%. Your personalised How To guide is ready below. Start there.`,
-    'Mix of Everything':`Welcome to E=MC-HENCH, ${CU.username}! Your personalised guide is ready below - it will walk you through everything. Then generate your plan and let\'s get to work. Something special starts today.`
+    'Hype':'Welcome to E=MC-HENCH {c}! 🔥 Read your How To guide below, generate your plan, and let\'s GOOO. The glow-up starts today.',
+    'Your Mate':'Alright {c}, welcome in! Have a read of your How To guide below, then generate your plan and we\'ll crack on. Let\'s have it.',
+    'Old-School Gym':'Welcome, {cold}. Read the How To guide below, generate your plan, then get to work. That\'s all there is to it.'
   };
-  showCelebration('🎉','Welcome!',msgs[style]||msgs['Mix of Everything']);
+  showCelebration('🎉','Welcome!',fillCall(msgs[style]||msgs['Gentle Encouragement']));
 }
 
 // The sign-up form as the page first loaded it. Signing out puts it back, so nothing one person typed -
@@ -2679,6 +2832,9 @@ function resetObForm(){
     for(const [id,v] of Object.entries(obFormDefaults.fields)){const e=document.getElementById(id);if(!e)continue;if(e.type==='checkbox')e.checked=v;else e.value=v;}
     document.querySelectorAll('.ob-step .pill').forEach((p,i)=>p.classList.toggle('on',!!obFormDefaults.pills[i]));
     prepSyncAll('ob');dietOtherSync('ob');
+    // the coach-call question (new backend): the word box closed, the name switch back
+    const cw=document.getElementById('ob-call-word');if(cw)cw.style.display='none';
+    const cn=document.getElementById('ob-call-name-row');if(cn)cn.style.display='flex';
   }catch(e){}
 }
 function sheetsSignOut(){
@@ -2697,7 +2853,7 @@ function sheetsSignOut(){
   pendingCalAdj=null;dislikedMeals=[];measurements=[];
   pendingPatternAdj=null;
   shopBuy=null;shopTicked=new Set();shopTickWeek='';
-  socialEvents=[];cheatDays=[];
+  socialEvents=[];cheatDays=[];nudgeData={history:[],freq:{},lastWeighIn:'',loaded:false};currentNudge=null;
   activeEvent=null;
   wallPosts=[];competitions=[];allPoints=[];userPoints={};
   _lbSortMode='season_points';
@@ -2972,7 +3128,7 @@ function renderDashboard(){
 
   // Alerts
   const aEl=document.getElementById('dash-alerts');
-  aEl.innerHTML='';
+  aEl.innerHTML=nudgeCardHtml();
   if(!userMealPlan&&!userTrainingPlan)aEl.innerHTML+=`<div class="alert alert-info">👋 Welcome! Hit "Generate Plan" to get your personalised programme.</div>`;
   aEl.innerHTML+=genAlertHtml();
   aEl.innerHTML+=recompNudgeHtml();
@@ -3029,29 +3185,35 @@ const restDayContent={
     'Gentle Encouragement':'High soreness detected - be extra kind to yourself today. Light walking, stretching and plenty of water. Your muscles are rebuilding, and that is exactly what should be happening.',
     'Humour':'High soreness detected. Today your muscles have filed a formal complaint. Light walking, stretching, water. Let them rebuild in peace.',
     'Science Facts':'High soreness detected. This indicates significant micro-trauma requiring recovery. Light walking, stretching and hydration support the repair process.',
-    'Mix of Everything':'High soreness detected. Today is about gentle recovery. Light walking, stretching and plenty of water. Your muscles are rebuilding - let them.'
+    'Hype':'Big soreness today {c}. Recovery day - light walk, stretch, water. That\'s where the gains get built 💪',
+    'Your Mate':'You\'re battered today mate. Easy one - light walk, stretch, loads of water. Let it recover.',
+    'Old-School Gym':'Very sore, {cold}. Recovery today: light walking, stretching, water. That\'s where you rebuild.'
   },
   moderate:{
     'Tough Love':'Moderate soreness. 20-30 minutes walking plus mobility work. Move, but keep it light. No heroics today.',
     'Gentle Encouragement':'Moderate soreness - a 20-30 minute walk and some mobility work would be perfect today. Keep moving gently, you are doing great.',
     'Humour':'Moderate soreness. A 20-30 minute walk and some mobility work today - nothing that requires a pep talk beforehand.',
     'Science Facts':'Moderate soreness detected. Light activity of 20-30 minutes and mobility work promotes blood flow without adding further fatigue.',
-    'Mix of Everything':'Moderate soreness. A 20-30 minute walk and some mobility work would be perfect today. Keep moving but keep it light.'
+    'Hype':'Bit sore {c}? Easy 20-30 min move and some mobility. Keep it chill 👌',
+    'Your Mate':'Bit stiff {c}? A 20-30 minute walk and a stretch will sort you out.',
+    'Old-School Gym':'Moderately sore. 20-30 minutes of light activity and mobility. Nothing more.'
   },
   low:{
     'Tough Love':'Low soreness. You are recovering well. Optional light cardio if you want it - walk, bike, yoga. Your call.',
     'Gentle Encouragement':'Low soreness - you are recovering really well! Optional light cardio today if you feel like it. A walk, easy bike ride or yoga would all count.',
     'Humour':'Low soreness. You are recovering well, possibly too well - optional light cardio today if you are feeling smug about it. A walk, easy bike ride or yoga would all count.',
     'Science Facts':'Low soreness indicates efficient recovery. Optional light cardio today - walking, easy cycling or yoga all support continued adaptation without added fatigue.',
-    'Mix of Everything':'Low soreness - you are recovering well. Optional light cardio today if you feel like it. A walk, easy bike ride or yoga would all count.'
+    'Hype':'Feeling fresh {c2}! Optional light cardio if you fancy it - walk, bike, yoga 🚶',
+    'Your Mate':'Feeling alright {c}? Light walk or an easy bike if you fancy it. No pressure.',
+    'Old-School Gym':'Recovering well. Optional light cardio - walk, bike or easy stretching.'
   }
 };
 function getRestDayContent(){
   const soreness=Object.values(sorenessData);
   const avgSoreness=soreness.length?soreness.reduce((a,b)=>a+b,0)/soreness.length:0;
-  const style=CU?.mot_style||'Mix of Everything';
+  const style=pickStyle('rest');
   const level=avgSoreness>=4?'high':avgSoreness>=2?'moderate':'low';
-  return restDayContent[level]?.[style]||restDayContent[level]?.['Mix of Everything']||'';
+  return fillCall(restDayContent[level]?.[style]||restDayContent[level]?.['Gentle Encouragement']||'');
 }
 
 function getTodaySession(){
@@ -3291,7 +3453,7 @@ function renderHallOfFame(){
 // WEIGH IN
 // ============================================================
 async function checkWeighInDay(){
-  if(!CU)return;
+  if(!CU||nudgesOn())return;
   const dayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const today=dayNames[new Date().getDay()];
   const preferredDay=CU.weigh_in_day||'Sunday';
@@ -3358,6 +3520,7 @@ async function saveWeighIn(){
     if(goalHeld&&goalHoldAdj(CU,adjAmount,currentWeight)!==adjAmount){adjAmount=0;adjMsg='';}
     const rid='wi_'+Date.now();
     await dbAppend('weigh_in_log',[rid,CU.user_id,new Date().toISOString(),weight,weighInRatings.energy,weighInRatings.hunger,weighInRatings.training,notes,adjAmount,'pending']);
+    nudgeData.lastWeighIn=dayKey(new Date());
     measurements.push({weighIn:true,logged_at:new Date().toISOString(),weight,waist:'',chest:'',biceps:'',shoulders:'',quads:'',calves:'',forearms:''});
     // Keep the profile weight current, so protein and next month's targets use the real weight
     if(currentWeight>0){
@@ -4157,18 +4320,30 @@ RULES:
 - Difficulty: easy/medium/hard only.`;
 }
 
-// Shared voice descriptions for the 5 motivational styles - used across every
+// Shared voice descriptions for the motivational styles (up to 2 blended) - used across every
 // AI-generated piece of user-facing writing (how-to guide, progress reports,
 // pattern analysis, event banking) so tone is genuinely differentiated rather
 // than relying on the AI's own interpretation of just a style name alone.
 function getStyleVoice(style){
-  return{
+  const V={
     'Tough Love':'Direct, no-nonsense, zero fluff. High expectations. Calls things as they are and does not soften anything.',
     'Gentle Encouragement':'Warm, patient, celebrates every bit of progress. Never pushy, always supportive.',
     'Humour':'Genuinely funny, a bit self-deprecating, keeps things light while still being useful.',
     'Science Facts':'Evidence-based and precise, explains the why behind things. Respects the reader\'s intelligence, minimal fluff.',
-    'Mix of Everything':'A natural blend - direct when it matters, warm when needed, occasionally funny, backed by evidence.'
-  }[style]||'';
+    'Hype':'Full gym-bro energy - loud, upbeat, over the top, gym lingo (let\'s go, beast mode, locked in, no days off, built different, light work), mixes "{c}" and "{c2}". Funny through being over the top, never through jokes about bodies. Turns the energy down by half when someone is struggling, injured or ill, but stays upbeat. Never comments on how the person looks or what they weigh.',
+    'Your Mate':'A casual British mate with proper banter - warm and on their side, takes the mick a bit when things are going well, says "nice one", "get in", "crack on", "sorted", calls them "{c}". Straight with them when it matters, like a good mate. Never takes the mick about bodies, weight, food guilt, injuries or anything they are struggling with.',
+    'Old-School Gym':'The classic gym coach - few words, respects hard work, believes in earning it. Proud of effort, unimpressed by excuses but never harsh. Calls them "{cold}" now and then.'
+  };
+  const list=motStylesOf(style);
+  const txt=list.length>1?`A blend of two styles - ${list[0]}: ${V[list[0]]} ${list[1]}: ${V[list[1]]} Write in one voice that mixes both naturally, never alternating paragraphs.`:V[list[0]];
+  return fillCall(txt)+' '+coachCallLine();
+}
+// How the AI addresses them (the "What should the coach call you?" answer)
+function coachCallLine(u=CU){
+  const c=coachCallOf(u),name=String(u?.username||'').trim();
+  if(c==='name')return`Now and then call them by their name, ${name}.`;
+  if(c==='other')return`Now and then call them "${String(u.coach_call_word).trim()}".`;
+  return`Now and then call them "${COACH_CALLS[c][0]}"${u?.coach_call_name?` or by their name, ${name}`:''}.`;
 }
 
 // Gives a clear, actionable message for the two most common ways an AI call
@@ -5064,7 +5239,7 @@ function patternAnalysisPrompt(weighIns,recentLogs){
     endurance:{ideal:'within plus or minus 1kg total',tooFast:0.4,tooSlow:0,direction:'stable'}
   };
   const rt=rateTargets[CU.goal]||rateTargets.maintain;
-  const patternStyle=CU.mot_style||'Mix of Everything';
+  const patternStyle=styleLabel();
   const patternStyleVoice=getStyleVoice(patternStyle);
 
   return`You are E=MC-HENCH, a personal trainer reviewing 3 weeks of data for ${CU.username}. Your job is to make a precise, data-driven calorie recommendation and explain it clearly.
@@ -7274,7 +7449,7 @@ function trainWeekHeadHtml(){
   <div style="font-size:13px;color:var(--ac);margin-bottom:12px">🎯 Follow each set's target. Big lifts: Set 5 is your 3-rep max. Smaller lifts: Set 3 is your 10-12 rep max. Record every weight - your Month 1 is built from them.</div>`;
   const label=w.style==='block'?`Week ${blockWeek(w.weekNo)} of 4 - ${TRAIN_STYLES.block}`:`Week ${w.weekNo} - ${TRAIN_STYLES.steady}`;
   const effort=effortFor({},w);
-  const style=CU?.mot_style||'Mix of Everything';
+  const style=pickStyle('lighter');
   let box='';
   if(w.lighter){
     const canSkip=w.style==='block'&&!(w.deloads||{})[w.weekKey]&&CU?.experience==='beginner';
@@ -7283,7 +7458,7 @@ function trainWeekHeadHtml(){
   }else if(w.offer){
     const msg=(w.offer==='early'?msgTemplates.lighterEarly:msgTemplates.deloadCheck)||{};
     box=`<div class="card" style="border-color:var(--ac2)"><div class="card-lbl">Time for a lighter week?</div>
-      <div style="font-size:13px;color:var(--tx2);line-height:1.5;margin-bottom:10px">${escapeHtml(msg[style]||msg['Mix of Everything']||'')}</div>
+      <div style="font-size:13px;color:var(--tx2);line-height:1.5;margin-bottom:10px">${escapeHtml(fillCall(msg[style]||msg['Gentle Encouragement']||''))}</div>
       <div style="display:flex;gap:8px"><button class="btn btn-sm" onclick="setLighterWeek('taken')">Take a lighter week</button><button class="btn btn-ghost btn-sm" onclick="setLighterWeek('skipped')">Not yet</button></div></div>`;
   }
   return`<div style="font-size:12px;color:var(--tx2);margin-bottom:4px">${escapeHtml(label)}</div>
@@ -7553,7 +7728,9 @@ function trainSessionHtml(){
   const targets=repsTargets({...ex,sets:setCount,reps_per_set:Array.isArray(ex.reps_per_set)&&ex.reps_per_set.length===setCount?ex.reps_per_set:null},isAssessment);
   const rows=draftRows(ei);
   const last=lastTimeFor(ex.name);
-  const nudge=weightNudge({...ex,sets:Math.min(setCount,parseInt(ex.sets)||3)},last,isAssessment||(!isAb&&wctx.lighter));
+  // "Too hard" last time (a coach nudge): start lighter, and no add-weight nudge this session
+  const ease=!isAb&&!isAssessment&&sessionEase(sidx);
+  const nudge=weightNudge({...ex,sets:Math.min(setCount,parseInt(ex.sets)||3)},last,isAssessment||ease||(!isAb&&wctx.lighter));
   // A timed hold or carry ("30-45s", "1 min"): the second box is seconds, weight only if one is used
   const timed=/\d\s*(s|secs?|seconds?|mins?|minutes?)\b/i.test(String(ex.reps||''));
   const kgHint=i=>nudge&&nudge.weight?nudge.weight:(last&&last[Math.min(i,last.length-1)]&&parseFloat(last[Math.min(i,last.length-1)].weight_kg))||(timed?'-':'kg');
@@ -7567,6 +7744,7 @@ function trainSessionHtml(){
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:900;line-height:1.1">${escapeHtml(ex.name)}</div>
     <div style="font-size:13px;color:var(--tx2);margin-top:4px">${setCount} sets x ${escapeHtml(ex.reps||'8-12')}${ex.rest_seconds?' - rest '+escapeHtml(ex.rest_seconds)+'s':''}${ex.tempo?` - tempo ${escapeHtml(ex.tempo)} <span style="cursor:pointer;color:var(--tx3)" onclick="${tempoHelp}">(?)</span>`:''}</div>
     ${effort?`<div style="font-size:13px;color:var(--ac);margin-top:6px">🎯 ${escapeHtml(effort.text)}</div>`:''}
+    ${ease?`<div class="ex-note" style="margin-top:6px;color:var(--warn)">🪶 ${EASE_NOTE}</div>`:''}
     ${ex.notes?`<div class="ex-note" style="margin-top:6px">${escapeHtml(ex.notes)}</div>`:''}
     ${TEST_NOTES[ex.test]&&isTestWeekPlan()?`<div class="ex-note" style="margin-top:6px;${ex.test==='start'?'color:var(--warn)':''}">${ex.test==='start'?'⚠️':ex.test==='main'?'🎯':'📏'} ${escapeHtml(TEST_NOTES[ex.test])}</div>`:''}
     ${/pallof/i.test(ex.name||'')&&matchInjuryKeys(CU?.injuries||'').includes('Bad shoulder')?`<div class="ex-note" style="margin-top:6px;color:var(--warn)">⚠️ ${escapeHtml(PALLOF_SHOULDER_NOTE)}</div>`:''}
@@ -8079,7 +8257,7 @@ function progressPlanLine(){
   return parts.join(' ');
 }
 function progressReportPrompt(){
-  const style=CU.mot_style||'Mix of Everything';
+  const style=styleLabel();
   const styleVoice=getStyleVoice(style);
   const recompSummary=buildRecompSummary();
   return`You are E=MC-HENCH. Write a progress report for ${CU.username} in ${style} motivational style.
@@ -8141,7 +8319,7 @@ function renderHowToGuideText(guide){
 }
 
 function howToGuidePrompt(){
-  const style=CU.mot_style||'Mix of Everything';
+  const style=styleLabel();
   const styleVoice=getStyleVoice(style);
   return`You are E=MC-HENCH. Write a personalised how-to guide for ${CU.username} in ${style} motivational style.
 Goal: ${CU.goal}, experience: ${CU.experience}, training ${CU.training_days} days/week.
@@ -8222,12 +8400,12 @@ function retryHowToGuide(){
 function getCachedHowTo(){
   try{
     const c=JSON.parse(localStorage.getItem('howto_guide_'+CU.user_id)||'null');
-    if(c&&c.guide&&c.style===(CU.mot_style||'Mix of Everything')&&c.goal===CU.goal)return c.guide;
+    if(c&&c.guide&&c.style===styleLabel()&&c.goal===CU.goal)return c.guide;
   }catch(e){}
   return '';
 }
 function cacheHowTo(guide){
-  try{localStorage.setItem('howto_guide_'+CU.user_id,JSON.stringify({guide,style:CU.mot_style||'Mix of Everything',goal:CU.goal}));}catch(e){}
+  try{localStorage.setItem('howto_guide_'+CU.user_id,JSON.stringify({guide,style:styleLabel(),goal:CU.goal}));}catch(e){}
 }
 function showHowToError(detail){
   const el=document.getElementById('howto-content');
@@ -8793,11 +8971,15 @@ function renderProfile(){
 
     <div class="card">
       <div class="card-lbl">Motivational Style</div>
+      <div style="font-size:12px;color:var(--tx3);margin-bottom:8px">Pick one or two - two gives you a mix of both.</div>
       <div class="pills" id="prof-mot">
-        ${['Tough Love','Gentle Encouragement','Humour','Science Facts','Mix of Everything'].map(s=>`<div class="pill ${s===CU.mot_style?'on':''}" onclick="updateMotStyle(this,'${s}')">${s}</div>`).join('')}
+        ${Object.keys(MOT_STYLES).map(s=>`<div class="pill ${motStylesOf(CU.mot_style).includes(s)?'on':''}" onclick="pickUpTo(this,'prof-mot',2)">${s}</div>`).join('')}
       </div>
+      <div style="font-size:12px;color:var(--tx2);line-height:1.6;margin:8px 0 10px">${Object.entries(MOT_STYLES).map(([k,v])=>`<b>${k}</b> - ${v}`).join('<br>')}</div>
+      <button class="btn btn-ghost btn-sm" onclick="updateMotStyle()">Save Style</button>
     </div>
 
+    ${nudgeSettingsHtml()}
     <div class="card">
       <div class="card-lbl">Change Avatar</div>
       <div class="pills">
@@ -9001,14 +9183,16 @@ async function updateGoal(){
   // Regenerate how-to guide so it reflects the new goal, and confirm once it's actually done
   if(userMealPlan||userTrainingPlan){
     const ok=await genHowToGuide();
-    if(ok)celebrateMsg('howToGuideRegenerated','📖','Guide Updated!',{style:CU.mot_style||'Mix of Everything'});
+    if(ok)celebrateMsg('howToGuideRegenerated','📖','Guide Updated!',{style:styleLabel()});
   }
 }
 
-async function updateMotStyle(el,style){
+async function updateMotStyle(){
+  const picked=getOnPills('prof-mot');
+  if(!picked){alert('Pick at least one style.');return;}
+  const style=motStylesOf(picked).join(' + ');
+  if(style===styleLabel()){alert('That is already your style.');return;}
   if(!await updateUserField(29,style))return;
-  document.querySelectorAll('#prof-mot .pill').forEach(p=>p.classList.remove('on'));
-  el.classList.add('on');
   CU.mot_style=style;
   celebrateMsg('motStyleUpdated','💬','Motivation Style Updated!',{style});
   // Regenerate how-to guide so it reflects new style, and confirm once it's actually done
@@ -9442,7 +9626,7 @@ function parseWorkoutLogRow(r){
   const key=String(r[5]);
   let exercises=[];
   try{const e=JSON.parse(String(r[6]||'[]'));if(Array.isArray(e))exercises=e;}catch(e){}
-  return{day:dayKey(r[2])||dayKey(r[3]),at:String(r[2]||''),key,pct:typeof x.pct==='number'?x.pct:null,stop:x.stop||'',cardio:key==='cardio',extra:key.startsWith('ab'),pts:parseInt(r[8])||0,exercises,rating:parseInt(r[10])||null,plan:String(r[4]||'')};
+  return{id:String(r[0]||''),ease:!!x.ease,day:dayKey(r[2])||dayKey(r[3]),at:String(r[2]||''),key,pct:typeof x.pct==='number'?x.pct:null,stop:x.stop||'',cardio:key==='cardio',extra:key.startsWith('ab'),pts:parseInt(r[8])||0,exercises,rating:parseInt(r[10])||null,plan:String(r[4]||'')};
 }
 function parsePauseRow(r){return{id:String(r[0]),start:dayKey(r[2]),end:dayKey(r[3]),status:String(r[4]||'active'),reason:String(r[5]||'Holiday')};}
 // ---- streak engine end ----
@@ -9630,6 +9814,269 @@ function isCheatDayToday(){return goalsOn()&&!!CU?.cheat_day_opt&&!!userMealPlan
 // Saved by the layer (cheat_days); index.html has no table for it
 async function saveCheatDay(day){}
 // ---- goals end ----
+
+// ---- nudges start ----
+// Coach nudges (NUDGES-SPEC-2026-10-27.md): one short card a day at the top of the dashboard, with buttons that
+// hand over to features that already exist. Fixed wording in the person's style, no AI. New backend only:
+// nudgesOn() is false here and true in the layer, which loads the history (nudges table, 045) and the settings.
+function nudgesOn(){return false;}
+const NUDGE_KINDS={weighin:'Weigh-in reminders',missed:'"Everything OK?" after a few days off',offday:'After a hard session',
+  meals:'Meal logging check-ins',weekahead:'"Anything coming up?" each week',celebrate:'Streak celebrations'};
+const NUDGE_ORDER=['offday','missed','weighin','meals','weekahead','celebrate'];
+const NUDGE_MILESTONES={workout:[4,8,12,26],meal:[7,14,30,60],water:[7,14,30,60]};
+// history: [{kind, ref, shown_on, answer}] (answer 'closed' = the X, null = shown, not answered yet)
+// freq: {kind: 'on' | 'weekly' | 'off', _all: 'off' when every nudge is off}
+let nudgeData={history:[],freq:{},lastWeighIn:'',loaded:false};
+function nudgeFreq(freq,kind){return(freq||{})._all==='off'?'off':((freq||{})[kind]||'on');}
+// X pressed this many times in a row (since they last answered "Want to keep getting these?")
+function nudgeClosesInRow(history,kind){
+  let n=0;
+  for(const h of [...history].reverse()){
+    if(h.kind==='ask'&&h.ref===kind&&h.answer&&h.answer!=='closed')break;
+    if(h.kind!==kind)continue;
+    if(h.answer==='closed')n++;else if(h.answer)break;
+  }
+  return n;
+}
+function daysBetween(a,b){return Math.round((dayMs(b)-dayMs(a))/86400000);}
+// Each kind's trigger. ctx is plain data (nudgeContext), so the rules can be checked offline.
+const NUDGE_TRIGGERS={
+  weighin:c=>c.weighInToday&&c.signedUpDays>=6&&!c.weighedToday?{ref:c.today}:null,
+  missed:c=>{
+    if(!c.logsLoaded||!c.planStart||!c.trainingDays)return null;
+    const last=c.workouts.filter(w=>w.day&&!w.cardio&&!w.extra).map(w=>w.day).sort().pop()||'';
+    const pauseEnd=c.pauses.map(p=>p.end).filter(e=>e&&e<c.today).sort().pop()||'';
+    const from=[last,c.planStart,pauseEnd].sort().pop();
+    if(!from||from>=c.today)return null;
+    const pref=c.preferredDays&&c.preferredDays.length===c.trainingDays?c.preferredDays:null;
+    if(pref){
+      let n=0;for(let d=addDays(from,1);d<c.today;d=addDays(d,1))if(pref.includes(dayFromKey(d).getDay()))n++;
+      return n>=2?{ref:from}:null;
+    }
+    const gap=Math.max(3,Math.round(14/c.trainingDays)+1);
+    return daysBetween(from,c.today)>=gap?{ref:from}:null;
+  },
+  offday:c=>{
+    if(!c.logsLoaded||c.lighterOffer)return null;
+    const y=addDays(c.today,-1);
+    const w=c.workouts.filter(x=>!x.cardio&&!x.extra&&(x.day===c.today||x.day===y)).sort((a,b)=>String(b.at||b.day).localeCompare(String(a.at||a.day)))[0];
+    if(!w||!(w.stop||(w.rating&&w.rating<=2)))return null;
+    const ref=String(w.id||w.at||w.day+'-'+w.key);
+    if(c.history.some(h=>h.kind==='offday'&&h.ref===ref&&h.shown_on!==c.today))return null;
+    return{ref,variant:w.stop==='Sick'?'sick':w.stop==='Injury'?'injury':'normal'};
+  },
+  meals:c=>{
+    if(!c.logsLoaded||!c.mealPlanStart)return null;
+    const days=[1,2,3].map(n=>addDays(c.today,-n));
+    if(days[2]<c.mealPlanStart||days.some(d=>c.skipDays.has(d)||c.mealDays.has(d)))return null;
+    return{ref:days[0]};
+  },
+  weekahead:c=>{const ref=weekStart(c.today);return c.dow>=1&&c.dow<=3&&!c.history.some(h=>h.kind==='weekahead'&&h.ref===ref&&h.shown_on!==c.today)?{ref}:null;},
+  celebrate:c=>{
+    if(!c.logsLoaded)return null;
+    for(const type of ['workout','meal','water']){
+      const v=c.streaks[type]||0,m=[...NUDGE_MILESTONES[type]].reverse().find(x=>v>=x);
+      if(!m)continue;
+      const ref=type+'-'+m;
+      if(c.history.some(h=>h.kind==='celebrate'&&h.ref===ref&&h.shown_on!==c.today&&daysBetween(h.shown_on,c.today)<60))continue;
+      return{ref,type,n:m};
+    }
+    return null;
+  }
+};
+// How long before each kind can come back (days); the others go by their own ref (the day, week, session or milestone)
+const NUDGE_WAIT={missed:7,meals:7};
+function pickNudge(c){
+  if(!c.hasPlan||c.paused||c.eventDay||nudgeFreq(c.freq,'')==='off')return null;
+  const today=c.history.filter(h=>h.shown_on===c.today);
+  const due=kind=>{const t=NUDGE_TRIGGERS[kind](c);return t?{kind,...t}:null;};
+  // One a day: today's card stays until it is answered; weigh-in "Later" comes back once after 6pm
+  if(today.length){
+    const h=today[today.length-1];
+    if(h.kind==='ask')return h.answer?null:{kind:'ask',ref:h.ref,about:h.ref};
+    const again=h.answer==null||(h.kind==='weighin'&&h.answer==='later'&&c.hour>=18);
+    if(!again)return null;
+    const n=due(h.kind);
+    return n?{...n,second:h.answer==='later'}:null;
+  }
+  const yesterday=new Set(c.history.filter(h=>h.shown_on===addDays(c.today,-1)).map(h=>h.kind==='ask'?h.ref:h.kind));
+  for(const kind of NUDGE_ORDER){
+    const f=nudgeFreq(c.freq,kind);
+    if(f==='off'||yesterday.has(kind))continue;
+    const recent=c.history.filter(h=>(h.kind===kind||(h.kind==='ask'&&h.ref===kind))&&daysBetween(h.shown_on,c.today)<(f==='weekly'?7:(NUDGE_WAIT[kind]||0)));
+    if(recent.length)continue;
+    const n=due(kind);
+    if(!n)continue;
+    if(nudgeClosesInRow(c.history,kind)>=3)return{kind:'ask',ref:kind,about:kind};
+    return n;
+  }
+  return null;
+}
+// ---- the wording (STYLE-WORDING / NUDGES-SPEC section 7). {what} = the streak, filled in.
+const NUDGE_LINES={
+  weighin:{'Tough Love':'Weigh-in day {c}. Scales. Now. Data beats guessing.','Gentle Encouragement':'It\'s weigh-in day - whenever you\'re ready, no pressure. Every check-in helps.',
+    'Humour':'Weigh-in day. The scales have been waiting all week. Don\'t leave them hanging.','Science Facts':'Weigh-in day. Same time, same conditions each week gives the cleanest trend.',
+    'Hype':'Weigh-in day {c}! Step up, lock in, let\'s see the work 🔥','Your Mate':'Weigh-in day {c} - hop on when you get a sec 👍','Old-School Gym':'Weigh-in day. Get on the scales, write it down, back to work.'},
+  missed:{'Tough Love':'It\'s been a few days since your last session. No lecture - what\'s going on?','Gentle Encouragement':'Everything OK, {c}? It\'s been a few days since your last session. However you\'re doing, we\'ll work with it.',
+    'Humour':'Everything OK? Your dumbbells have been asking about you. What\'s up?','Science Facts':'Everything OK? A few days off won\'t undo your progress. Let\'s see what fits this week.',
+    'Hype':'Yo, you good {c2}? Been a few days. Life happens - what\'s up?','Your Mate':'Alright {c}? Not seen you in the gym for a few days. All good?','Old-School Gym':'Haven\'t seen you in a few days, {cold}. Everything all right? Tell me what\'s happening.'},
+  offday:{'Tough Love':'That last one was tough. Tell me what happened and we\'ll sort it.','Gentle Encouragement':'That last session looked hard going. What happened?',
+    'Humour':'That last session looked like it fought back. What happened?','Science Facts':'That last session was rated low. Knowing why helps get the next one right. What happened?',
+    'Hype':'Rough one {c}, happens to the best. What went down?','Your Mate':'That last one looked a bit of a struggle {c}. What happened?','Old-School Gym':'Hard sessions happen. Tell me what went on and we\'ll adjust.'},
+  meals:{'Tough Love':'Three days, no meals logged. What\'s happening with the food, {c}?','Gentle Encouragement':'How\'s the food going? Nothing\'s been logged for a few days - no stress, just checking in.',
+    'Humour':'The food log\'s gone quieter than a gym at 5am on New Year\'s Day. How\'s it going?','Science Facts':'No meals logged for 3 days. Logging is how we know the plan\'s working for you. How\'s it going?',
+    'Your Mate':'Food log\'s been quiet for a few days {c} - how\'re you getting on with it?','Old-School Gym':'No meals logged for three days. The kitchen counts as much as the gym. How\'s it going?'},
+  weekahead:{'Tough Love':'New week. Plan it now so nothing catches you out. Anything coming up?','Gentle Encouragement':'A fresh week. Anything coming up that we should plan around?',
+    'Humour':'New week, new chances to pretend you\'ll meal prep on Sunday. Anything coming up, {c}?','Science Facts':'People who plan around events stay on track far more often. Anything coming up this week?',
+    'Hype':'New week, new chances to go beast mode. Anything coming up, {c2}?','Your Mate':'New week {c} - anything going on we should plan around?','Old-School Gym':'New week. Anything on that we need to plan around?'},
+  celebrate:{'Tough Love':'{what}. That\'s what showing up looks like. Don\'t stop now, {c}.','Gentle Encouragement':'{what}. That\'s something to be really proud of, {c}.',
+    'Humour':'{what}. Your sofa has filed a missing persons report.','Science Facts':'{what}. Consistency is the biggest driver of results - and you\'re proving it.',
+    'Your Mate':'{what} - get in {c}! Proper job that.','Old-School Gym':'{what}. That\'s how it\'s built, {cold}. Earn the next one.'}
+};
+// Hype's goal words (Dom, 27 Oct 2026), held back where they could hurt (section 6 safeguard)
+const NUDGE_HYPE={
+  meals:{cut:'Bro, the food log\'s gone quiet! Shredded is made in the kitchen, {c} 🍗',gains:'{c}, the food log\'s gone quiet! Gains are made in the kitchen too 🍗',safe:'{c}, the food log\'s gone quiet! How\'s the food going? 🍗'},
+  celebrate:{cut:['{what} {c2}. Built different. Shredded season is LOCKED IN 🔥','{what} {c}. Beach body loading... no days off 🔥'],gains:['{what} {c} - those gains are getting SICK. Light work 💪'],safe:['{what}. Absolute unit of an effort. LET\'S GOOO 🔥']}
+};
+const EATING_DISORDER_RE=/eating disorder|anorexi|bulimi|binge|arfid|orthorexi|disordered eating/i;
+function hypeGoalWords(u=CU){
+  const gi=goalWeightInfo(u);
+  if((gi&&gi.belowHealthy)||EATING_DISORDER_RE.test(String(u?.health_conditions||'')))return'safe';
+  const g=String(u?.goal||'');
+  if(g==='cut')return'cut';
+  if(['bulk','recomp','strength'].includes(g))return'gains';
+  if(g==='maintain')return dayNumber()%2?'cut':'gains';
+  return'safe';
+}
+const NUDGE_STREAK_WHAT={workout:n=>n+' weeks in a row of every session done',meal:n=>n+' days of meals logged',water:n=>n+' days hitting your water'};
+function nudgeText(n,u=CU){
+  if(n.kind==='ask')return'You\'ve closed these a few times - want to keep getting them? ('+NUDGE_KINDS[n.about]+')';
+  if(n.kind==='offday'&&n.variant==='sick')return SICK_ADVICE;
+  const style=pickStyle('nudge-'+n.kind);
+  let t;
+  if(style==='Hype'&&NUDGE_HYPE[n.kind]){const v=NUDGE_HYPE[n.kind][hypeGoalWords(u)];t=Array.isArray(v)?v[dayNumber()%v.length]:v;}
+  else t=NUDGE_LINES[n.kind][style]||NUDGE_LINES[n.kind]['Gentle Encouragement'];
+  if(n.kind==='weighin'&&n.second)t='Still time to weigh in today. '+t;
+  return fillCall(t.replace('{what}',n.type?NUDGE_STREAK_WHAT[n.type](n.n):''),u);
+}
+function nudgeButtons(n){
+  if(n.kind==='ask')return[['keep','Keep them'],['weekly','Less often'],['off','Turn these off']];
+  if(n.kind==='offday')return n.variant==='sick'?[['pause','Pause for a few days'],['ok','I\'m OK now']]:n.variant==='injury'?[['hurt','Something hurt']]:[['hard','Too hard'],['hurt','Something hurt'],['off','Just an off day']];
+  return{weighin:[['now','Weigh in now'],['later','Later']],missed:[['busy','Busy'],['tired','Tired or sore'],['ill','Ill or away'],['good','All good']],
+    meals:[['log','Log today'],['struggling','Struggling with the plan'],['good','All good, just not logging']],
+    weekahead:[['event','Night out or event'],['holiday','Holiday'],['stress','Stressful week'],['nothing','Nothing']],
+    celebrate:[['share','Share to the Wall'],['nice','Nice']]}[n.kind];
+}
+// Everything pickNudge needs, read from what the app already has in memory
+function nudgeContext(){
+  const now=new Date(),today=dayKey(now);
+  const pauseDays=new Set();
+  for(const p of activityLogs.pauses||[])if(p.start&&p.end)for(let d=p.start,i=0;d<=p.end&&i<=PAUSE_MAX_DAYS;d=addDays(d,1),i++)pauseDays.add(d);
+  const sc=currentStreakContext();
+  const pref=String(CU?.preferred_days||'').split(',').map(x=>parseInt(x)).filter(x=>!isNaN(x));
+  let lighterOffer=false;try{lighterOffer=!!(userTrainingPlan&&trainWeekInfo().offer);}catch(e){}
+  return{today,hour:now.getHours(),dow:now.getDay(),history:nudgeData.history,freq:nudgeData.freq,
+    hasPlan:!!(userMealPlan||userTrainingPlan),paused:pauseDays.has(today),eventDay:isEventDay()||isCheatDayToday(),
+    weighInToday:['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][now.getDay()]===(CU?.weigh_in_day||'Sunday'),
+    signedUpDays:CU?.created_at?Math.floor((Date.now()-new Date(CU.created_at).getTime())/86400000):99,
+    weighedToday:nudgeData.lastWeighIn===today,logsLoaded:!!activityLogs.loaded,
+    workouts:activityLogs.workouts,pauses:activityLogs.pauses,trainingDays:plannedSessionsPerWeek(),preferredDays:pref.length?pref:null,
+    planStart:dayKey(userTrainingPlan?.created)||'',mealPlanStart:dayKey(userMealPlan?.created_at||'')||'',
+    mealDays:new Set(activityLogs.meals.map(m=>m.day)),skipDays:new Set([...pauseDays,...sc.eventDays]),lighterOffer,
+    streaks:{workout:userPoints.current_streak||0,meal:userPoints.meal_streak||0,water:userPoints.water_streak||0}};
+}
+let currentNudge=null;
+function nudgeCardHtml(){
+  currentNudge=null;
+  if(!nudgesOn()||!nudgeData.loaded||!CU)return'';
+  const n=pickNudge(nudgeContext());
+  if(!n)return'';
+  currentNudge=n;
+  if(!nudgeData.history.some(h=>h.shown_on===dayKey(new Date())&&h.kind===n.kind&&h.ref===n.ref))nudgeShown(n);
+  return`<div class="card nudge-card" style="border-color:var(--ac);position:relative">
+    <button class="btn btn-ghost btn-xs" style="position:absolute;top:8px;right:8px" aria-label="Close" data-a="closed" onclick="answerNudge(this.dataset.a)">✕</button>
+    <div class="card-lbl">🧢 Your coach</div>
+    <div style="font-size:14px;line-height:1.5;margin:4px 28px 10px 0">${escapeHtml(nudgeText(n))}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${nudgeButtons(n).map(([a,l],i)=>`<button class="btn ${i?'btn-ghost ':''}btn-sm" data-a="${a}" onclick="answerNudge(this.dataset.a)">${escapeHtml(l)}</button>`).join('')}</div>
+  </div>`;
+}
+// Saved by the layer (nudges table); index.html keeps it in memory only
+function nudgeShown(n){nudgeData.history.push({kind:n.kind,ref:n.ref,shown_on:dayKey(new Date()),answer:null});}
+async function nudgeSave(row){}
+async function nudgeFreqSave(freq){return true;}
+async function answerNudge(a){
+  const n=currentNudge;if(!n)return;
+  const today=dayKey(new Date());
+  const row=[...nudgeData.history].reverse().find(h=>h.shown_on===today&&h.kind===n.kind&&h.ref===n.ref);
+  const answer=n.kind==='weighin'&&a==='later'&&row?.answer==='later'?'later2':a;
+  if(row){row.answer=answer;nudgeSave(row);}
+  renderDashboard();
+  if(n.kind==='ask'){
+    if(a==='closed')return;
+    const freq={...nudgeData.freq,[n.about]:a==='keep'?'on':a};
+    if(await nudgeFreqSave(freq))nudgeData.freq=freq;
+    if(a==='off')showInfo('Turned off',`<p>You won't get these any more: ${escapeHtml(NUDGE_KINDS[n.about])}. You can turn them back on in Profile > Coach Nudges.</p>`);
+    return;
+  }
+  const info=(t,h)=>showInfo(t,h);
+  switch(a){
+    case'now':openWeighIn();break;
+    case'busy':info('Short on time?','<p>Do your first two or three exercises. Every set you log counts, and logging half your sets keeps the session on your streak.</p>');break;
+    case'tired':case'stress':nudgeLighterWeek();break;
+    case'ill':case'pause':nudgePause('Illness');break;
+    case'holiday':nudgePause('Holiday');break;
+    case'hard':if(await markSessionEase(n.ref))info('Got it','<p>Next time this session starts with a reminder to go about 5-10% lighter.</p>');break;
+    case'hurt':info('Something hurt',adviceHtml('Injury')+`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm" onclick="closeModal('info-modal');goTab('training')">Swap an exercise</button><button class="btn btn-ghost btn-sm" onclick="infoGoProfile()">Add it to my injuries</button>${String(CU?.injuries||'').trim()?`<button class="btn btn-ghost btn-sm" onclick="closeModal('info-modal');renderInjuryModal()">Injury guide</button>`:''}</div>`);break;
+    case'off':info('Off day','<p>Happens to everyone. Next one\'s a fresh start.</p>');break;
+    case'log':goTab('meallog');break;
+    case'struggling':goTab('meals');info('Not getting on with a meal?','<p>Tap Swap Meal on it and we\'ll write you a different one.</p>');break;
+    case'event':openModal('event-modal');break;
+    case'share':postAutoWall('🏆 '+CU.username+': '+NUDGE_STREAK_WHAT[n.type](n.n)+'!');info('Shared','<p>Posted to the Wall.</p>');break;
+  }
+}
+// "Ill or away" / "Holiday": the Pause form, with the reason picked
+function nudgePause(reason){
+  goTab('body');
+  const r=document.getElementById('pause-reason');if(r)r.value=reason;
+  setTimeout(()=>document.getElementById('pause-form')?.scrollIntoView({behavior:'smooth'}),200);
+  if(reason==='Illness')showInfo('Feeling ill?',adviceHtml('Illness')+'<p>Pick your dates below to pause your plan - your streaks are protected while you\'re paused.</p>');
+}
+// "Tired or sore" / "Stressful week": a lighter week this week, unless one was taken in the last 3 weeks (N4)
+function nudgeLighterWeek(){
+  const rest='<p>You had a lighter week recently - take an extra rest day and see how you feel.</p>';
+  if(!userTrainingPlan){showInfo('Take it easy',rest);return;}
+  const c=trainCtx();
+  if(c.lighter){showInfo('Lighter week','<p>This is already a lighter week - keep it easy and let your body catch up.</p>');return;}
+  const recent=Object.entries(c.deloads||{}).some(([k,v])=>v==='taken'&&k<c.weekKey&&k>=addDays(c.weekKey,-21));
+  if(recent||(c.style==='block'&&blockWeek(c.weekNo)>=3)){showInfo('Take it easy',rest);return;}
+  showInfo('A lighter week?','<p>Half the sets, about 10-15% less weight, and leave 4-5 reps in the tank. Your body catches up so you come back stronger.</p><button class="btn btn-sm" onclick="closeModal(\'info-modal\');setLighterWeek(\'taken\')">Take a lighter week</button>');
+}
+// "Too hard" (N3): marks that log, so next time the session says start lighter and holds back the add-weight nudge
+async function markSessionEase(ref){
+  const w=activityLogs.workouts.find(x=>String(x.id||x.at||x.day+'-'+x.key)===String(ref));
+  if(!w||!w.id){alert('Could not find that session - please try again.');return false;}
+  try{
+    const d=await dbGet('workout_logs');
+    const ri=(d.values||[]).findIndex(r=>String(r[0])===String(w.id));
+    if(ri<0)throw new Error('Your session could not be found.');
+    const row=[...d.values[ri]];while(row.length<12)row.push('');
+    let x={};try{x=JSON.parse(String(row[11]||'{}'))||{};}catch(e){}
+    x.ease=true;row[11]=JSON.stringify(x);
+    await dbUpdate('workout_logs',ri+1,row);
+    w.ease=true;
+    return true;
+  }catch(e){console.error('Ease mark:',e);alert('Could not save that: '+e.message);return false;}
+}
+// The last log of this session was marked "Too hard"
+function sessionEase(sidx){
+  const pid=String(userTrainingPlan?.plan_id||'');
+  const logs=activityLogs.workouts.filter(w=>w.key===String(sidx)&&w.plan===pid&&!w.cardio).sort((a,b)=>String(b.at||b.day).localeCompare(String(a.at||a.day)));
+  return!!logs[0]?.ease;
+}
+const EASE_NOTE='Last time felt too hard - start about 5-10% lighter than last time.';
+// Profile > Coach Nudges (filled in by the layer)
+function nudgeSettingsHtml(){return'';}
+// ---- nudges end ----
 
 // This user's logs, loaded at login and added to as they log. loaded is false
 // if any of them could not be read - in that case streaks are left exactly as
@@ -9965,7 +10412,7 @@ function obNext(n){
     if(!getOnPills('ob-flavours')){alert('Please select at least one flavour preference.');return;}
   }
   if(n===5){
-    if(!getOnPills('ob-mot-style')){alert('Please select a motivational style.');return;}
+    if(!getOnPills('ob-mot-style')){alert('Please pick a motivational style (one or two).');return;}
   }
   // Preview: step 6 is the last step - there is no API key step
   if(n===6){createUser();return;}
@@ -10003,6 +10450,13 @@ function toggleOther(el,inputId){
   // Show/hide the free-text input when the Other pill is toggled
   const inp=document.getElementById(inputId);
   if(inp)inp.style.display=el.classList.contains('on')?'block':'none';
+}
+// Toggle a pill, keeping at most max on (the oldest choice goes)
+function pickUpTo(el,cid,max){
+  if(el.classList.contains('on')){el.classList.remove('on');return;}
+  const on=[...document.querySelectorAll(`#${cid} .pill.on`)];
+  if(on.length>=max)on[0].classList.remove('on');
+  el.classList.add('on');
 }
 function selSingle(el,containerId){document.querySelectorAll(`#${containerId} .pill`).forEach(p=>p.classList.remove('on'));el.classList.add('on');}
 function toggleObTrainDay(el){
@@ -10157,7 +10611,7 @@ async function createUser(){
   const snackStyle=getOnPills('ob-snack-style');
   const flavours=getOnPills('ob-flavours');
   const region=document.getElementById('ob-region').value;
-  const motStyle=getOnPills('ob-mot-style')||'Mix of Everything';
+  const motStyle=motStylesOf(getOnPills('ob-mot-style')).join(' + ');
   const baselineType=getOnPills('ob-baseline-type')||'Assessment Week (Recommended)';
   // Saved with the lift names, so the AI can tell which number is which
   const cardioBase=document.getElementById('ob-cardio-base')?.value.trim()||'';
@@ -10477,7 +10931,7 @@ function previewEventBank(){
 }
 
 function eventBankPrompt(ev){
-    const eventStyle=CU.mot_style||'Mix of Everything';
+    const eventStyle=styleLabel();
     const eventStyleVoice=getStyleVoice(eventStyle);
   return`You are E=MC-HENCH. The user has planned a social event called "${ev.name}" on ${new Date(ev.date).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}. They have banked ${ev.totalBank} calories by reducing their intake by ${ev.dailyReduction} kcal per day for ${ev.leadUpDays} days.
 
@@ -10937,6 +11391,8 @@ const PROFILE_COLS={
   // Not sheet columns: the goal weight and the monthly cheat day (Group 4, supabase/043)
   goal_weight_kg:v=>({goal_weight_kg:v===''||v==null?null:sbNum(v)}),goal_weight_from:v=>({goal_weight_from:v===''||v==null?null:sbNum(v)}),
   goal_weight_keep:v=>({goal_weight_keep:v===true||v==='true'}),cheat_day_opt:v=>({cheat_day_opt:v===true||v==='true'}),
+  // Not sheet columns: what the coach calls them and how often each nudge comes (045)
+  coach_call_name:v=>({coach_call_name:v===true||v==='true'}),nudges_freq:v=>({nudges_freq:v&&typeof v==='object'&&!Array.isArray(v)?v:{}}),
   // Not a sheet column: the aged hard cheeses that are fine for someone lactose intolerant (036)
   hard_cheeses:v=>({hard_cheeses:(Array.isArray(v)?v:String(v||'').split(',')).map(x=>String(x).trim()).filter(Boolean).slice(0,12)}),
   23:v=>({avatar:v||'💪'}),24:v=>({water_target_ml:parseInt(v)||2000}),25:v=>({goal_updated:String(v).toLowerCase()==='true'}),
@@ -10967,7 +11423,7 @@ function profileToCU(p,user){
     api_key:'backend-preview',
     plan_length:'3month',plan_type:'progressive',avatar:p.avatar||'💪',water_target_ml:p.water_target_ml||2000,
     goal_updated:p.goal_updated?'true':'',kitchen:(p.kitchen||[]).join(','),meals_per_day:p.meals_per_day||'5',
-    snack_style:(p.snack_style||[]).join(',')||'Both',mot_style:p.mot_style||'Mix of Everything',
+    snack_style:(p.snack_style||[]).join(',')||'Both',mot_style:p.mot_style||'',
     baseline_type:p.baseline_type||'Assessment Week (Recommended)',known_numbers:(p.known_numbers||[]).join(' | '),
     is_new_user:p.is_new_user===false?'false':'true',weigh_in_day:p.weigh_in_day||'Sunday',
     batch_cooking:(p.batch_cooking||'Mix - I decide per meal')+((p.batch_detail||[]).length?' ('+p.batch_detail.join(',')+')':''),
@@ -10987,7 +11443,10 @@ function profileToCU(p,user){
     hard_cheeses:[...(p.hard_cheeses||[])],
     // The goal weight and the monthly cheat day (043)
     goal_weight_kg:p.goal_weight_kg==null?'':String(p.goal_weight_kg),goal_weight_from:p.goal_weight_from==null?'':String(p.goal_weight_from),
-    goal_weight_keep:!!p.goal_weight_keep,cheat_day_opt:!!p.cheat_day_opt
+    goal_weight_keep:!!p.goal_weight_keep,cheat_day_opt:!!p.cheat_day_opt,
+    // What the coach calls them, and the nudge settings (045)
+    coach_call:p.coach_call||'',coach_call_word:p.coach_call_word||'',coach_call_name:!!p.coach_call_name,coach_call_at:p.coach_call_at||'',
+    nudges_freq:p.nudges_freq&&typeof p.nudges_freq==='object'?p.nudges_freq:{}
   };
 }
 function friendlyDbError(error){
@@ -11172,10 +11631,10 @@ const nowIso=()=>new Date().toISOString();
 const LOG_SHEETS={
   workout_logs:{table:'workout_logs',order:'logged_at',
     toSheet:r=>[rowRef(r),r.user_id,r.logged_at,atNoon(r.day),r.plan_id||'',r.session_key,JSON.stringify(r.exercises||[]),r.notes||'',r.points||0,'{}',blankIfNull(r.rating),
-      JSON.stringify(r.session_key==='cardio'?{cardio:true}:{pct:r.share_logged==null?null:Number(r.share_logged),stop:r.stop_reason||'',pb:!!r.pb})],
+      JSON.stringify(r.session_key==='cardio'?{cardio:true}:{pct:r.share_logged==null?null:Number(r.share_logged),stop:r.stop_reason||'',pb:!!r.pb,ease:!!r.ease})],
     fromSheet:v=>{const d=parseJsonSafe(v[11],{});const rating=intOrNull(v[10]);return{client_ref:String(v[0]),logged_at:v[2]||nowIso(),day:dayKey(v[2])||dayKey(new Date()),
       plan_id:isUuid(v[4])?v[4]:null,session_key:String(v[5]),exercises:parseJsonSafe(v[6],[]),notes:String(v[7]||''),points:parseInt(v[8])||0,
-      rating:rating>=1&&rating<=5?rating:null,share_logged:typeof d.pct==='number'?d.pct:null,stop_reason:d.stop||null,pb:!!d.pb};},
+      rating:rating>=1&&rating<=5?rating:null,share_logged:typeof d.pct==='number'?d.pct:null,stop_reason:d.stop||null,pb:!!d.pb,ease:!!d.ease};},
     award:r=>r.session_key==='cardio'?'cardio':String(r.session_key).startsWith('ab')?'ab_session':'session'},
   meal_logs:{table:'meal_logs',order:'logged_at',
     toSheet:r=>[rowRef(r),r.user_id,r.logged_at,atNoon(r.day),r.plan_id||'',JSON.stringify(r.meals_eaten||[]),r.calories,r.protein,r.carbs,r.fats,'',r.points||0,JSON.stringify(r.outside_food||[]),'',JSON.stringify({planned:r.planned_count==null?null:r.planned_count})],
@@ -11470,6 +11929,105 @@ const TRAINING_STYLE_TEXT={
   block:['Progressive block (more advanced)','The same exercises, but the sets and effort build over 3 weeks, then a lighter week. Suits people who have trained for a while.']};
 // ---- Goal weight and the monthly cheat day (Group 4, supabase/043): on in the new backend ----
 function goalsOn(){return true;}
+// ---- Coach nudges and what the coach calls you (NUDGES-SPEC-2026-10-27.md, supabase/045) ----
+function nudgesOn(){return true;}
+async function loadNudges(){
+  nudgeData={history:[],freq:CU.nudges_freq||{},lastWeighIn:'',loaded:false};
+  const since=addDays(dayKey(new Date()),-90);
+  const [n,w]=await Promise.all([
+    sb.from('nudges').select('kind,ref,shown_on,answer').eq('user_id',CU.user_id).gte('shown_on',since).order('created_at'),
+    sb.from('weigh_ins').select('logged_at').eq('user_id',CU.user_id).order('logged_at',{ascending:false}).limit(1)]);
+  if(n.error)throw n.error;if(w.error)throw w.error;
+  nudgeData.history=(n.data||[]).map(r=>({kind:r.kind,ref:r.ref,shown_on:r.shown_on,answer:r.answer}));
+  nudgeData.lastWeighIn=w.data&&w.data[0]?dayKey(w.data[0].logged_at):'';
+  nudgeData.loaded=true;
+}
+// A card shown: kept in memory and saved, so it counts as today's one nudge on every phone
+function nudgeShown(n){
+  const row={kind:n.kind,ref:String(n.ref),shown_on:dayKey(new Date()),answer:null};
+  nudgeData.history.push(row);
+  sb.from('nudges').upsert({kind:row.kind,ref:row.ref,shown_on:row.shown_on},{onConflict:'user_id,kind,ref,shown_on',ignoreDuplicates:true})
+    .then(({error})=>{if(error)console.error('Nudge:',error.message);});
+}
+async function nudgeSave(row){
+  const {error}=await sb.from('nudges').update({answer:row.answer,answered_at:new Date().toISOString()})
+    .eq('user_id',CU.user_id).eq('kind',row.kind).eq('ref',row.ref).eq('shown_on',row.shown_on);
+  if(error)console.error('Nudge answer:',error.message);
+}
+async function nudgeFreqSave(freq){
+  const {error}=await sb.from('profiles').update({nudges_freq:freq}).eq('id',CU.user_id);
+  if(error){alert('Could not save that: '+friendlyDbError(error));return false;}
+  CU.nudges_freq=freq;nudgeData.freq=freq;
+  return true;
+}
+// The call answer from a form ('ob' = sign-up, 'prof' = Profile). Nothing picked = the default from the Sex answer.
+function coachCallFromForm(p){
+  const call=document.querySelector(`#${p}-call-pick .pill.on`)?.dataset.call||null;
+  const word=(document.getElementById(p+'-call-word')?.value||'').trim().replace(/\s+/g,' ');
+  const coach_call_name=!!document.getElementById(p+'-call-name')?.checked&&call!=='name';
+  if(call==='other'&&!COACH_CALL_WORD_RE.test(word))return{error:'Your word for the coach: letters, spaces, hyphens and apostrophes only, up to 20 characters.'};
+  return{coach_call:call,coach_call_word:call==='other'?word:null,coach_call_name};
+}
+function coachCallPick(el,p){
+  selSingle(el,p+'-call-pick');
+  const c=el.dataset.call;
+  const w=document.getElementById(p+'-call-word');if(w)w.style.display=c==='other'?'block':'none';
+  const nm=document.getElementById(p+'-call-name-row');if(nm)nm.style.display=c==='name'?'none':'flex';
+}
+// The date the call can change again, or null (sign-up does not count - the database keeps the same rule)
+function coachCallLockedUntil(u=CU){
+  if(!u?.coach_call||!u.coach_call_at)return null;
+  const d=new Date(new Date(u.coach_call_at).getTime()+30*86400000);
+  return d>new Date()?d:null;
+}
+const COACH_CALL_LABELS=[['bro','Bro'],['sis','Sis'],['mate','Mate'],['name','Just my name'],['other','Other']];
+function coachCallPickHtml(p,u){
+  const cur=u?coachCallOf(u):'',word=u?.coach_call==='other'?u.coach_call_word:'';
+  return`<div class="pills" id="${p}-call-pick">${COACH_CALL_LABELS.map(([v,l])=>`<div class="pill ${cur===v?'on':''}" data-call="${v}" onclick="coachCallPick(this,'${p}')">${l}</div>`).join('')}</div>
+    <input class="finput" id="${p}-call-word" maxlength="20" placeholder="Your word - e.g. champ, boss, Big Dave" value="${escapeHtml(word||'')}" style="margin-top:8px;display:${cur==='other'?'block':'none'}">
+    <label id="${p}-call-name-row" style="display:${cur==='name'?'none':'flex'};gap:8px;align-items:center;font-size:13px;margin-top:8px;color:var(--tx2)"><input type="checkbox" id="${p}-call-name" ${u?.coach_call_name?'checked':''} ${p==='prof'?'onchange="saveCoachCallName(this.checked)"':''}> Use my name sometimes too</label>`;
+}
+// Profile > Your Coach: what the coach calls you, and the nudges
+function nudgeSettingsHtml(){
+  const until=coachCallLockedUntil();
+  const f=nudgeData.freq||CU.nudges_freq||{},all=f._all!=='off';
+  return`<div class="card" id="coach-card">
+    <div class="card-lbl">Your Coach</div>
+    <div style="font-size:13px;font-weight:600;margin-bottom:6px">What should the coach call you?</div>
+    ${coachCallPickHtml('prof',CU)}
+    <div style="font-size:12px;color:var(--tx3);margin:8px 0">${until?`You can change this again on ${until.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}. The name switch works any time.`:'You can change this once every 30 days. The name switch works any time.'}</div>
+    <button class="btn btn-ghost btn-sm" ${until?'disabled':''} onclick="saveCoachCall()">Save</button>
+    <div style="font-size:13px;font-weight:600;margin:16px 0 6px">Coach nudges</div>
+    <div style="font-size:12px;color:var(--tx2);line-height:1.5;margin-bottom:8px">A short note at the top of your dashboard when something's worth a check-in - one a day at most, never while you're paused.</div>
+    <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:8px"><input type="checkbox" ${all?'checked':''} onchange="saveNudgeFreq('_all',this.checked?'on':'off')"> Coach nudges on</label>
+    <div style="${all?'':'opacity:.5;pointer-events:none'}">${Object.entries(NUDGE_KINDS).map(([k,l])=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;font-size:13px"><span>${escapeHtml(l)}</span>
+      <select class="fsel" style="width:auto" data-kind="${k}" onchange="saveNudgeFreq(this.dataset.kind,this.value)">${[['on','On'],['weekly','Less often'],['off','Off']].map(([v,t])=>`<option value="${v}" ${(f[k]||'on')===v?'selected':''}>${t}</option>`).join('')}</select></div>`).join('')}</div>
+  </div>`;
+}
+async function saveNudgeFreq(kind,value){
+  const freq={...(nudgeData.freq||{})};
+  if(kind==='_all'){if(value==='off')freq._all='off';else delete freq._all;}else freq[kind]=value;
+  if(await nudgeFreqSave(freq)){renderProfile();renderDashboard();}
+}
+async function saveCoachCall(){
+  const c=coachCallFromForm('prof');
+  if(c.error){alert(c.error);return;}
+  if(!c.coach_call){alert('Pick one first.');return;}
+  if(c.coach_call===(CU.coach_call||'')&&(c.coach_call_word||'')===(CU.coach_call==='other'?CU.coach_call_word:'')){alert('That is already what the coach calls you.');return;}
+  if(CU.coach_call&&!confirm('Save this? You can change it again in 30 days.'))return;
+  const {data,error}=await sb.from('profiles').update({coach_call:c.coach_call,coach_call_word:c.coach_call_word}).eq('id',CU.user_id).select('coach_call,coach_call_word,coach_call_at').maybeSingle();
+  if(error){alert(friendlyDbError(error));return;}
+  if(!data){alert('Your profile could not be found. Please log out and back in.');return;}
+  CU.coach_call=data.coach_call||'';CU.coach_call_word=data.coach_call_word||'';CU.coach_call_at=data.coach_call_at||'';
+  renderProfile();renderDashboard();
+  showInfo('Saved',`<p>${escapeHtml(fillCall('Got it - the coach will call you {c}.'))}</p>`);
+}
+async function saveCoachCallName(on){
+  const {error}=await sb.from('profiles').update({coach_call_name:!!on}).eq('id',CU.user_id);
+  if(error){alert('Could not save that: '+friendlyDbError(error));renderProfile();return;}
+  CU.coach_call_name=!!on;renderDashboard();
+}
+
 async function saveCheatDay(day){
   const planId=userMealPlan?.plan_id;if(!planId)return;
   try{
@@ -12060,6 +12618,8 @@ async function loadUserData(){
   }
   // The cheat days they chose (043)
   try{const {data,error}=await sb.from('cheat_days').select('plan_id,day');if(error)throw error;cheatDays=data||[];}catch(e){cheatDays=[];console.error('Cheat days:',e);}
+  // The coach nudges shown in the last 90 days, and the last weigh-in (045)
+  await loadNudges().catch(e=>{nudgeData.loaded=false;console.error('Nudges:',e);});
   // Names on the wall come from the leaderboard, so this goes last
   await loadWall().catch(e=>console.error('Wall:',e));
   await loadCompetitions().catch(e=>console.error('Challenges:',e));
@@ -12489,7 +13049,7 @@ async function createUser(){
   const snackStyle=getOnPills('ob-snack-style');
   const flavours=getOnPills('ob-flavours');
   const region=document.getElementById('ob-region').value;
-  const motStyle=getOnPills('ob-mot-style')||'Mix of Everything';
+  const motStyle=motStylesOf(getOnPills('ob-mot-style')).join(' + ');
   const baselineType=getOnPills('ob-baseline-type')||'Assessment Week (Recommended)';
   // Saved with the lift names, so the AI can tell which number is which
   const cardioBase=document.getElementById('ob-cardio-base')?.value.trim()||'';
@@ -12519,7 +13079,10 @@ async function createUser(){
     const gw=parseFloat(document.getElementById('ob-goal-weight')?.value)||null;
     const goal_weight_kg=gw&&gw>=30&&gw<=300?gw:null,goal_weight_from=goal_weight_kg?(parseFloat(document.getElementById('ob-weight')?.value)||null):null;
     const cheat_day_opt=document.querySelector('#ob-cheat-pick .pill.on')?.dataset.cheat==='yes';
-    const {data:p,error}=await sb.from('profiles').update({...sheetPatchToProfile(fields),wall_share,medicines,training_style,hard_cheeses,goal_weight_kg,goal_weight_from,cheat_day_opt}).eq('id',sbUser.id).select().maybeSingle();
+    // What the coach calls them (045) - nothing picked = the default from the Sex answer
+    const call=coachCallFromForm('ob');
+    if(call.error){hideLoad();alert(call.error);return;}
+    const {data:p,error}=await sb.from('profiles').update({...sheetPatchToProfile(fields),wall_share,medicines,training_style,hard_cheeses,goal_weight_kg,goal_weight_from,cheat_day_opt,coach_call:call.coach_call,coach_call_word:call.coach_call_word,coach_call_name:call.coach_call_name}).eq('id',sbUser.id).select().maybeSingle();
     if(error)throw new Error(friendlyDbError(error));
     if(!p)throw new Error('Your profile could not be found. Please log out and back in.');
     clearOnboardingProgress();
