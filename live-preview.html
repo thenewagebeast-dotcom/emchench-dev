@@ -10964,6 +10964,10 @@ HOW YOU TALK
 - Use the voice and call words in ABOUT THIS PERSON. Banter only as their banter setting allows, only when they are doing well or chatting casually, never when they are struggling, injured, ill, upset or asking something serious, and never about weight, bodies, appearance, food guilt, injuries or mental health. At most one bit of humour in a reply.
 - UK English. No long dashes.
 
+FOOD QUESTIONS
+- Find the meal in their plan first (TODAY'S MEALS and THEIR MEAL PLAN in ABOUT THIS PERSON) and use its exact name. If it is not clear which meal they mean, ask them which one before suggesting anything.
+- For a swap, offer the meal_swap button for that exact meal - the app writes a proper replacement that fits their targets and food rules. You may add one or two quick ideas, from their own plan first (another recipe in the same section), then simple foods that fit their diet and allergies.
+
 FACTS
 - Every number (calories, protein, sessions, streaks, weights, dates) must come from ABOUT THIS PERSON. If it is not there, say you do not have it - never guess or invent one.
 - You cannot see or change anything beyond what is written here. You never change their plan yourself.
@@ -10996,6 +11000,7 @@ They: "Coffee before training?" You: {"reply":"Yes, if it suits you - a coffee 3
 They: "I've missed three sessions, I'm useless." You: {"reply":"You're not useless - life got busy, it happens to everyone. What got in the way this week? Even one short session today gets you moving again.","actions":[{"type":"open_session"}]}
 They: "My shoulder hurts when I bench." You: {"reply":"Stop benching for now - pain is the signal to back off, not push through. Please get it looked at by a physio or your GP. In the meantime I can swap the bench for something that leaves the shoulder alone.","actions":[{"type":"exercise_swap","target":"Barbell Bench Press"},{"type":"injury_guide"}]}
 They: "Can I skip dinner to lose weight faster?" You: {"reply":"I wouldn't - skipping meals usually backfires with hunger and low energy, and your target is already set to lose at a safe pace. If dinner is the problem, I can swap it for something quicker or lighter you'll actually enjoy.","actions":[{"type":"meal_swap","target":"Chicken Katsu Curry"}]}
+They: "My tuna is out of date, what can I have instead?" You: {"reply":"Which meal is it for - your Tuna and Sweetcorn Rice Cakes snack? If so, tap below and I'll write you a proper swap that fits your targets. Quick fix for today: a couple of boiled eggs or your Smoked Mackerel Pate snack from your plan.","actions":[{"type":"meal_swap","target":"Tuna and Sweetcorn Rice Cakes"}]}
 They: "Got a wedding Saturday." You: {"reply":"Nice! Let's plan for it so you can enjoy the day without worrying - banking a few calories over the next days gives you room on Saturday.","actions":[{"type":"plan_event"}]}
 They: "Are you a real person?" You: {"reply":"No - I'm an AI coach built into the app. I know your plan and your logs, but for anything medical a real professional is the right call.","actions":[]}`;
 // The banter setting until they pick one (C7): Hype, Your Mate and Humour start on a bit of banter, the rest straight
@@ -11025,6 +11030,7 @@ function coachContextBlock(rapportText='',notes=''){
     `Daily targets: ${t.calories||'?'} kcal, ${t.protein||'?'} g protein, water ${todayWaterTarget()} ml today.`,
     `Today (${new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}): ${todayS?todayS.name+' - '+(todayS.exercises||[]).map(e=>e.name+' '+(e.sets||'')+'x'+(e.reps||'')).join(', '):'no session planned'}.`,
     `This week's sessions: ${sessions.join(' | ')||'no training plan yet'}.`,
+    coachMealsText(),
     `Last 14 days: ${recent.length} sessions logged${rated.length?', average rating '+(rated.reduce((n,w)=>n+w.rating,0)/rated.length).toFixed(1)+' of 5':''}${recent.some(w=>w.stop)?', stopped early: '+recent.filter(w=>w.stop).map(w=>w.stop).join(', '):''}; meals logged on ${meals14} of 14 days.`,
     `Streaks: ${userPoints.current_streak||0} weeks of sessions, ${userPoints.meal_streak||0} days of meals, ${userPoints.water_streak||0} days of water.`,
     pause?`Paused (${pause.reason}) until ${pause.end}.`:'Not paused.',
@@ -11032,6 +11038,21 @@ function coachContextBlock(rapportText='',notes=''){
     notes?'Your notes from earlier chats:\n'+notes:''
   ];
   return lines.filter(Boolean).join('\n');
+}
+// What they eat: today's meals slot by slot, and every recipe in the plan by section (for food questions and meal swaps)
+const COACH_SLOT_LABELS={breakfast:'Breakfast',snack1:'Snack',snack:'Snack',lunch:'Lunch',snack2:'Afternoon snack',snack3:'Snack 3',dinner:'Dinner',evening:'Evening snack'};
+function coachMealsText(){
+  const mm=userMealPlan?.meals;if(!mm?.meals)return'THEIR MEAL PLAN: none yet.';
+  const recipes={};for(const [cat,list] of Object.entries(mm.meals||{}))for(const r of list||[])if(r?.name)recipes[r.name]={...r,cat};
+  const rotation=mm.weekly_rotation;
+  let wi=0;
+  if(rotation?.length>1&&userMealPlan.created_at)wi=Math.min(Math.floor((Date.now()-new Date(userMealPlan.created_at).getTime())/(7*864e5)),rotation.length-1);
+  const day=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][new Date().getDay()];
+  const slots=rotation?.[wi]?.days?.[day]||{};
+  const key=r=>(Array.isArray(r.key_ingredients)&&r.key_ingredients.length?r.key_ingredients.join(', '):String(r.ingredients_uk||'').replace(/\s+/g,' ').slice(0,110));
+  const today=SHOP_SLOTS.filter(s=>slots[s]).map(s=>{const r=recipes[slots[s]]||{};return`- ${COACH_SLOT_LABELS[s]||s}: ${slots[s]}${r.calories?' ('+r.calories+' kcal, '+(r.protein||'?')+' g protein)':''}${key(r)?' - '+key(r):''}`;});
+  const sections=Object.entries(mm.meals||{}).filter(([,l])=>Array.isArray(l)&&l.length).map(([cat,l])=>`${cat.replace(/_/g,' ')}: ${l.map(r=>r.name).join('; ')}`);
+  return"TODAY'S MEALS:\n"+(today.join('\n')||'- none planned today')+'\nTHEIR MEAL PLAN (every recipe, by section): '+sections.join(' | ');
 }
 // One coach reply. history = [{role:'user'|'assistant', content:'...'}], the last one theirs.
 // signposts: the help cards the app is showing with this reply (coachSignposts), told to the coach after the cached part
@@ -12233,7 +12254,7 @@ function coachAction(btn){
     for(let si=0;si<sessions.length;si++){const ei=(sessions[si].exercises||[]).findIndex(e=>String(e.name||'').trim()===target);if(ei>=0){goTab('training');openSwapModal(String(si),ei,target);return;}}
     goTab('training');return;
   }
-  if(type==='meal_swap'){goTab('meals');showInfo('Swap a meal',`<p>Find <strong>${escapeHtml(target)}</strong> on your Meal Plan and tap <strong>Swap Meal</strong> - we'll write you a different one.</p>`);return;}
+  if(type==='meal_swap')return coachMealSwap(target);
   if(type==='lighter_week')return nudgeLighterWeek();
   if(type==='plan_event')return openModal('event-modal');
   if(type==='pause'){goTab('body');setTimeout(()=>document.getElementById('pause-form')?.scrollIntoView({behavior:'smooth'}),200);return;}
@@ -12241,6 +12262,16 @@ function coachAction(btn){
   if(type==='injury_guide')return String(CU?.injuries||'').trim()?renderInjuryModal():infoGoProfile();
   if(type==='log_meals')return goTab('meallog');
   if(type==='open_session')return goTab('training');
+}
+// The app's own meal swap (openMealSwap / confirmMealSwap) for one meal, hosted in a pop-up: the same choices, checks and save
+function coachMealSwap(name){
+  let cat='',r=null;
+  for(const [c,list] of Object.entries(userMealPlan?.meals?.meals||{})){const hit=(list||[]).find(x=>x?.name===name);if(hit){cat=c;r=hit;break;}}
+  if(!r){goTab('meals');return;}
+  showInfo('Swap '+name,`<div class="meal-det"><p style="font-size:13px;color:var(--tx2);margin-bottom:10px">Two options that fit the same calories and your food rules - choose one and it replaces ${escapeHtml(name)} everywhere in your plan.</p>
+    <div class="meal-swap-result" style="display:block"></div>
+    <button id="coach-swap-go" style="display:none" data-meal-name="${escapeHtml(name)}" data-meal-cat="${escapeHtml(cat)}" data-meal-cals="${parseInt(r.calories)||0}" data-meal-protein="${parseInt(r.protein)||0}"></button></div>`);
+  openMealSwap(document.getElementById('coach-swap-go'));
 }
 function coachHelp(){
   showInfo('Help',Object.values(COACH_SIGNPOSTS).map(s=>`<p style="margin-bottom:10px">${escapeHtml(s.text)}</p>`).join('')+'<p style="font-size:12px;color:var(--tx3)">Your coach is an AI. It can help with your training and food, but it cannot examine you or give medical advice.</p>');
