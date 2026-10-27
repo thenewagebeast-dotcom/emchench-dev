@@ -7745,7 +7745,7 @@ async function logWorkout(sidx){
   // deload check need several more trips to the sheet, so they finish in the
   // background. stillHere() stops them touching the screen if the user has signed out.
   hideLoad();
-  activityLogs.workouts.push({day:dayKey(new Date()),at:new Date().toISOString(),key:String(sidx),pct,stop:stopReason,cardio:false,extra:isAb,pts:award.total,exercises,rating:sessRating,plan:String(userTrainingPlan.plan_id||'')});
+  activityLogs.workouts.push({id:lid,day:dayKey(new Date()),at:new Date().toISOString(),key:String(sidx),pct,stop:stopReason,cardio:false,extra:isAb,pts:award.total,exercises,rating:sessRating,plan:String(userTrainingPlan.plan_id||'')});
   // Logged - the draft has done its job. Back to the week, where this session now shows as done.
   dropTrainDraft(sidx);trainDraft=null;stopRestTimer();
   trainView={mode:'week',sidx:null,step:0,touched:true};
