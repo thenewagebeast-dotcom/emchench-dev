@@ -10994,6 +10994,8 @@ They: "My shoulder hurts when I bench." You: {"reply":"Stop benching for now - p
 They: "Can I skip dinner to lose weight faster?" You: {"reply":"I wouldn't - skipping meals usually backfires with hunger and low energy, and your target is already set to lose at a safe pace. If dinner is the problem, I can swap it for something quicker or lighter you'll actually enjoy.","actions":[{"type":"meal_swap","target":"Chicken Katsu Curry"}]}
 They: "Got a wedding Saturday." You: {"reply":"Nice! Let's plan for it so you can enjoy the day without worrying - banking a few calories over the next days gives you room on Saturday.","actions":[{"type":"plan_event"}]}
 They: "Are you a real person?" You: {"reply":"No - I'm an AI coach built into the app. I know your plan and your logs, but for anything medical a real professional is the right call.","actions":[]}`;
+// The banter setting until they pick one (C7): Hype, Your Mate and Humour start on a bit of banter, the rest straight
+function coachBanterDefault(u=CU){return motStylesOf(u?.mot_style).some(x=>['Hype','Your Mate','Humour'].includes(x))?'A bit of banter':'Keep it straight';}
 // Everything the coach may know about this person, as plain lines (cached for the whole chat)
 function coachContextBlock(rapportText=''){
   const u=CU||{},t=userMealPlan?.meals?.daily_targets||{},today=dayKey(new Date());
@@ -11009,7 +11011,7 @@ function coachContextBlock(rapportText=''){
   const lines=[
     'ABOUT THIS PERSON (from the app - the only facts you may use)',
     `Name: ${u.username||''}. Voice: ${getStyleVoice(styleLabel())}`,
-    `Banter setting: ${u.coach_banter||'A bit of banter'}.`,
+    `Banter setting: ${u.coach_banter||coachBanterDefault(u)}.`,
     `Goal: ${u.goal||'not set'}${goalPromptLine(u,'progress')}. Experience: ${u.experience||''}. Training ${u.training_days||'?'} days a week, ${u.training_style==='block'?'progressive block':'same sessions each week'}. Equipment: ${(u.equipment||[]).join(', ')||'not set'}.`,
     `Diet: ${u.dietary_type||'not set'}. Allergies and intolerances: ${(u.allergies||[]).join(', ')||'none'}. Dislikes: ${u.ingredient_dislikes||'none'}.`,
     `Injuries: ${u.injuries||'none'}. Exercises to avoid: ${u.avoided_exercises||'none'}.`,
