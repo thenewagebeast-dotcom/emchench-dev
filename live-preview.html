@@ -11087,7 +11087,9 @@ ${(Array.isArray(recent)?recent:[{role:'user',content:String(recent)}]).map(m=>(
 THE REPLY:
 ${reply}
 
-Answer JSON only: {"ok":true} or {"ok":false,"problem":"..."}`,'You check replies for safety. Be strict.',1500,AI_MODEL,'low');
+Pass normal food, training and lifestyle advice that fits their diet and allergies (e.g. what to order in a restaurant, swapping chips for a salad, adding weight to a lift). Only fail a clear breach of a rule above.
+
+Answer JSON only: {"ok":true} or {"ok":false,"problem":"..."}`,'You check a fitness coach\'s replies against a short list of safety rules. Fail clear breaches only.',1500,AI_MODEL,'low');
 }
 // Layer 1 (spec section 7): fixed help cards, found by words in THEIR message, shown above the coach's reply every time
 const COACH_SIGNPOSTS={
@@ -11128,7 +11130,7 @@ const COACH_MOOD_RE=/can'?t cope|can'?t go on|cannot cope|hopeless|worthless|hat
 // Layer 3 (C8): the second check only for risky ones - a help card was shown, or the reply touches pain, medicines,
 // calories, skipping or fasting, weight or mood
 function coachRisky(question,reply,signposts=[]){
-  return signposts.length>0||COACH_MOOD_RE.test(String(question))||/\b(pain\w*|hurts?|hurting|injur\w*|aches?|achy|sore|medic\w*|tablets?|pills?|dose|calori\w*|kcal|skip\w*|fast|fasting|weight|starv\w*|mood|depress\w*|anxi\w*|cope|coping)\b|feeling low/i.test(String(question)+' '+String(reply));
+  return signposts.length>0||COACH_MOOD_RE.test(String(question))||/\b(pain\w*|hurts?|hurting|injur\w*|aches?|achy|sore|medic\w*|tablets?|pills?|dose|fasting|starv\w*|mood|depress\w*|anxi\w*|cope|coping)\b|feeling low|skip(ping|ped)? (a |my |the |your )?(meals?|breakfast|lunch|dinner|tea|food)|(lose|losing|lost|drop|dropping) (more |some )?(weight|kg|calories)|weight loss|under \d+ ?(kcal|calories)|eat(ing)? less/i.test(String(question)+' '+String(reply));
 }
 // What goes out instead when the second check fails
 function coachFallbackReply(signposts=[]){
@@ -12198,7 +12200,7 @@ function coachRender(){
     const acts=(m.actions||[]).map(a=>`<button class="btn btn-ghost btn-sm" data-type="${escapeHtml(a.type)}" data-target="${escapeHtml(a.target||'')}" onclick="coachAction(this)">${escapeHtml((COACH_ACTION_LABELS[a.type]||(()=>a.type))(a.target||''))}</button>`).join('');
     return`${signpostCard(m.signposts)}<div style="margin:8px 0"><div style="max-width:88%;background:var(--s2);border:1px solid var(--b1);border-radius:12px 12px 12px 2px;padding:9px 12px;font-size:14px;line-height:1.5;white-space:pre-wrap">${escapeHtml(m.text)}</div>
       ${acts?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${acts}</div>`:''}
-      ${m.id?`<div style="margin-top:4px;font-size:12px"><button class="btn btn-ghost btn-xs" style="${m.rating===1?'color:var(--ok)':''}" data-id="${m.id}" onclick="coachRate(this,1)">👍</button> <button class="btn btn-ghost btn-xs" style="${m.rating===-1?'color:var(--danger)':''}" data-id="${m.id}" onclick="coachRate(this,-1)">👎</button></div>`:''}</div>`;
+      ${m.id?`<div style="margin-top:4px;font-size:12px;display:flex;align-items:center;gap:6px"><button class="btn btn-ghost btn-xs" style="${m.rating===1?'background:var(--ok);color:#000;border-color:var(--ok)':''}" data-id="${m.id}" onclick="coachRate(this,1)">👍</button><button class="btn btn-ghost btn-xs" style="${m.rating===-1?'background:var(--danger);color:#fff;border-color:var(--danger)':''}" data-id="${m.id}" onclick="coachRate(this,-1)">👎</button>${m.rating?`<span style="color:var(--tx3)">${m.rating===1?'Thanks - glad that helped':'Thanks - noted'}</span>`:''}</div>`:''}</div>`;
   }).join('')+(coachState.sending?`<div style="font-size:13px;color:var(--tx3);margin:8px 0">Your coach is typing...</div>`:'');
   box.scrollTop=box.scrollHeight;
 }
