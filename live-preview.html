@@ -10954,7 +10954,7 @@ Reply ONLY with valid JSON: {"guide":"...","day_total":${ev.currentCals+ev.total
 // Ask your coach (COACH-CHAT-SPEC-2026-10-27.md). First draft of the coach's instructions, used by the cost test
 // (step 0) and the starting point for the real chat. Every fact the coach uses comes from coachContextBlock(),
 // built from the person's own data - never from the AI's memory.
-const COACH_ACTIONS=['exercise_swap','meal_swap','lighter_week','plan_event','pause','weigh_in','injury_guide','log_meals','open_session'];
+const COACH_ACTIONS=['exercise_swap','meal_swap','lighter_week','plan_event','pause','weigh_in','injury_guide','log_meals','open_session','log_food'];
 const COACH_SYS=`You are the coach inside E=MC-HENCH, a fitness and nutrition app. You are an AI coach, not a person - if anyone asks, say so plainly. You talk like a real personal trainer who knows this person and cares about them.
 
 HOW YOU TALK
@@ -10967,6 +10967,13 @@ HOW YOU TALK
 FOOD QUESTIONS
 - Find the meal in their plan first (TODAY'S MEALS and THEIR MEAL PLAN in ABOUT THIS PERSON) and use its exact name. If it is not clear which meal they mean, ask them which one before suggesting anything.
 - For a swap, offer the meal_swap button for that exact meal - the app writes a proper replacement that fits their targets and food rules. You may add one or two quick ideas, from their own plan first (another recipe in the same section), then simple foods that fit their diet and allergies.
+
+PHOTOS (they can send up to 3)
+- A menu: pick the best options for their diet, allergies and today's targets. Big UK chains print calories on the menu - use those numbers when you can read them, and say so.
+- A meal or a plate: give a ROUGH ESTIMATE of calories, protein, carbs and fat, always called a rough estimate from a photo, and offer log_food with those numbers (they check and change them before anything is saved).
+- Out shopping with an ingredient missing: suggest a swap from what you can see that fits the recipe and their diet.
+- Allergies: NEVER say a product or dish is safe for their allergies from a photo - always tell them to check the label or ask the staff.
+- If you cannot read or see it clearly, say so and ask for a clearer photo. Never guess a number from a blurry photo.
 
 WHAT THE APP DOES - never promise anything else
 - The app does not rebalance their day or change meals by itself. Never say the rest of their day "will still fit" unless the numbers in ABOUT THIS PERSON show it.
@@ -10991,7 +10998,7 @@ SAFETY - these always win
 - If the app shows them a HELP CARD (listed in the conversation), keep your reply short and kind, point to that help, and do not add other advice.
 
 WHAT YOU CAN OFFER (buttons the app shows under your reply - each opens one of the app's own features, which runs its own checks)
-- exercise_swap (target: the exact exercise name from their plan), meal_swap (target: the exact meal name from their plan), lighter_week, plan_event (calorie banking for a night out), pause (holiday, illness or injury), weigh_in, injury_guide, log_meals, open_session.
+- exercise_swap (target: the exact exercise name from their plan), meal_swap (target: the exact meal name from their plan), lighter_week, plan_event (calorie banking for a night out), pause (holiday, illness or injury), weigh_in, injury_guide, log_meals, open_session, log_food (a food from a photo for their Meal Log: {"type":"log_food","name":"...","calories":0,"protein":0,"carbs":0}, your rough estimate).
 - At most 2, only when they help. "Rework my week" = explain what you would change, then offer the matching buttons; a whole new plan is their Generate Plan button.
 
 ANSWER FORMAT - JSON only, nothing before or after:
@@ -11064,7 +11071,7 @@ function coachRequestBody(history,effort='low',rapportText='',notes='',signposts
   const system=[{type:'text',text:COACH_SYS},{type:'text',text:coachContextBlock(rapportText,notes),cache_control:{type:'ephemeral'}}];
   if(signposts.length)system.push({type:'text',text:'HELP CARD shown to them with your reply: '+signposts.map(k=>COACH_SIGNPOSTS[k].text).join(' | ')});
   return{model:AI_MODEL_TRAINING,max_tokens:4000,fallbacks:'default',output_config:{effort},system,
-    messages:history.map(m=>({role:m.role,content:String(m.content)}))};
+    messages:history.map(m=>({role:m.role,content:Array.isArray(m.content)?m.content:String(m.content)}))};
 }
 // Medium effort for the bigger questions (reworking the plan, pain or injury, long messages), low otherwise
 function coachEffort(text){return/rework|change my (week|plan)|pain|hurt|injur|ache|sore|swollen|week/i.test(String(text))||String(text).length>300?'medium':'low';}
@@ -11091,6 +11098,7 @@ ${(Array.isArray(recent)?recent:[{role:'user',content:String(recent)}]).map(m=>(
 THE REPLY:
 ${reply}
 
+Also fail it if it says a product or dish is safe for their allergies from a photo instead of telling them to check the label or ask staff.
 Pass normal food, training and lifestyle advice that fits their diet and allergies (e.g. what to order in a restaurant, swapping chips for a salad, adding weight to a lift). Only fail a clear breach of a rule above.
 
 Answer JSON only: {"ok":true} or {"ok":false,"problem":"..."}`,'You check a fitness coach\'s replies against a short list of safety rules. Fail clear breaches only.',1500,AI_MODEL,'low');
@@ -11122,6 +11130,12 @@ function coachReadAnswer(raw,u=CU){
     if(!COACH_ACTIONS.includes(type)||seen.has(type+target))continue;
     if(type==='exercise_swap'&&!exNames.has(target))continue;
     if(type==='meal_swap'&&!mealNames.has(target))continue;
+    if(type==='log_food'){
+      const n=(v,max)=>{const x=Math.round(Number(v));return x>=0&&x<=max?x:null;};
+      const f={type,name:String(a?.name||'').trim().slice(0,80),calories:n(a?.calories,4000),protein:n(a?.protein,300),carbs:n(a?.carbs,600)};
+      if(!f.name||f.calories==null||seen.has('log_food'))continue;
+      seen.add('log_food');actions.push({...f,protein:f.protein??0,carbs:f.carbs??0});if(actions.length===2)break;continue;
+    }
     seen.add(type+target);actions.push(target&&(type==='exercise_swap'||type==='meal_swap')?{type,target}:{type});
     if(actions.length===2)break;
   }
@@ -11133,7 +11147,9 @@ function coachReadAnswer(raw,u=CU){
 const COACH_MOOD_RE=/can'?t cope|can'?t go on|cannot cope|hopeless|worthless|hate myself|i'?m (useless|a failure|a burden)|what'?s the point|no one cares|nobody cares|give up on (myself|everything|life)|so (low|down)|depressed|depression|keep crying|falling apart/i;
 // Layer 3 (C8): the second check only for risky ones - a help card was shown, or the reply touches pain, medicines,
 // calories, skipping or fasting, weight or mood
-function coachRisky(question,reply,signposts=[]){
+function coachRisky(question,reply,signposts=[],photos=0,u=CU){
+  // P5: every photo reply for someone with an allergy or intolerance is checked
+  if(photos>0&&(u?.allergies||[]).length)return true;
   return signposts.length>0||COACH_MOOD_RE.test(String(question))||/\b(pain\w*|hurts?|hurting|injur\w*|aches?|achy|sore|medic\w*|tablets?|pills?|dose|fasting|starv\w*|mood|depress\w*|anxi\w*|cope|coping)\b|feeling low|skip(ping|ped)? (a |my |the |your )?(meals?|breakfast|lunch|dinner|tea|food)|(lose|losing|lost|drop|dropping) (more |some )?(weight|kg|calories)|weight loss|under \d+ ?(kcal|calories)|eat(ing)? less/i.test(String(question)+' '+String(reply));
 }
 // What goes out instead when the second check fails
@@ -12142,6 +12158,33 @@ function coachButtonHtml(){
   return`<button class="btn" style="width:100%;margin:4px 0 10px" onclick="openCoach()">💬 Ask your coach</button>`;
 }
 let coachState={chatId:null,messages:[],sending:false,dirty:new Set()};
+// Photos waiting to be sent with the next message (P1: up to 3), shrunk on the phone first; never stored (P2)
+let coachPhotos=[];
+function coachShrink(file){
+  return new Promise((ok,bad)=>{
+    const url=URL.createObjectURL(file),img=new Image();
+    img.onload=()=>{
+      const k=Math.min(1,1500/Math.max(img.width,img.height)),c=document.createElement('canvas');
+      c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);
+      const data=c.toDataURL('image/jpeg',0.8);ok({media_type:'image/jpeg',data:data.split(',')[1],preview:data});
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);bad(new Error('That file is not a photo the app can read.'));};
+    img.src=url;
+  });
+}
+async function coachAddPhotos(input){
+  const files=[...(input.files||[])];input.value='';
+  for(const f of files){
+    if(coachPhotos.length>=3){alert('Up to 3 photos a message.');break;}
+    try{coachPhotos.push(await coachShrink(f));}catch(e){alert(e.message);}
+  }
+  coachRenderPhotos();
+}
+function coachRenderPhotos(){
+  const el=document.getElementById('coach-photos');if(!el)return;
+  el.innerHTML=coachPhotos.map((p,i)=>`<div style="position:relative;margin-top:8px"><img src="${p.preview}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--b2)"><button class="btn btn-ghost btn-xs" style="position:absolute;top:-6px;right:-6px;padding:0 5px" data-i="${i}" onclick="coachPhotos.splice(parseInt(this.dataset.i),1);coachRenderPhotos()">✕</button></div>`).join('');
+}
 function coachScreenEl(){
   let el=document.getElementById('coach-screen');
   if(el)return el;
@@ -12156,7 +12199,10 @@ function coachScreenEl(){
     <div style="font-size:11px;color:var(--tx3);padding:6px 16px;border-bottom:1px solid var(--b1)">Your AI coach - not a person, and not medical advice. Anything urgent? <a href="#" onclick="coachHelp();return false" style="color:var(--ac3)">Help</a></div>
     <div id="coach-msgs" style="flex:1;overflow-y:auto;padding:14px 16px"></div>
     <div id="coach-left" style="font-size:11px;color:var(--tx3);padding:0 16px"></div>
+    <div id="coach-photos" style="display:flex;gap:6px;padding:0 16px"></div>
+    <input type="file" id="coach-file" accept="image/*" multiple style="display:none" onchange="coachAddPhotos(this)">
     <div style="display:flex;gap:8px;padding:10px 16px 16px;border-top:1px solid var(--b1)">
+      <button class="btn btn-ghost" style="flex:0 0 auto;width:auto;padding:0 12px" title="Add a photo" onclick="document.getElementById('coach-file').click()">📷</button>
       <textarea id="coach-input" class="ftarea" maxlength="1000" rows="2" style="flex:1 1 auto;min-width:0;width:auto;min-height:44px;margin:0" placeholder="Ask anything - training, food, a busy week..."></textarea>
       <button class="btn" id="coach-send" style="flex:0 0 auto;width:auto;padding:0 18px" onclick="coachSend()">Send</button>
     </div>`;
@@ -12190,7 +12236,7 @@ async function coachLoadChat(id){
   coachState.chatId=id;coachState.messages=data||[];
 }
 function coachNewChat(){coachUpdateNotes();coachState.chatId=null;coachState.messages=[];coachRender();}
-const COACH_ACTION_LABELS={exercise_swap:t=>'Swap '+t,meal_swap:t=>'Swap '+t,lighter_week:()=>'Take a lighter week',plan_event:()=>'Plan a night out',
+const COACH_ACTION_LABELS={log_food:t=>'Add to my Meal Log',exercise_swap:t=>'Swap '+t,meal_swap:t=>'Swap '+t,lighter_week:()=>'Take a lighter week',plan_event:()=>'Plan a night out',
   pause:()=>'Pause my plan',weigh_in:()=>'Weigh in',injury_guide:()=>String(CU?.injuries||'').trim()?'Injury guide':'Add an injury',log_meals:()=>'Log today\'s meals',open_session:()=>'Open today\'s session'};
 function coachRender(){
   const box=document.getElementById('coach-msgs');if(!box)return;
@@ -12200,8 +12246,8 @@ function coachRender(){
   }
   const signpostCard=keys=>(keys||[]).map(k=>COACH_SIGNPOSTS[k]?`<div class="alert alert-warn" style="font-size:13px;margin:8px 0">🆘 ${escapeHtml(COACH_SIGNPOSTS[k].text)}</div>`:'').join('');
   box.innerHTML=coachState.messages.map(m=>{
-    if(m.role==='user')return`<div style="display:flex;justify-content:flex-end;margin:8px 0"><div style="max-width:80%;background:var(--s3);border-radius:12px 12px 2px 12px;padding:9px 12px;font-size:14px;white-space:pre-wrap">${escapeHtml(m.text)}</div></div>`;
-    const acts=(m.actions||[]).map(a=>`<button class="btn btn-ghost btn-sm" data-type="${escapeHtml(a.type)}" data-target="${escapeHtml(a.target||'')}" onclick="coachAction(this)">${escapeHtml((COACH_ACTION_LABELS[a.type]||(()=>a.type))(a.target||''))}</button>`).join('');
+    if(m.role==='user')return`<div style="display:flex;justify-content:flex-end;margin:8px 0"><div style="max-width:80%;background:var(--s3);border-radius:12px 12px 2px 12px;padding:9px 12px;font-size:14px;white-space:pre-wrap">${(m.previews||[]).map(p=>`<img src="${p}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;margin:0 4px 6px 0">`).join('')}${escapeHtml(m.text)}</div></div>`;
+    const acts=(m.actions||[]).map(a=>`<button class="btn btn-ghost btn-sm" data-type="${escapeHtml(a.type)}" data-target="${escapeHtml(a.target||'')}" data-food="${a.type==='log_food'?escapeHtml(JSON.stringify({name:a.name,calories:a.calories,protein:a.protein,carbs:a.carbs})):''}" onclick="coachAction(this)">${escapeHtml((COACH_ACTION_LABELS[a.type]||(()=>a.type))(a.target||''))}</button>`).join('');
     return`${signpostCard(m.signposts)}<div style="margin:8px 0"><div style="max-width:88%;background:var(--s2);border:1px solid var(--b1);border-radius:12px 12px 12px 2px;padding:9px 12px;font-size:14px;line-height:1.5;white-space:pre-wrap">${escapeHtml(m.text)}</div>
       ${acts?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${acts}</div>`:''}
       ${m.id?`<div style="margin-top:4px;font-size:12px;display:flex;align-items:center;gap:6px"><button class="btn btn-ghost btn-xs" style="${m.rating===1?'background:var(--ok);color:#000;border-color:var(--ok)':''}" data-id="${m.id}" onclick="coachRate(this,1)">👍</button><button class="btn btn-ghost btn-xs" style="${m.rating===-1?'background:var(--danger);color:#fff;border-color:var(--danger)':''}" data-id="${m.id}" onclick="coachRate(this,-1)">👎</button>${m.rating?`<span style="color:var(--tx3)">${m.rating===1?'Thanks - glad that helped':'Thanks - noted'}</span>`:''}</div>`:''}</div>`;
@@ -12218,17 +12264,18 @@ async function coachLeft(){
 }
 async function coachSend(){
   const inp=document.getElementById('coach-input');const text=(inp?.value||'').trim();
-  if(!text||coachState.sending)return;
-  coachState.sending=true;inp.value='';
-  coachState.messages.push({role:'user',text});coachRender();
+  const photos=coachPhotos.slice();
+  if((!text&&!photos.length)||coachState.sending)return;
+  coachState.sending=true;inp.value='';coachPhotos=[];coachRenderPhotos();
+  coachState.messages.push({role:'user',text:(photos.length?'📷 '+photos.length+' photo'+(photos.length>1?'s':'')+'\n':'')+text,previews:photos.map(p=>p.preview)});coachRender();
   const me=CU.user_id;
   let res;
-  try{res=await aiRequest('coach_chat',{chat_id:coachState.chatId,message:text},90000);}
+  try{res=await aiRequest('coach_chat',{chat_id:coachState.chatId,message:text,images:photos.map(p=>({media_type:p.media_type,data:p.data}))},120000);}
   catch(e){res={error:{message:'Your coach took too long to answer. Please try again.'}};}
   if(CU?.user_id!==me)return;
   coachState.sending=false;
   if(res.error){
-    coachState.messages.pop();inp.value=text;coachRender();
+    coachState.messages.pop();inp.value=text;coachPhotos=photos;coachRenderPhotos();coachRender();
     alert(res.error.message||'Your coach could not answer just now.');return;
   }
   coachState.chatId=res.chat_id;coachState.dirty.add(res.chat_id);
@@ -12261,6 +12308,17 @@ function coachAction(btn){
     goTab('training');return;
   }
   if(type==='meal_swap')return coachMealSwap(target);
+  if(type==='log_food'){
+    let f={};try{f=JSON.parse(btn.dataset.food||'{}');}catch(e){}
+    goTab('meallog');
+    setTimeout(()=>{
+      const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v??'';};
+      set('extra-food',f.name);set('extra-cals',f.calories);set('extra-p',f.protein);set('extra-c',f.carbs);
+      document.getElementById('extra-food')?.scrollIntoView({behavior:'smooth',block:'center'});
+      showInfo('Check the numbers',`<p>Your coach's rough estimate for <strong>${escapeHtml(f.name||'this food')}</strong> is filled in under food outside your plan. Change anything that looks wrong, then tap <strong>Add</strong> and save your log.</p>`);
+    },300);
+    return;
+  }
   if(type==='lighter_week')return nudgeLighterWeek();
   if(type==='plan_event')return openModal('event-modal');
   if(type==='pause'){goTab('body');setTimeout(()=>document.getElementById('pause-form')?.scrollIntoView({behavior:'smooth'}),200);return;}
@@ -13078,7 +13136,7 @@ function signOut(){
   sheetsSignOut();
   for(const id of ['user-sel','ob-resume-banner']){const el=document.getElementById(id);if(el)el.style.display='none';}
   stopGenPoll();genRun=null;
-  coachState={chatId:null,messages:[],sending:false,dirty:new Set()};document.getElementById('coach-screen')?.remove();
+  coachState={chatId:null,messages:[],sending:false,dirty:new Set()};coachPhotos=[];document.getElementById('coach-screen')?.remove();
   allUsers=[];lastSeasonWinners=[];wallReportCounts={};myShopRatings={};compMembers=[];compResults=[];
   document.querySelectorAll('#login-screen input').forEach(i=>i.value='');
   showAuthScreen();showAuthView('v-login');

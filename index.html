@@ -10855,7 +10855,7 @@ Reply ONLY with valid JSON: {"guide":"...","day_total":${ev.currentCals+ev.total
 // Ask your coach (COACH-CHAT-SPEC-2026-10-27.md). First draft of the coach's instructions, used by the cost test
 // (step 0) and the starting point for the real chat. Every fact the coach uses comes from coachContextBlock(),
 // built from the person's own data - never from the AI's memory.
-const COACH_ACTIONS=['exercise_swap','meal_swap','lighter_week','plan_event','pause','weigh_in','injury_guide','log_meals','open_session'];
+const COACH_ACTIONS=['exercise_swap','meal_swap','lighter_week','plan_event','pause','weigh_in','injury_guide','log_meals','open_session','log_food'];
 const COACH_SYS=`You are the coach inside E=MC-HENCH, a fitness and nutrition app. You are an AI coach, not a person - if anyone asks, say so plainly. You talk like a real personal trainer who knows this person and cares about them.
 
 HOW YOU TALK
@@ -10868,6 +10868,13 @@ HOW YOU TALK
 FOOD QUESTIONS
 - Find the meal in their plan first (TODAY'S MEALS and THEIR MEAL PLAN in ABOUT THIS PERSON) and use its exact name. If it is not clear which meal they mean, ask them which one before suggesting anything.
 - For a swap, offer the meal_swap button for that exact meal - the app writes a proper replacement that fits their targets and food rules. You may add one or two quick ideas, from their own plan first (another recipe in the same section), then simple foods that fit their diet and allergies.
+
+PHOTOS (they can send up to 3)
+- A menu: pick the best options for their diet, allergies and today's targets. Big UK chains print calories on the menu - use those numbers when you can read them, and say so.
+- A meal or a plate: give a ROUGH ESTIMATE of calories, protein, carbs and fat, always called a rough estimate from a photo, and offer log_food with those numbers (they check and change them before anything is saved).
+- Out shopping with an ingredient missing: suggest a swap from what you can see that fits the recipe and their diet.
+- Allergies: NEVER say a product or dish is safe for their allergies from a photo - always tell them to check the label or ask the staff.
+- If you cannot read or see it clearly, say so and ask for a clearer photo. Never guess a number from a blurry photo.
 
 WHAT THE APP DOES - never promise anything else
 - The app does not rebalance their day or change meals by itself. Never say the rest of their day "will still fit" unless the numbers in ABOUT THIS PERSON show it.
@@ -10892,7 +10899,7 @@ SAFETY - these always win
 - If the app shows them a HELP CARD (listed in the conversation), keep your reply short and kind, point to that help, and do not add other advice.
 
 WHAT YOU CAN OFFER (buttons the app shows under your reply - each opens one of the app's own features, which runs its own checks)
-- exercise_swap (target: the exact exercise name from their plan), meal_swap (target: the exact meal name from their plan), lighter_week, plan_event (calorie banking for a night out), pause (holiday, illness or injury), weigh_in, injury_guide, log_meals, open_session.
+- exercise_swap (target: the exact exercise name from their plan), meal_swap (target: the exact meal name from their plan), lighter_week, plan_event (calorie banking for a night out), pause (holiday, illness or injury), weigh_in, injury_guide, log_meals, open_session, log_food (a food from a photo for their Meal Log: {"type":"log_food","name":"...","calories":0,"protein":0,"carbs":0}, your rough estimate).
 - At most 2, only when they help. "Rework my week" = explain what you would change, then offer the matching buttons; a whole new plan is their Generate Plan button.
 
 ANSWER FORMAT - JSON only, nothing before or after:
@@ -10965,7 +10972,7 @@ function coachRequestBody(history,effort='low',rapportText='',notes='',signposts
   const system=[{type:'text',text:COACH_SYS},{type:'text',text:coachContextBlock(rapportText,notes),cache_control:{type:'ephemeral'}}];
   if(signposts.length)system.push({type:'text',text:'HELP CARD shown to them with your reply: '+signposts.map(k=>COACH_SIGNPOSTS[k].text).join(' | ')});
   return{model:AI_MODEL_TRAINING,max_tokens:4000,fallbacks:'default',output_config:{effort},system,
-    messages:history.map(m=>({role:m.role,content:String(m.content)}))};
+    messages:history.map(m=>({role:m.role,content:Array.isArray(m.content)?m.content:String(m.content)}))};
 }
 // Medium effort for the bigger questions (reworking the plan, pain or injury, long messages), low otherwise
 function coachEffort(text){return/rework|change my (week|plan)|pain|hurt|injur|ache|sore|swollen|week/i.test(String(text))||String(text).length>300?'medium':'low';}
@@ -10992,6 +10999,7 @@ ${(Array.isArray(recent)?recent:[{role:'user',content:String(recent)}]).map(m=>(
 THE REPLY:
 ${reply}
 
+Also fail it if it says a product or dish is safe for their allergies from a photo instead of telling them to check the label or ask staff.
 Pass normal food, training and lifestyle advice that fits their diet and allergies (e.g. what to order in a restaurant, swapping chips for a salad, adding weight to a lift). Only fail a clear breach of a rule above.
 
 Answer JSON only: {"ok":true} or {"ok":false,"problem":"..."}`,'You check a fitness coach\'s replies against a short list of safety rules. Fail clear breaches only.',1500,AI_MODEL,'low');
@@ -11023,6 +11031,12 @@ function coachReadAnswer(raw,u=CU){
     if(!COACH_ACTIONS.includes(type)||seen.has(type+target))continue;
     if(type==='exercise_swap'&&!exNames.has(target))continue;
     if(type==='meal_swap'&&!mealNames.has(target))continue;
+    if(type==='log_food'){
+      const n=(v,max)=>{const x=Math.round(Number(v));return x>=0&&x<=max?x:null;};
+      const f={type,name:String(a?.name||'').trim().slice(0,80),calories:n(a?.calories,4000),protein:n(a?.protein,300),carbs:n(a?.carbs,600)};
+      if(!f.name||f.calories==null||seen.has('log_food'))continue;
+      seen.add('log_food');actions.push({...f,protein:f.protein??0,carbs:f.carbs??0});if(actions.length===2)break;continue;
+    }
     seen.add(type+target);actions.push(target&&(type==='exercise_swap'||type==='meal_swap')?{type,target}:{type});
     if(actions.length===2)break;
   }
@@ -11034,7 +11048,9 @@ function coachReadAnswer(raw,u=CU){
 const COACH_MOOD_RE=/can'?t cope|can'?t go on|cannot cope|hopeless|worthless|hate myself|i'?m (useless|a failure|a burden)|what'?s the point|no one cares|nobody cares|give up on (myself|everything|life)|so (low|down)|depressed|depression|keep crying|falling apart/i;
 // Layer 3 (C8): the second check only for risky ones - a help card was shown, or the reply touches pain, medicines,
 // calories, skipping or fasting, weight or mood
-function coachRisky(question,reply,signposts=[]){
+function coachRisky(question,reply,signposts=[],photos=0,u=CU){
+  // P5: every photo reply for someone with an allergy or intolerance is checked
+  if(photos>0&&(u?.allergies||[]).length)return true;
   return signposts.length>0||COACH_MOOD_RE.test(String(question))||/\b(pain\w*|hurts?|hurting|injur\w*|aches?|achy|sore|medic\w*|tablets?|pills?|dose|fasting|starv\w*|mood|depress\w*|anxi\w*|cope|coping)\b|feeling low|skip(ping|ped)? (a |my |the |your )?(meals?|breakfast|lunch|dinner|tea|food)|(lose|losing|lost|drop|dropping) (more |some )?(weight|kg|calories)|weight loss|under \d+ ?(kcal|calories)|eat(ing)? less/i.test(String(question)+' '+String(reply));
 }
 // What goes out instead when the second check fails
